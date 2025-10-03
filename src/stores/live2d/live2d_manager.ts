@@ -109,6 +109,19 @@ export class LAppLive2DManager {
   }
 
   /**
+   * 获取模型的头像预览
+   */
+  public getModelAvatar(): string {
+    const index: number = this._sceneIndex
+    const model: string = LAppDefine.ModelDir[index]
+    let modelPath: string = LAppDefine.ResourcesPath + model + '/'
+    // let modelJsonName: string = LAppDefine.ModelDir[index]
+    modelPath += 'avatar.png'
+    console.log(modelPath)
+    return modelPath
+  }
+
+  /**
    * シーンを切り替える
    * サンプルアプリケーションではモデルセットの切り替えを行う。
    * @param index

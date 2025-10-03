@@ -33,13 +33,10 @@ export const ViewLogicalMaxBottom = -2.0
 export const ViewLogicalMaxTop = 2.0
 
 // 相対パス
-export const ResourcesPath = '/src/Resources/'
+export const ResourcesPath = '/public/'
 
 // モデルの後ろにある背景の画像ファイル
 export const BackImageName = 'back_class_normal.png'
-
-// 歯車
-export const GearImageName = 'icon_gear.png'
 
 // 終了ボタン
 export const PowerImageName = 'CloseNormal.png'
@@ -65,18 +62,18 @@ export const PriorityIdle = 1
 export const PriorityNormal = 2
 export const PriorityForce = 3
 
-// MOC3の整合性検証オプション
+// MOC3完整性校验
 export const MOCConsistencyValidationEnable = true
-// motion3.jsonの整合性検証オプション
+// motion3.json完整性校验
 export const MotionConsistencyValidationEnable = true
 
-// デバッグ用ログの表示オプション
+// 调试日志显示选项
 export const DebugLogEnable = true
 export const DebugTouchLogEnable = false
 
-// Frameworkから出力するログのレベル設定
+// Framework日志输出级别
 export const CubismLoggingLevel: LogLevel = LogLevel.LogLevel_Verbose
 
-// デフォルトのレンダーターゲットサイズ
+// 默认渲染目标大小
 export const RenderTargetWidth = 1900
 export const RenderTargetHeight = 1000

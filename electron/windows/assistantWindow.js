@@ -1,7 +1,8 @@
-import { BrowserWindow } from 'electron'
+import { BrowserWindow, globalShortcut } from 'electron'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { dirname } from 'path'
+import { createChatBoxWindow } from './chatBoxWindow.js'
 
 // 在 ESM 中获取 __dirname 的等效方法
 const __filename = fileURLToPath(import.meta.url)
@@ -16,22 +17,33 @@ export function createAssistantWindow() {
   }
 
   assistantWindow = new BrowserWindow({
-    width: 400,
-    height: 400,
-    frame: true,
+    width: 300,
+    height: 700,
+    frame: false,
     transparent: true,
     alwaysOnTop: true,
     resizable: false,
     skipTaskbar: true,
     autoHideMenuBar: true,
+    hasShadow: false,
     // focusable: false, // 如果需要点击穿透，在这里开启
     webPreferences: {
       contextIsolation: true,
-      preload: path.join(__dirname, '../preload/assistantPreload.js'), // 👈 专用 preload
+      preload: path.join(__dirname, '../preload/assistantPreload.js'),
     },
   })
+  // 注册快捷回复的快捷键
+  const ret = globalShortcut.register('Alt+A', () => {
+    createChatBoxWindow()
+  })
 
-  // 加载宠物页面
+  if (!ret) {
+    console.log('注册失败')
+  } else {
+    console.log('注册成功')
+  }
+
+  // 加载助手页面
 
   assistantWindow.loadURL(`http://localhost:5173/#/assistant`)
 
@@ -41,9 +53,7 @@ export function createAssistantWindow() {
     assistantWindow.show()
   })
 
-  assistantWindow.on('closed', () => {
-    assistantWindow = null
-  })
+  assistantWindow.on('closed', () => {})
 
   return assistantWindow
 }

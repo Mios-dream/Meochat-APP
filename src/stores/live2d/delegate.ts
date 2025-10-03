@@ -174,12 +174,14 @@ export class LAppDelegate {
 
   /**
    * APP初始化所需的东西。
+   * 创建canvas并初始化视图。
+   * width: 画布宽度(占视口的比例)
+   * height: 画布高度(占视口的比例)
    */
-  public initialize(): boolean {
+  public initialize(width: number, height: number): boolean {
     // Cubism SDKの初期化
     this.initializeCubism()
-
-    this.initializeSubdelegates()
+    this.initializeSubdelegates(width, height)
     this.initializeEventListener()
 
     return true
@@ -227,9 +229,7 @@ export class LAppDelegate {
   /**
    * Canvas生成配置、Subdelegate初期化
    */
-  private initializeSubdelegates(): void {
-    let width: number = 100
-    let height: number = 100
+  private initializeSubdelegates(width: number = 100, height: number = 80): void {
     if (LAppDefine.CanvasNum > 3) {
       const widthUnit: number = Math.ceil(Math.sqrt(LAppDefine.CanvasNum))
       const heightUnit = Math.ceil(LAppDefine.CanvasNum / widthUnit)
@@ -246,9 +246,12 @@ export class LAppDelegate {
       this._canvases.pushBack(canvas)
       canvas.style.width = `${width}vw`
       canvas.style.height = `${height}vh`
+      canvas.style.bottom = '0'
+      canvas.style.position = 'fixed'
       canvas.id = `live2d`
       // 添加canvas元素到页面
-      document.body.appendChild(canvas)
+      document.getElementById('live2d-container')?.appendChild(canvas)
+      // document.body.appendChild(canvas)
     }
 
     for (let i = 0; i < this._canvases.getSize(); i++) {
@@ -264,6 +267,14 @@ export class LAppDelegate {
         )
       }
     }
+  }
+
+  /**
+   * 获取Subdelegate
+   * @param index
+   */
+  public getSubdelegate(index: number): LAppSubdelegate {
+    return this._subdelegates.at(index)
   }
 
   /**

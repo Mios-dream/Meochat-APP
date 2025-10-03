@@ -18,7 +18,16 @@
     "format": "prettier --write src/"
   },
   "dependencies": {
+    "@fortawesome/fontawesome-svg-core": "^7.1.0",
+    "@fortawesome/free-brands-svg-icons": "^7.1.0",
+    "@fortawesome/free-regular-svg-icons": "^7.1.0",
+    "@fortawesome/free-solid-svg-icons": "^7.1.0",
+    "@fortawesome/vue-fontawesome": "^3.1.2",
+    "@tailwindcss/vite": "^4.1.13",
+    "chart.js": "^4.5.0",
+    "element-plus": "^2.11.4",
     "pinia": "^3.0.3",
+    "tailwindcss": "^4.1.13",
     "vue": "^3.5.18",
     "vue-router": "^4.5.1"
   },

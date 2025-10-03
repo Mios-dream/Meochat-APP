@@ -6,39 +6,9 @@ export function setupAssistantIPC() {
     createAssistantWindow()
   })
 
-  let draggingWindow = null
-  let dragOffsetX = 0
-  let dragOffsetY = 0
-
-  // 监听拖拽开始
-  ipcMain.on('assistant:start-drag', (event, { offsetX, offsetY }) => {
-    draggingWindow = BrowserWindow.fromWebContents(event.sender)
-    dragOffsetX = offsetX
-    dragOffsetY = offsetY
-  })
-
-  // 监听拖拽中
-  ipcMain.on('assistant:drag-window', (event, { screenX, screenY }) => {
-    if (draggingWindow) {
-      draggingWindow.setPosition(screenX - dragOffsetX, screenY - dragOffsetY)
-    }
-  })
-
-  // 监听拖拽结束
-  ipcMain.on('stop-drag', () => {
-    draggingWindow = null
-  })
-
   ipcMain.on('assistant:close', () => {
     const assistantWin = getAssistantWindow()
     if (assistantWin) assistantWin.close()
-  })
-
-  ipcMain.on('assistant:move', (event, { x, y }) => {
-    const assistantWin = getAssistantWindow()
-    if (assistantWin) {
-      assistantWin.setPosition(x, y)
-    }
   })
 
   ipcMain.on('assistant:hide', () => {
@@ -57,5 +27,11 @@ export function setupAssistantIPC() {
       width: primaryDisplay.workAreaSize.width,
       height: primaryDisplay.workAreaSize.height,
     }
+  })
+
+  // 新增：获取助手当前状态
+  ipcMain.handle('assistant:get-status', async () => {
+    const assistantWin = getAssistantWindow()
+    return !!assistantWin
   })
 }
