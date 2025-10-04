@@ -18,7 +18,7 @@ export function createAssistantWindow() {
 
   assistantWindow = new BrowserWindow({
     width: 300,
-    height: 700,
+    height: 500,
     frame: false,
     transparent: true,
     alwaysOnTop: true,
@@ -26,25 +26,18 @@ export function createAssistantWindow() {
     skipTaskbar: true,
     autoHideMenuBar: true,
     hasShadow: false,
-    // focusable: false, // 如果需要点击穿透，在这里开启
     webPreferences: {
       contextIsolation: true,
       preload: path.join(__dirname, '../preload/assistantPreload.js'),
     },
   })
+
   // 注册快捷回复的快捷键
   const ret = globalShortcut.register('Alt+A', () => {
     createChatBoxWindow()
   })
 
-  if (!ret) {
-    console.log('注册失败')
-  } else {
-    console.log('注册成功')
-  }
-
   // 加载助手页面
-
   assistantWindow.loadURL(`http://localhost:5173/#/assistant`)
 
   assistantWindow.webContents.openDevTools({ mode: 'detach' })
@@ -53,7 +46,9 @@ export function createAssistantWindow() {
     assistantWindow.show()
   })
 
-  assistantWindow.on('closed', () => {})
+  assistantWindow.on('closed', () => {
+    globalShortcut.unregisterAll()
+  })
 
   return assistantWindow
 }

@@ -163,7 +163,7 @@
           <label class="block text-sm font-medium text-gray-700 mb-2">唤醒词</label>
           <input
             type="text"
-            value="小助手"
+            value="澪"
             class="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition-colors"
           />
         </div>
@@ -173,6 +173,7 @@
           <select
             class="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition-colors"
           >
+            <option>不使用语音唤醒</option>
             <option>使用唤醒词唤醒</option>
             <option>自定识别</option>
           </select>

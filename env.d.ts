@@ -6,6 +6,8 @@ declare global {
     assistantAPI: {
       openAssistant: () => void
       closeAssistant: () => void
+      hideAssistant: () => void
+      startDrag: () => void
       ipcRenderer: {
         send: (channel: string, data: any) => void
         on: (channel: string, callback: (event, data) => void) => void

@@ -3,4 +3,4 @@
   <div>助手</div>
 </template>
 
-<script setup></script>
+<script setup lang="ts"></script>

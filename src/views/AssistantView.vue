@@ -1,6 +1,17 @@
 <template>
-  <div id="live2d-container">
+  <div id="live2d-container" @contextmenu.prevent="showContextMenu">
     <div id="assistant-tips"></div>
+    <div id="live2d-context-menu" v-show="contextMenuVisible" :style="contextMenuStyle">
+      <div
+        v-for="(item, index) in contextMenuItems"
+        :key="index"
+        class="menu-item"
+        @click="item.action"
+      >
+        <div class="icon"><font-awesome-icon :icon="item.icon" /></div>
+        <div class="text">{{ item.text }}</div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -16,6 +27,15 @@ body {
   height: 100vh;
   width: 100vw;
   position: relative;
+  cursor: grab;
+}
+
+#live2d-container.dragging {
+  cursor: grabbing;
+}
+
+#live2d-container.locked {
+  cursor: default;
 }
 
 #assistant-tips {
@@ -37,6 +57,7 @@ body {
   width: 250px;
   word-break: break-all;
   z-index: 10;
+  pointer-events: none;
 }
 
 #assistant-tips.active {
@@ -52,6 +73,62 @@ body {
   position: absolute;
   top: 50%;
   z-index: 10;
+}
+
+#live2d-context-menu {
+  position: fixed;
+  background-color: rgba(255, 255, 255, 0.914);
+  border: 1px solid rgba(128, 128, 128, 0.4);
+  border-radius: 30px;
+  box-shadow: 0 3px 15px rgba(128, 128, 128, 0.6);
+  z-index: 10000;
+  width: 50px;
+  height: 110px;
+  overflow: hidden;
+  transition: width 0.5s;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 8px;
+}
+
+#live2d-context-menu:hover {
+  width: 150px;
+  transition: width 0.5s;
+}
+
+#live2d-context-menu .menu-item {
+  cursor: pointer;
+  max-width: auto;
+  height: 40px;
+  border-radius: 100px;
+  white-space: nowrap; /* 防止文字换行 */
+  position: relative;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: start;
+}
+
+.menu-item .icon {
+  width: 40px;
+  height: 40px;
+  /* background-color: #ffc0d6; */
+  border-radius: 30px;
+  display: flex;
+  align-items: center;
+  padding-left: 7px;
+}
+
+.menu-item:hover {
+  background-color: #ffc0d6;
+  color: white;
+  width: 100%;
+}
+
+.menu-item .text {
+  position: absolute;
+  left: 40px;
 }
 
 @keyframes shake {
@@ -259,24 +336,126 @@ body {
 </style>
 
 <script setup lang="ts">
-import { onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { LAppDelegate } from '../stores/live2d/delegate'
 import { ChatService } from '../utils/ChatService'
+
+// 从存储读取助手设置
+const assistantSettings = JSON.parse(localStorage.getItem('assistantSettings') || '{}')
+
+// 拖拽相关状态
+const isLocked = ref(assistantSettings.locked || true)
+
+// 右键菜单相关状态
+const contextMenuVisible = ref(false)
+const contextMenuStyle = ref({ top: '0px', left: '0px' })
+
+// 右键菜单项
+const contextMenuItems = computed(() => [
+  {
+    icon: isLocked.value ? 'fa-solid fa-lock' : 'fa-solid fa-unlock',
+    text: isLocked.value ? '解锁位置' : '锁定位置',
+    action: () => {
+      toggleLock()
+      hideContextMenu()
+    },
+  },
+  {
+    icon: 'fa-solid fa-gear',
+    text: '设置',
+    action: () => {
+      window.assistantAPI.ipcRenderer.send('app:maximize', null)
+      hideContextMenu()
+    },
+  },
+])
+
+// 切换锁定状态
+function toggleLock() {
+  isLocked.value = !isLocked.value
+  const container = document.getElementById('live2d-container')
+  if (container) {
+    if (isLocked.value) {
+      container.classList.add('locked')
+      chatService.showTempMessage('位置已解锁', 2000, 10)
+    } else {
+      container.classList.remove('locked')
+      chatService.showTempMessage('位置已锁定', 2000, 10)
+    }
+  }
+}
+
+function handleMouseDown(event: MouseEvent) {
+  // 只处理左键点击，且未在菜单上点击，且没有被锁定
+  if (event.button !== 0 || contextMenuVisible.value || isLocked.value) return
+
+  window.assistantAPI.startDrag()
+}
+
+// 显示右键菜单
+// 显示右键菜单
+function showContextMenu(event: MouseEvent) {
+  const menuWidth = 150
+  const menuHeight = 110
+
+  // 获取窗口尺寸
+  const { innerWidth, innerHeight } = window
+
+  // 计算菜单位置，确保不会超出屏幕边界
+  let menuLeft = event.clientX
+  let menuTop = event.clientY
+
+  // 检查右侧是否超出边界
+  if (menuLeft + menuWidth > innerWidth) {
+    menuLeft = innerWidth - menuWidth - 10 // 留10px边距
+  }
+
+  // 检查底部是否超出边界
+  if (menuTop + menuHeight > innerHeight) {
+    menuTop = innerHeight - menuHeight - 10 // 留10px边距
+  }
+
+  // 确保不会小于0
+  menuLeft = Math.max(0, menuLeft)
+  menuTop = Math.max(0, menuTop)
+
+  contextMenuStyle.value = {
+    top: `${menuTop}px`,
+    left: `${menuLeft}px`,
+  }
+
+  contextMenuVisible.value = true
+
+  // 点击其他地方隐藏菜单
+  const hideMenu = (e: MouseEvent) => {
+    if (!(e.target as HTMLElement).closest('#live2d-context-menu')) {
+      hideContextMenu()
+      document.removeEventListener('click', hideMenu)
+    }
+  }
+
+  setTimeout(() => {
+    document.addEventListener('click', hideMenu)
+  }, 0)
+}
+
+// 隐藏右键菜单
+function hideContextMenu() {
+  contextMenuVisible.value = false
+}
 
 // 获取 ChatService 单例
 const chatService = ChatService.getInstance()
 
 // Live2D 初始化
 onMounted(() => {
-  // Initialize MessageTips with the ID of the DOM element
   const tipsElement = document.getElementById('assistant-tips')
 
   chatService.initializeMessageTips(tipsElement)
 
+  // 监听消息，并显示消息
   window.assistantAPI.ipcRenderer.on('show-assistant-message', (event, data) => {
-    // data is the object { text, timeout, priority }
-    console.log('接受到：show-assistant-message', data)
-    chatService.showTempMessage(data.text, data.timeout, data.priority) // 🎯 Correctly pass the arguments
+    chatService.showTempMessage(data.text, data.timeout, data.priority)
   })
 
   // 获取LAppDelegate实例
@@ -287,6 +466,10 @@ onMounted(() => {
 
   // 运行Live2D
   delegate.run()
+
+  const container = document.getElementById('live2d-container')
+
+  container.addEventListener('mousedown', handleMouseDown)
 })
 
 /**
@@ -294,10 +477,10 @@ onMounted(() => {
  */
 onUnmounted(() => {
   LAppDelegate.releaseInstance()
-})
-
-// 监听鼠标事件
-window.addEventListener('mouseup', () => {
-  chatService.showTempMessage('摸摸头，可以加互动~', 6000, 9)
+  // 清理事件监听器
+  const container = document.getElementById('live2d-container')
+  if (container) {
+    container.removeEventListener('mousedown', handleMouseDown)
+  }
 })
 </script>

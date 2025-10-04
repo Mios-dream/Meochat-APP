@@ -12,6 +12,9 @@ const __dirname = dirname(__filename)
 let mainWindow = null
 
 export function createMainWindow() {
+  if (mainWindow) {
+    return mainWindow
+  }
   mainWindow = new BrowserWindow({
     width: 800,
     height: 600,

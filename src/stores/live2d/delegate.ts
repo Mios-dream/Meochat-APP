@@ -34,7 +34,7 @@ export class LAppDelegate {
   }
 
   /**
-   * クラスのインスタンス（シングルトン）を解放する。
+   * 释放实例
    */
   public static releaseInstance(): void {
     if (s_instance != null) {
@@ -45,7 +45,7 @@ export class LAppDelegate {
   }
 
   /**
-   * ポインタがアクティブになるときに呼ばれる。
+   * 指针激活时被调用。
    */
   private onPointerBegan(e: PointerEvent): void {
     for (
@@ -58,7 +58,7 @@ export class LAppDelegate {
   }
 
   /**
-   * ポインタが動いたら呼ばれる。
+   * 指针移动时调用
    */
   private onPointerMoved(e: PointerEvent): void {
     for (
@@ -71,7 +71,7 @@ export class LAppDelegate {
   }
 
   /**
-   * ポインタがアクティブでなくなったときに呼ばれる。
+   * 指针抬起时调用。
    */
   private onPointerEnded(e: PointerEvent): void {
     for (
@@ -84,7 +84,7 @@ export class LAppDelegate {
   }
 
   /**
-   * ポインタがキャンセルされると呼ばれる。
+   * 当指针被取消时调用。
    */
   private onPointerCancel(e: PointerEvent): void {
     for (
