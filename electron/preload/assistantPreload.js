@@ -12,6 +12,8 @@ contextBridge.exposeInMainWorld('assistantAPI', {
 
   startDrag: () => ipcRenderer.send('assistant:start-drag'),
 
+  setIgnoreMouse: (ignore) => ipcRenderer.send('assistant:set-ignore-mouse', ignore),
+
   ipcRenderer: {
     send: (channel, data) => ipcRenderer.send(channel, data),
     on: (channel, listener) => {

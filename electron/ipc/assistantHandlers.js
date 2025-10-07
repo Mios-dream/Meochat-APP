@@ -1,8 +1,42 @@
 import { ipcMain, screen } from 'electron'
 import { getAssistantWindow, createAssistantWindow } from '../windows/assistantWindow.js'
 import dragAddon from 'electron-click-drag-plugin'
+import robot from '@jitsi/robotjs'
+import { uIOhook } from 'uiohook-napi'
+
+let mouseTrackingInterval = null
+let isMousePressed = false // 追踪鼠标按下状态
+let isUiohookStarted = false // 追踪 uiohook 是否已启动
+
+// 清理鼠标追踪的辅助函数
+function cleanupMouseTracking() {
+  if (mouseTrackingInterval) {
+    clearInterval(mouseTrackingInterval)
+    mouseTrackingInterval = null
+  }
+}
+
+// 初始化 uiohook 监听器
+function initUiohook() {
+  if (isUiohookStarted) return
+
+  // 监听鼠标按下事件
+  uIOhook.on('mousedown', (e) => {
+    isMousePressed = true
+  })
+
+  // 监听鼠标释放事件
+  uIOhook.on('mouseup', (e) => {
+    isMousePressed = false
+  })
+  uIOhook.start()
+  isUiohookStarted = true
+}
 
 export function setupAssistantIPC() {
+  // 初始化 uiohook
+  initUiohook()
+
   ipcMain.on('assistant:create', () => {
     createAssistantWindow()
   })
@@ -47,5 +81,49 @@ export function setupAssistantIPC() {
     } catch (error) {
       console.error(error)
     }
+  })
+
+  // 开始鼠标轨迹监控 - 使用 uiohook 检测鼠标按下状态
+  ipcMain.on('assistant:start-mouse-tracking', () => {
+    const assistantWin = getAssistantWindow()
+    if (!assistantWin) return
+
+    // 停止现有的监控(如果有的话)
+    if (mouseTrackingInterval) {
+      cleanupMouseTracking()
+    }
+
+    // 每100ms检查鼠标状态
+    mouseTrackingInterval = setInterval(() => {
+      try {
+        const mousePos = robot.getMousePos()
+        const windowBounds = assistantWin.getBounds()
+
+        assistantWin.webContents.send('assistant:mouse-position', {
+          screenX: mousePos.x,
+          screenY: mousePos.y,
+          windowX: windowBounds.x,
+          windowY: windowBounds.y,
+          windowWidth: windowBounds.width,
+          windowHeight: windowBounds.height,
+          isMouseDown: isMousePressed, // 使用 uiohook 追踪的状态
+        })
+      } catch (error) {
+        console.error('Error getting mouse position:', error)
+        cleanupMouseTracking()
+      }
+    }, 100)
+  })
+
+  // 停止鼠标轨迹监控
+  ipcMain.on('assistant:stop-mouse-tracking', () => {
+    if (mouseTrackingInterval) {
+      cleanupMouseTracking()
+    }
+  })
+
+  ipcMain.on('assistant:set-ignore-mouse', (event, ignore) => {
+    const assistantWin = getAssistantWindow()
+    assistantWin.setIgnoreMouseEvents(ignore, { forward: true })
   })
 }

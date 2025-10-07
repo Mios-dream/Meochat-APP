@@ -112,9 +112,9 @@
           </div>
         </div>
 
-        <div class="mt-6 h-64">
+        <!-- <div class="mt-6 h-64">
           <canvas id="resourceChart"></canvas>
-        </div>
+        </div> -->
       </div>
 
       <!-- 助手信息 -->

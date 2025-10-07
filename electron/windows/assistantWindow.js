@@ -25,12 +25,15 @@ export function createAssistantWindow() {
     resizable: false,
     skipTaskbar: true,
     autoHideMenuBar: true,
+    focusable: false, // 使窗口不可获得焦点
+    ignoreMouseEvents: true, // 默认忽略鼠标事件
     hasShadow: false,
     webPreferences: {
       contextIsolation: true,
       preload: path.join(__dirname, '../preload/assistantPreload.js'),
     },
   })
+  assistantWindow.setIgnoreMouseEvents(false) // 初始可交互
 
   // 注册快捷回复的快捷键
   const ret = globalShortcut.register('Alt+A', () => {

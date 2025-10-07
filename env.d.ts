@@ -8,6 +8,7 @@ declare global {
       closeAssistant: () => void
       hideAssistant: () => void
       startDrag: () => void
+      setIgnoreMouse: (ignore: boolean) => void
       ipcRenderer: {
         send: (channel: string, data: any) => void
         on: (channel: string, callback: (event, data) => void) => void
