@@ -1,5 +1,5 @@
 <template>
-  <div id="plugins-content" class="p-6 slide-in">
+  <div id="plugins-content" class="p-5 slide-in">
     <div class="mb-8">
       <h1 class="text-[clamp(1.5rem,3vw,2.5rem)] font-bold mb-2">插件管理</h1>
       <p class="text-gray-500">管理已安装的插件和浏览可用插件</p>

@@ -37,7 +37,7 @@ export function createChatBoxWindow() {
     resizable: false,
     webPreferences: {
       contextIsolation: true,
-      preload: path.join(__dirname, '../preload/chatBoxPreload.js'),
+      preload: path.join(__dirname, '../preload/assistantPreload.js'),
     },
   })
 

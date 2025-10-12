@@ -1,4 +1,5 @@
 import { MessageTips } from './MessageTips'
+import { Live2DManager } from './Live2dManager'
 
 interface ChatMessage {
   role: 'user' | 'assistant'
@@ -20,50 +21,44 @@ class ChatService {
   private hideMessageTimer: number | null = null
   private isPlaying: boolean = false
   private apiUrl: string = 'http://127.0.0.1:8001/api/chat_v2'
+  private live2DManager: Live2DManager | null = null
 
   private constructor() {
     this.messageTips = new MessageTips()
     this.initializeChatHistory()
+    // 获取 Live2DManager 实例
+    this.live2DManager = Live2DManager.getInstance()
   }
 
-  // 单例模式
   public static getInstance(): ChatService {
     if (!ChatService.instance) {
       ChatService.instance = new ChatService()
     }
-
     return ChatService.instance
   }
 
   public initializeMessageTips(element: HTMLElement): void {
     this.messageTips.setTipsElement(element)
   }
-  // 初始化聊天历史
+
   private initializeChatHistory(): void {
-    this.chatHistory = [
-      { role: 'user', content: '你好啊！' },
-      { role: 'assistant', content: '你好啊！有什么能帮到你的吗？' },
-    ]
+    this.chatHistory = []
   }
 
-  // 设置 API 地址
   public setApiUrl(url: string): void {
     this.apiUrl = url
   }
 
-  // 获取聊天历史
   public getChatHistory(): ChatMessage[] {
-    return [...this.chatHistory]
+    return this.chatHistory
   }
 
-  // 清空聊天历史
   public clearChatHistory(): void {
     this.chatHistory = []
     this.initializeChatHistory()
   }
 
-  // 发送聊天消息
-  public async sendMessage(message: string): Promise<void> {
+  public async sendMessage(message: string): Promise<boolean> {
     if (!message.trim()) return
 
     this.accumulatedText = ''
@@ -93,38 +88,29 @@ class ChatService {
       while (true) {
         const { done, value } = await reader.read()
         if (done) {
-          // 处理剩余的缓冲区数据
           if (this.textBuffer.trim()) {
             this.parseStreamChunk(this.textBuffer)
           }
           break
         }
 
-        // 解析流式数据
         const chunk = decoder.decode(value, { stream: true })
         this.processStreamData(chunk)
       }
+      return true
     } catch (error) {
       console.error('请求失败:', error)
       this.messageTips.showMessage('发送消息失败，请稍后重试', 3000, 1)
-      // 移除失败的用户消息
       this.chatHistory.pop()
-      throw error
+      return false
     }
   }
 
-  // 处理流式数据
   private processStreamData(chunk: string): void {
-    // 将新数据添加到缓冲区
     this.textBuffer += chunk
-
-    // 查找完整的 data: 行
     const lines = this.textBuffer.split('\n')
-
-    // 保留最后一行（可能不完整）
     this.textBuffer = lines.pop() || ''
 
-    // 处理完整的行
     for (const line of lines) {
       if (line.trim()) {
         this.parseStreamChunk(line.trim())
@@ -132,7 +118,6 @@ class ChatService {
     }
   }
 
-  // 解析流式数据块
   private parseStreamChunk(chunk: string): void {
     if (!chunk.startsWith('data: ')) return
 
@@ -152,29 +137,22 @@ class ChatService {
     }
   }
 
-  // 处理文本数据
   private handleTextData(text: string): void {
     this.accumulatedText += text
     this.showTempMessage(this.accumulatedText.trim(), -1, 999)
-
-    // 有新文本时清除隐藏消息的定时器
     this.clearHideMessageTimer()
   }
 
-  // 处理音频数据
   private handleAudioData(audioData: string): void {
     const audioBlob = this.base64ToBlob(audioData, 'audio/wav')
     if (audioBlob.size > 0) {
       this.audioQueue.push(audioBlob)
-      // 立即尝试播放
-      this.playAudioQueue()
+      // 立即尝试播放（使用 Live2D 同步口型）
+      this.playAudioQueueWithLive2D()
     }
-
-    // 有新音频时清除隐藏消息的定时器
     this.clearHideMessageTimer()
   }
 
-  // 处理完成信号
   private handleComplete(): void {
     if (this.accumulatedText.trim()) {
       this.chatHistory.push({
@@ -184,7 +162,6 @@ class ChatService {
     }
   }
 
-  // 清除隐藏消息的定时器
   private clearHideMessageTimer(): void {
     if (this.hideMessageTimer) {
       clearTimeout(this.hideMessageTimer)
@@ -192,24 +169,18 @@ class ChatService {
     }
   }
 
-  // Base64 转 Blob
   private base64ToBlob(base64: string, mimeType: string): Blob {
     try {
-      // 清理base64字符串
       const cleanBase64 = base64.replace(/\s/g, '')
-
-      // 将URL-safe Base64转换为标准Base64
       const standardBase64 = cleanBase64
         .replace(/-/g, '+')
         .replace(/_/g, '/')
         .padEnd(cleanBase64.length + ((4 - (cleanBase64.length % 4)) % 4), '=')
 
-      // 验证base64格式
       if (!/^[A-Za-z0-9+/]*={0,2}$/.test(standardBase64)) {
         throw new Error('Invalid base64 format')
       }
 
-      // 解码 Base64字符串
       const byteCharacters = atob(standardBase64)
       const byteNumbers = new Array(byteCharacters.length)
 
@@ -225,36 +196,32 @@ class ChatService {
     }
   }
 
-  // 播放音频队列
-  private async playAudioQueue(): Promise<void> {
-    // 如果正在播放或者队列为空，则返回
+  /**
+   * 使用 Live2D 模型播放音频队列（带口型同步）
+   */
+  private async playAudioQueueWithLive2D(): Promise<void> {
+    // 如果正在播放或队列为空，则返回
     if (this.isPlaying || this.audioQueue.length === 0) return
 
     this.isPlaying = true
 
     try {
       while (this.audioQueue.length > 0) {
-        // 取出队列中的第一个音频片段
-        const audioBlob = this.audioQueue.shift()!
+        const audioBlob = this.audioQueue.shift()
         const audioUrl = URL.createObjectURL(audioBlob)
 
-        // 创建音频对象并播放
-        const audio = new Audio(audioUrl)
-
-        // 等待音频播放完成
-        await new Promise<void>((resolve, reject) => {
-          audio.addEventListener('ended', () => {
-            URL.revokeObjectURL(audioUrl)
-            resolve()
-          })
-
-          audio.addEventListener('error', (e) => {
-            URL.revokeObjectURL(audioUrl)
-            reject(e)
-          })
-
-          audio.play().catch(reject)
-        })
+        try {
+          // 使用 Live2DManager 的 speak 方法播放音频并同步口型
+          if (this.live2DManager) {
+            await this.live2DManager.speak(audioUrl)
+          } else {
+            // 如果 Live2DManager 不可用，降级到普通播放
+            await this.playAudioSimple(audioUrl)
+          }
+        } finally {
+          // 清理 URL 对象
+          URL.revokeObjectURL(audioUrl)
+        }
       }
 
       // 音频播放完毕后，设置3秒延迟隐藏消息
@@ -262,7 +229,7 @@ class ChatService {
       this.hideMessageTimer = setTimeout(() => {
         this.messageTips.hideMessage()
         this.hideMessageTimer = null
-      }, 3000)
+      }, 5000)
     } catch (error) {
       console.error('播放音频失败:', error)
     } finally {
@@ -270,25 +237,28 @@ class ChatService {
     }
   }
 
-  public showTempMessage(text: string, timeout: number = 5000, priority: number = 1): void {
-    if (this.messageTips.tipsElement) {
-      this.messageTips.showMessage(text, timeout, priority)
-    } else {
-      if (window.chatBoxAPI.ipcRenderer) {
-        console.log('发送消息给到主线程', { text, timeout, priority })
-        window.chatBoxAPI.ipcRenderer.send('show-assistant-message', { text, timeout, priority })
-      } else {
-        console.error('chatBoxAPI.ipcRenderer is not defined')
-      }
-    }
+  /**
+   * 简单的音频播放（降级方案）
+   */
+  private async playAudioSimple(audioUrl: string): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      const audio = new Audio(audioUrl)
+
+      audio.addEventListener('ended', () => resolve())
+      audio.addEventListener('error', (e) => reject(e))
+
+      audio.play().catch(reject)
+    })
   }
 
-  // 隐藏消息
+  public showTempMessage(text: string, timeout: number = 5000, priority: number = 1): void {
+    this.messageTips.showMessage(text, timeout, priority)
+  }
+
   public hideMessage(): void {
     this.messageTips.hideMessage()
   }
 
-  // 停止所有音频播放
   public stopAudio(): void {
     this.audioQueue = []
     this.clearHideMessageTimer()

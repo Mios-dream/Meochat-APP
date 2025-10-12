@@ -1,9 +1,12 @@
 <template>
-  <div id="dashboard-content" class="p-6 slide-in">
+  <div id="dashboard-content" class="p-5 slide-in">
     <!-- 欢迎区域 -->
     <div class="mb-8">
       <h1 class="text-[clamp(1.5rem,3vw,2.5rem)] font-bold mb-2">欢迎回来，阁下</h1>
-      <p class="text-gray-500">今天是 <span id="current-date"></span>，这是您的助手状态概览</p>
+      <p class="text-gray-500">
+        今天是 <span id="current-date">{{ currentDate }}</span
+        >，这是您的助手状态概览
+      </p>
     </div>
 
     <!-- 状态卡片 -->
@@ -330,6 +333,7 @@
 </template>
 
 <script setup lang="ts">
+import { ref, onMounted } from 'vue'
 import Chart from 'chart.js/auto'
 
 const statisticsData = [
@@ -343,6 +347,12 @@ const statisticsData = [
   { label: '最短总时间', value: '4.38', unit: 's', change: '-0.5s' },
   { label: '最短每秒令牌数', value: '4.38', unit: 's', change: '+1.0s' },
 ]
+
+const currentDate = ref('')
+
+onMounted(() => {
+  currentDate.value = new Date().toLocaleDateString('zh-CN')
+})
 
 // window.addEventListener('DOMContentLoaded', () => {
 //   const dateOptions = { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' }

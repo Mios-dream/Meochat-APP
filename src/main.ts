@@ -5,6 +5,7 @@ import { createPinia } from 'pinia'
 import ElementPlus from 'element-plus'
 import 'element-plus/dist/index.css'
 import '@/assets/tailwindcss.css'
+import '@/assets/fonts/font.css' // 字体CSS文件路径
 import App from './App.vue'
 import router from './router'
 import { library } from '@fortawesome/fontawesome-svg-core'

@@ -1,9 +1,9 @@
 import { Live2DModel } from 'pixi-live2d-display-lipsyncpatch'
 import * as PIXI from 'pixi.js'
-import { ChatService } from '../utils/ChatService'
+// import { ChatService } from '../utils/ChatService'
 import throttle from './Throttle'
 
-const chatService = ChatService.getInstance()
+// const chatService = ChatService.getInstance()
 
 export class Live2DManager {
   // 单例模式
@@ -110,11 +110,6 @@ export class Live2DManager {
       }
     })
 
-    // 监听鼠标点击事件，触发模型的hit
-    this.canvasElement.addEventListener('pointerdown', (event) =>
-      this.model.tap(event.clientX, event.clientY),
-    )
-
     // 鼠标移动时更新模型交互
     this.canvasElement.addEventListener('mousemove', this.updateMouseInteraction)
 
@@ -128,10 +123,13 @@ export class Live2DManager {
       }
     })
 
+    // 监听鼠标点击事件，触发模型的hit
+    this.canvasElement.addEventListener('pointerdown', (e) => this.model.tap(e.clientX, e.clientY))
+
     // 监听模型点击事件
     this.model.on('hit', (hitAreaNames) => {
       console.log('Hit:', hitAreaNames)
-      chatService.showTempMessage('点击了' + hitAreaNames.join(', '), 2000, 10)
+      // chatService.showTempMessage('点击了' + hitAreaNames.join(', '), 2000, 10)
     })
   }
 

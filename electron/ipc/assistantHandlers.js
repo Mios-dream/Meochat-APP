@@ -1,5 +1,6 @@
-import { ipcMain, screen } from 'electron'
+import { ipcMain, screen, BrowserWindow } from 'electron'
 import { getAssistantWindow, createAssistantWindow } from '../windows/assistantWindow.js'
+import { getChatBoxWindow } from '../windows/chatBoxWindow.js'
 import dragAddon from 'electron-click-drag-plugin'
 import robot from '@jitsi/robotjs'
 import { uIOhook } from 'uiohook-napi'
@@ -33,7 +34,51 @@ function initUiohook() {
   isUiohookStarted = true
 }
 
-export function setupAssistantIPC() {
+function setupChatBoxIPC() {
+  ipcMain.on('chat-box:create', () => {
+    createChatBoxWindow()
+  })
+
+  ipcMain.on('chat-box:close', () => {
+    const chatBoxWin = getChatBoxWindow()
+    if (chatBoxWin) chatBoxWin.close()
+  })
+
+  ipcMain.on('chat-box:hide', () => {
+    const chatBoxWin = getChatBoxWindow()
+    if (chatBoxWin) chatBoxWin.hide()
+  })
+
+  ipcMain.on('chat-box:show', () => {
+    const chatBoxWin = getChatBoxWindow()
+    if (chatBoxWin) chatBoxWin.show()
+  })
+
+  ipcMain.on('show-assistant-message', (data) => {
+    let assistantWindow = getAssistantWindow()
+    if (assistantWindow && !assistantWindow.isDestroyed()) {
+      assistantWindow.webContents.send('show-assistant-message', data)
+    }
+  })
+
+  ipcMain.on('chat-box:send-message', (event, data) => {
+    console.log('show-assistant-message', data)
+    let assistantWindow = getAssistantWindow()
+    if (assistantWindow && !assistantWindow.isDestroyed()) {
+      assistantWindow.webContents.send('chat-box:send-message', data)
+    }
+  })
+
+  ipcMain.on('loading-state-changed', (event, data) => {
+    console.log('loading-state-changed', data)
+    let chatBoxWindow = getChatBoxWindow()
+    if (chatBoxWindow && !chatBoxWindow.isDestroyed()) {
+      chatBoxWindow.webContents.send('loading-state-changed', data)
+    }
+  })
+}
+
+function setupAssistantIPC() {
   // 初始化 uiohook
   initUiohook()
 
@@ -127,3 +172,12 @@ export function setupAssistantIPC() {
     assistantWin.setIgnoreMouseEvents(ignore, { forward: true })
   })
 }
+
+let targetWindow = null
+
+function setupAssistantTogetherIPC() {
+  setupAssistantIPC()
+  setupChatBoxIPC()
+}
+
+export { setupAssistantTogetherIPC }

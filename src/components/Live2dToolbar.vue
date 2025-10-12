@@ -88,7 +88,8 @@ const toggleLock = () => {
 }
 
 .menu-item:hover {
-  background-color: #ffc0d6;
+  /* background-color: #ffc0d6; */
+  background-color: #ffa0c1;
   box-shadow: 0px 0px 10px #ffc0d6;
   color: white !important;
   width: 100%;

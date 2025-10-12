@@ -1,0 +1,7 @@
+@font-face {
+  font-family: 'LoliFont';
+  src: url('./萝莉体.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap; /* 优化字体加载 */
+}

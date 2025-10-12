@@ -19,10 +19,6 @@
     />
 
     <canvas id="l2d-canvas"></canvas>
-    <!-- <div
-      id="overlay"
-      style="position: absolute; inset: 0; pointer-events: auto; background: transparent"
-    ></div> -->
 
     <LoadingProgress :progress="loadingProgress" />
   </div>
@@ -32,6 +28,7 @@
 import { ref, onMounted, onUnmounted, computed, Ref } from 'vue'
 import { ChatService } from '../utils/ChatService'
 import { Live2DManager } from '../utils/Live2dManager'
+import { MicrophoneManager } from '../utils/MicrophoneManager'
 import AssistantTips from '../components/AssistantTips.vue'
 import ContextMenu from '../components/Live2dToolbar.vue'
 import LoadingProgress from '../components/LoadingProgress.vue'
@@ -140,13 +137,37 @@ function hideContextMenu() {
 }
 
 onMounted(async () => {
-  // 初始化聊天服务
-  const tipsElement = document.getElementById('assistant-tips')
-  chatService.initializeMessageTips(tipsElement)
+  // 创建麦克风管理器实例
+  const micManager = new MicrophoneManager()
+
+  // 设置识别结果回调
+  micManager.setRecognitionCallback((text) => {
+    console.log('识别结果:', text)
+  })
+
+  // 连接到 WebSocket 服务
+  micManager.connectToServer('ws://127.0.0.1:8001/api/asr_ws')
+
+  // 开始录音
+  micManager
+    .startRecording()
+    .then(() => {
+      console.log('开始录音')
+    })
+    .catch((error) => {
+      console.error('录音启动失败:', error)
+    })
 
   // 接收来自主进程的消息，是否显示消息
   window.assistantAPI.ipcRenderer.on('show-assistant-message', (event, data) => {
     chatService.showTempMessage(data.text, data.timeout, data.priority)
+  })
+
+  window.assistantAPI.ipcRenderer.on('chat-box:send-message', async (event, data) => {
+    console.log('收到请求:', data)
+    await chatService.sendMessage(data.text).then(() => {
+      window.assistantAPI.ipcRenderer.send('loading-state-changed', false)
+    })
   })
 
   // 模拟加载进度
@@ -182,7 +203,6 @@ onMounted(async () => {
   } catch (error) {
     console.error('Failed to load Live2D model:', error)
   }
-  await live2DManager.speak('/public/梦梦奈铃芽之旅.wav')
 })
 
 onUnmounted(() => {
@@ -191,13 +211,6 @@ onUnmounted(() => {
 </script>
 
 <style>
-html,
-body {
-  overflow: hidden;
-  margin: 0;
-  background: transparent;
-}
-
 #live2d-container {
   height: 100vh;
   width: 100vw;

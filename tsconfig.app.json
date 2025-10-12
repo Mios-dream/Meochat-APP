@@ -18,9 +18,6 @@
       "@/*": [
         "./src/*"
       ],
-      "@framework/*": [
-        "./src/live2d/Framework/src/*"
-      ]
     }
   }
 }

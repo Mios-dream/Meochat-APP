@@ -6,6 +6,16 @@
 </template>
 
 <script setup lang="ts">
+import { onMounted } from 'vue'
+import { ChatService } from '../utils/ChatService'
+const chatService = ChatService.getInstance()
+// 初始化聊天服务
+
+onMounted(() => {
+  const tipsElement = document.getElementById('assistant-tips')
+  chatService.initializeMessageTips(tipsElement)
+})
+
 defineProps<{
   isActive: boolean
 }>()

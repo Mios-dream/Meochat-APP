@@ -99,18 +99,14 @@
 }
 </style>
 
-<script setup>
+<script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
-import { ChatService } from '../utils/ChatService'
 
 const isVisible = ref(false)
 const inputRef = ref(null)
 const inputValue = ref('') // 👈 绑定输入框的值
 const loading = ref(false) // 👈 加载状态
 let isFirst = true
-
-// 👇 获取 ChatService 单例（这是关键！）
-const chatService = ChatService.getInstance()
 
 // 监听窗口可见性变化
 function handleVisibilityChange() {
@@ -124,6 +120,19 @@ function handleVisibilityChange() {
   } else {
     isVisible.value = false
   }
+}
+
+function setupLoadingListener() {
+  window.assistantAPI.ipcRenderer.on('loading-state-changed', () => {
+    loading.value = false
+
+    // 重新聚焦输入框，方便继续输入
+    setTimeout(() => {
+      if (inputRef.value) {
+        inputRef.value.focus()
+      }
+    }, 100)
+  })
 }
 
 // 👇 【核心函数】提交消息的完整流程
@@ -142,18 +151,13 @@ async function handleSubmit() {
   loading.value = true // 设置加载状态
 
   try {
-    // 3️⃣ 调用 ChatService 发送消息
-    // 这个方法会自动：
-    //   - 请求后端 API (http://127.0.0.1:8001/api/chat_v2)
-    //   - 处理返回的流式数据
-    //   - 将文本显示到 AssistantView 的 tips 中
-    //   - 自动播放返回的音频
-    await chatService.sendMessage(message)
+    window.assistantAPI.ipcRenderer.send('chat-box:send-message', { text: message })
+    // 设置超时定时器，超过20秒后强制取消加载状态
+    setTimeout(() => {
+      loading.value = false
+    }, 20000)
 
     console.log('✅ 消息发送成功')
-
-    // 4️⃣ 可选：发送成功后的其他操作
-    // 例如：关闭聊天框、播放提示音等
   } catch (error) {
     // 5️⃣ 错误处理
     console.error('❌ 发送消息失败:', error)
@@ -162,27 +166,11 @@ async function handleSubmit() {
     inputValue.value = message
 
     // 显示错误提示（使用 ipcRenderer 跨窗口发送给 assistant window）
-    if (window.assistantAPI?.ipcRenderer) {
-      // 🐛 FIX: Directly send IPC from chatBox to main, then main relays to assistant
-      window.assistantAPI.ipcRenderer.send('chat-box:send-temp-message', {
-        text: '发送失败，请重试',
-        timeout: 3000,
-        priority: 1,
-      })
-    } else {
-      console.warn('IPC not available, cannot send temp message.')
-      chatService.showTempMessage('发送失败，请重试', 3000, 1) // Fallback for testing/dev if IPC is not set up
-    }
-  } finally {
-    // 6️⃣ 无论成功失败，都要重置加载状态
-    loading.value = false
-
-    // 重新聚焦输入框，方便继续输入
-    setTimeout(() => {
-      if (inputRef.value) {
-        inputRef.value.focus()
-      }
-    }, 100)
+    window.assistantAPI.ipcRenderer.send('chat-box:send-temp-message', {
+      text: '发送失败，请重试',
+      timeout: 3000,
+      priority: 1,
+    })
   }
 }
 
@@ -206,6 +194,7 @@ function hideChatBox() {
 onMounted(() => {
   // 监听页面可见性变化
   document.addEventListener('visibilitychange', handleVisibilityChange)
+  setupLoadingListener()
 
   // 初始显示动画
   setTimeout(() => {
@@ -218,12 +207,5 @@ onMounted(() => {
 
 onUnmounted(() => {
   document.removeEventListener('visibilitychange', handleVisibilityChange)
-})
-
-// 👇 【可选】暴露方法给外部调用（用于调试或其他组件调用）
-defineExpose({
-  sendMessage: handleSubmit,
-  getChatHistory: () => chatService.getChatHistory(),
-  clearHistory: () => chatService.clearChatHistory(),
 })
 </script>

@@ -2,24 +2,20 @@ import { app, BrowserWindow } from 'electron'
 import { createMainWindow } from './windows/mainWindow.js'
 
 import { setupMainIPC } from './ipc/mainHandlers.js'
-import { setupAssistantIPC } from './ipc/assistantHandlers.js'
-import { setupChatBoxIPC } from './ipc/chatBoxHandlers.js'
+import { setupAssistantTogetherIPC } from './ipc/assistantHandlers.js'
+
+import { getPermission } from './permission/permission.js'
 
 // 初始化 IPC
 setupMainIPC()
-setupAssistantIPC()
-setupChatBoxIPC()
-
-function createWindow() {
-  createMainWindow()
-}
+setupAssistantTogetherIPC()
 
 app.whenReady().then(() => {
-  createWindow()
+  createMainWindow()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow()
+      createMainWindow()
     }
   })
 })
