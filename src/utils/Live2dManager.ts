@@ -1,7 +1,11 @@
-import { Live2DModel } from 'pixi-live2d-display-lipsyncpatch'
+import { Live2DModel, config } from 'pixi-live2d-display-lipsyncpatch'
 import * as PIXI from 'pixi.js'
 // import { ChatService } from '../utils/ChatService'
 import throttle from './Throttle'
+
+config.motionFadingDuration = 500
+config.idleMotionFadingDuration = 500
+config.expressionFadingDuration = 500
 
 // const chatService = ChatService.getInstance()
 
@@ -51,6 +55,7 @@ export class Live2DManager {
   public async init(canvasId: string, modelPath: string): Promise<Live2DModel> {
     // 获取画布元素
     this.canvasElement = document.getElementById(canvasId) as HTMLCanvasElement
+
     // 获取画布尺寸
     let canvasHeight = this.canvasElement.height
     let canvasWidth = this.canvasElement.width
@@ -62,6 +67,7 @@ export class Live2DManager {
       autoStart: true,
       // 允许保存画布,便于获取画布数据
       preserveDrawingBuffer: true,
+      resolution: 2,
     })
 
     // 加载模型
@@ -147,7 +153,8 @@ export class Live2DManager {
 
     // 设置新的超时定时器：5秒后取消聚焦
     this.focusTimeout = setTimeout(() => {
-      this.disableFocus()
+      // this.disableFocus()
+      this.smoothDisableFocus(1500)
     }, this.FOCUS_TIMEOUT_MS)
   }
 
@@ -162,6 +169,52 @@ export class Live2DManager {
         // this.model.focus(this.model.x, this.model.y)
         this.model.internalModel.focusController.focus(0, 0, false)
       }
+    }
+  }
+
+  /**
+   * 平滑地将模型焦点移回中心位置
+   * @param duration 过渡持续时间（毫秒）
+   */
+  private smoothDisableFocus(duration: number = 1000): void {
+    if (this.isFocusEnabled && this.model) {
+      this.isFocusEnabled = false
+
+      // 获取当前焦点位置
+      const startX = this.model.internalModel.focusController.x
+      const startY = this.model.internalModel.focusController.y
+
+      // 目标为中心位置 (0, 0)
+      const endX = 0
+      const endY = 0
+
+      // 记录开始时间
+      const startTime = performance.now()
+
+      // 创建动画循环
+      const animate = (currentTime: number) => {
+        // 计算经过的时间
+        const elapsed = currentTime - startTime
+        const progress = Math.min(elapsed / duration, 1)
+
+        // 使用缓动函数（easeOutCubic）
+        const easeProgress = 1 - Math.pow(1 - progress, 3)
+
+        // 计算当前帧的位置
+        const currentX = startX + (endX - startX) * easeProgress
+        const currentY = startY + (endY - startY) * easeProgress
+
+        // 更新模型焦点
+        this.model.internalModel.focusController.focus(currentX, currentY, false)
+
+        // 如果动画未完成，继续下一帧
+        if (progress < 1) {
+          requestAnimationFrame(animate)
+        }
+      }
+
+      // 开始动画
+      requestAnimationFrame(animate)
     }
   }
 
@@ -215,78 +268,52 @@ export class Live2DManager {
   }
 
   /**
-   * 获取模型对象
-   * @returns 模型对象
-   */
-  public getModel(): Live2DModel | null {
-    return this.model
-  }
-
-  /**
    * 播放音频,并同步口型
    * @param audioFile 音频文件路径
    */
-  public async speak(audioFile: string) {
-    // 请求加载一个音频文件
-    const response = await fetch(audioFile)
-    // 将音频读取为原始的二进制数据缓冲区（ArrayBuffer）。音频本身是二进制格式，要先将其加载为 ArrayBuffer 才能进一步处理
-    const audioData = await response.arrayBuffer()
-    // 将 ArrayBuffer 格式的音频数据解码成 AudioBuffer 对象，可以直接用于播放或处理音频数据。
-    const audioBuffer = await this.audioContext.decodeAudioData(audioData)
-    // 创建一个音频源节点（AudioBufferSourceNode），该节点用于播放音频数据
-    const source = this.audioContext.createBufferSource()
-    // 创建一个音频分析节点。这个节点用于实时分析音频数据，提供诸如频谱分析、波形分析等功能
-    const analyser = this.audioContext.createAnalyser()
-    // 将之前解码得到的 audioBuffer（即音频数据）赋值给 source 节点的 buffer 属性。这样就将加载的音频文件与 source 节点绑定，准备播放。
-    source.buffer = audioBuffer
-    //  将 音频分析节点 连接到音频上下文的最终目标（即扬声器）
-    analyser.connect(this.audioContext.destination)
-    // 音频分析节点 将能够分析通过音频源流动的音频数据，并提供频谱或其他音频信息。
-    source.connect(analyser)
+  public async speak(audioFile: string): Promise<void> {
+    return new Promise(async (resolve, reject) => {
+      try {
+        const response = await fetch(audioFile)
+        const audioData = await response.arrayBuffer()
+        const audioBuffer = await this.audioContext.decodeAudioData(audioData)
+        const source = this.audioContext.createBufferSource()
+        const analyser = this.audioContext.createAnalyser()
 
-    // 监听音频播放完毕
-    let requestId: number | null = null
-    source.onended = () => {
-      if (requestId !== null) {
-        cancelAnimationFrame(requestId) // 清除请求动画帧
+        source.buffer = audioBuffer
+        analyser.connect(this.audioContext.destination)
+        source.connect(analyser)
+
+        let requestId: number | null = null
+
+        // 监听音频播放完毕
+        source.onended = () => {
+          if (requestId !== null) {
+            cancelAnimationFrame(requestId)
+          }
+          if (this.model) {
+            this.model.internalModel.coreModel.setParameterValueById('ParamMouthOpenY', 0)
+          }
+          resolve() // 在这里 resolve Promise
+        }
+
+        source.start(0)
+
+        const updateMouth = () => {
+          const dataArray = new Uint8Array(analyser.frequencyBinCount)
+          analyser.getByteFrequencyData(dataArray)
+          const volume = dataArray.reduce((a, b) => a + b) / dataArray.length
+          const mouthOpen = Math.min(1, volume / 50)
+
+          this.model.internalModel.coreModel.setParameterValueById('ParamMouthOpenY', mouthOpen)
+          requestId = requestAnimationFrame(updateMouth)
+        }
+
+        requestId = requestAnimationFrame(updateMouth)
+      } catch (error) {
+        reject(error)
       }
-      if (this.model) {
-        this.model.internalModel.coreModel.setParameterValueById('ParamMouthOpenY', 0) // 闭上嘴巴
-      }
-    }
-    /**
-     * 启动音频源的播放，从头开始（这样的话，页面就能够听到声音了）
-     * 接下来需要让人物嘴巴更新动弹，即有声音的同时，且能够说话
-     * 即为：updateMouth函数
-     * */
-    source.start(0)
-
-    /**
-     * 这个 updateMouth 函数通过从 analyser 获取音频数据并计算音量，动态地更新一个模型的嘴巴张开程度。它的实现方式是每帧都更新一次，
-     * 通过音频的音量强度来决定嘴巴的开合程度，从而实现与音频的实时互动。
-     * */
-    const updateMouth = () => {
-      // analyser.frequencyBinCount 表示音频频谱的 bin（频率段）的数量。它是一个整数，表示从频率数据中可以获取多少个频率段的值
-      // 使用 analyser 对象的 getByteFrequencyData 方法填充 dataArray 数组。
-      // getByteFrequencyData 将音频的频率数据转化为 0-255 范围内的字节值，并存储在 dataArray 中。这个数据表示了音频信号在不同频率范围内的强度。
-      // 该方法会将频谱分析的结果填充到 dataArray 数组中，每个元素代表一个频率段的音量强度。
-      // 使用 reduce 方法计算 dataArray 数组的所有值的总和，并通过除以数组长度来求得平均值。这个平均值表示音频信号的总体"强度"或"音量"。
-      // 这里的 a + b 累加所有音频频段的强度值，最终计算出一个平均值。
-      // dataArray.length 是频率数据的总数，通常它等于 analyser.frequencyBinCount。
-      // 将计算出的 volume 除以 50，以缩放它到一个合适的范围，得到一个表示"嘴巴张开程度"的值。volume 越大，mouthOpen 越大。
-      // 使用 Math.min(1, volume / 50) 保证 mouthOpen 的值不会超过 1，也就是说嘴巴张开程度的最大值是 1。
-      // 这意味着，如果音量足够大，mouthOpen 会接近 1，表示嘴巴完全张开；如果音量较小，mouthOpen 会接近 0，表示嘴巴几乎没张开。
-      const dataArray = new Uint8Array(analyser.frequencyBinCount)
-      analyser.getByteFrequencyData(dataArray)
-      const volume = dataArray.reduce((a, b) => a + b) / dataArray.length
-      const mouthOpen = Math.min(1, volume / 50)
-
-      // 通过调用 setParameterValueById 方法，将 mouthOpen 的值传递给 model 的内部模型（控制嘴巴大小张开幅度）
-      this.model.internalModel.coreModel.setParameterValueById('ParamMouthOpenY', mouthOpen)
-      requestId = requestAnimationFrame(updateMouth)
-    }
-
-    requestId = requestAnimationFrame(updateMouth)
+    })
   }
 
   /**
@@ -295,40 +322,37 @@ export class Live2DManager {
    * @param event 鼠标点击事件对象
    */
   private isPixelTransparentFromEvent(event: MouseEvent) {
+    if (!this.app || !this.app.renderer) return false
+
     const gl = (this.app.renderer as PIXI.Renderer).gl
     const canvas = this.app.view as HTMLCanvasElement
     const rect = canvas.getBoundingClientRect()
-    const x = event.clientX - rect.left
-    const y = event.clientY - rect.top
+
+    // 计算相对于canvas的CSS坐标
+    const cssX = event.clientX - rect.left
+    const cssY = event.clientY - rect.top
+
+    // 考虑分辨率差异，将CSS坐标转换为GL坐标
+    const resolution = this.app.renderer.resolution || 1
+    const glX = Math.floor(cssX * resolution)
+    const glY = Math.floor(cssY * resolution)
+
+    // 注意：WebGL坐标系Y轴方向与CSS相反
+    const glYFlipped = this.app.renderer.height - glY
+
+    // 边界检查
+    if (
+      glX < 0 ||
+      glYFlipped < 0 ||
+      glX >= this.app.renderer.width ||
+      glYFlipped >= this.app.renderer.height
+    ) {
+      return true // 超出边界视为透明
+    }
+
     const pixels = new Uint8Array(4)
-    gl.readPixels(x, this.app.renderer.height - y, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixels)
+    gl.readPixels(glX, glYFlipped, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixels)
     return pixels[3] < 10
-    /**
-    方案二
-    const app = live2DManager.app
-    if (!app || !app.renderer || !app.view) return false
-    const rect = app.view.getBoundingClientRect()
-    const scaleX = app.renderer.width / rect.width
-    const scaleY = app.renderer.height / rect.height
-
-    const cssX = e.clientX - rect.left
-    const cssY = e.clientY - rect.top
-    if (cssX < 0 || cssY < 0 || cssX > rect.width || cssY > rect.height) return true
-
-    const glX = Math.floor(cssX * scaleX)
-    const glY = Math.floor(app.renderer.height - cssY * scaleY) // flip Y
-
-    const gl = app.renderer.gl as WebGLRenderingContext
-    if (!gl) return false
-
-    // bounds guard
-    if (glX < 0 || glY < 0 || glX >= app.renderer.width || glY >= app.renderer.height) return true
-
-    const pixels = new Uint8Array(4)
-    gl.readPixels(glX, glY, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixels)
-    const alpha = pixels[3]
-    return alpha < 10 // 透明阈值
-    */
   }
 
   /**

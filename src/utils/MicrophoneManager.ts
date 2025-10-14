@@ -103,7 +103,6 @@ class MicrophoneManager {
 
     this.websocket.onmessage = (event) => {
       const data = event.data
-      console.log('收到识别结果:', data)
       if (this.onRecognitionResult) {
         this.onRecognitionResult(data)
       }

@@ -199,6 +199,7 @@ main {
   width: 15px;
   height: 15px;
   border-radius: 100%;
+  cursor: pointer;
 }
 
 .tabs-container {

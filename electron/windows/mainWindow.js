@@ -31,8 +31,8 @@ export function createMainWindow() {
   // })
 
   mainWindow = new MicaBrowserWindow({
-    width: 800,
-    height: 600,
+    width: 1200,
+    height: 800,
 
     frame: false,
     resizable: true,

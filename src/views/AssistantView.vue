@@ -141,8 +141,12 @@ onMounted(async () => {
   const micManager = new MicrophoneManager()
 
   // 设置识别结果回调
-  micManager.setRecognitionCallback((text) => {
-    console.log('识别结果:', text)
+  micManager.setRecognitionCallback((data) => {
+    console.log('识别结果:', data)
+    const jsonData = JSON.parse(data)
+    if (jsonData.withAssistant === true) {
+      chatService.sendMessage(jsonData.data)
+    }
   })
 
   // 连接到 WebSocket 服务
