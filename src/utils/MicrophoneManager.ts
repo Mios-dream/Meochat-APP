@@ -1,11 +1,18 @@
 class MicrophoneManager {
   private audioStream: MediaStream | null = null
   private audioContext: AudioContext | null = null
-  private mediaRecorder: MediaRecorder | null = null
   private websocket: WebSocket | null = null
   private onRecognitionResult: ((text: string) => void) | null = null
   private targetSampleRate: number = 16000 // 目标采样率
 
+  // 添加重连相关属性
+  private reconnectInterval: number = 3000 // 3秒
+  private reconnectTimer: number | null = null
+  private isManuallyClosed: boolean = false // 区分手动关闭和意外断开
+
+  /*
+   *获取麦克风权限状态
+   */
   public async getPermissionStatus() {
     let permissionStatus = await navigator.permissions.query({
       name: 'microphone' as PermissionName,
@@ -18,7 +25,10 @@ class MicrophoneManager {
     }
   }
 
-  async startRecording() {
+  /*
+   *开始录音
+   */
+  public async startRecording() {
     try {
       // 请求麦克风权限
       this.audioStream = await navigator.mediaDevices.getUserMedia({
@@ -62,7 +72,12 @@ class MicrophoneManager {
     }
   }
 
-  // 重采样到 16kHz
+  /**
+   * 重采样音频数据
+   * @param audioData 音频数据
+   * @param sourceSampleRate 源采样率
+   * @returns 重采样后的音频数据
+   */
   private resampleTo16kHz(audioData: Float32Array, sourceSampleRate: number): Float32Array {
     if (sourceSampleRate === this.targetSampleRate) {
       return audioData
@@ -88,13 +103,25 @@ class MicrophoneManager {
     return result
   }
 
-  // 设置识别结果回调
-  setRecognitionCallback(callback: (text: string) => void) {
+  /**
+   * 设置识别结果回调函数
+   * @param callback 回调函数
+   */
+  public setRecognitionCallback(callback: (text: string) => void) {
     this.onRecognitionResult = callback
   }
 
-  // 连接到 WebSocket 服务
-  connectToServer(wsUrl: string) {
+  /**
+   * 连接到 WebSocket 服务器
+   * @param wsUrl WebSocket 服务器地址
+   */
+  public connectToServer(wsUrl: string) {
+    // 清除之前的重连定时器
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer)
+      this.reconnectTimer = null
+    }
+
     this.websocket = new WebSocket(wsUrl)
 
     this.websocket.onopen = () => {
@@ -114,10 +141,39 @@ class MicrophoneManager {
 
     this.websocket.onclose = () => {
       console.log('WebSocket 连接已关闭')
+
+      // 如果不是手动关闭，则尝试重连
+      if (!this.isManuallyClosed) {
+        console.log(`尝试重连...`)
+
+        this.reconnectTimer = setTimeout(() => {
+          this.connectToServer(wsUrl)
+        }, this.reconnectInterval)
+      }
     }
   }
 
-  // 发送音频数据到服务器
+  /**
+   * 断开 WebSocket 连接
+   */
+  public disconnect() {
+    this.isManuallyClosed = true
+
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer)
+      this.reconnectTimer = null
+    }
+
+    if (this.websocket) {
+      this.websocket.close()
+      this.websocket = null
+    }
+  }
+
+  /**
+   * 发送音频数据到服务器
+   * @param audioData 音频数据
+   */
   private sendAudioData(audioData: Float32Array) {
     if (!this.websocket || this.websocket.readyState !== WebSocket.OPEN) {
       return
@@ -135,7 +191,11 @@ class MicrophoneManager {
     this.websocket.send(JSON.stringify(message))
   }
 
-  // 将 Float32Array 转换为 16-bit PCM
+  /**
+   * 将 Float32Array 转换为 16-bit PCM 数据
+   * @param input 输入数据
+   * @returns 16-bit PCM 数据
+   */
   private floatTo16BitPCM(input: Float32Array): ArrayBuffer {
     const output = new Int16Array(input.length)
     for (let i = 0; i < input.length; i++) {
@@ -147,7 +207,11 @@ class MicrophoneManager {
     return output.buffer
   }
 
-  // ArrayBuffer 转 Base64 (标准 Base64，非 URL-safe)
+  /**
+   * 将 ArrayBuffer 转换为 Base64 字符串
+   * @param buffer 输入数据
+   * @returns Base64 字符串
+   */
   private arrayBufferToBase64(buffer: ArrayBuffer): string {
     let binary = ''
     const bytes = new Uint8Array(buffer)
@@ -157,7 +221,10 @@ class MicrophoneManager {
     return btoa(binary)
   }
 
-  stopRecording() {
+  /**
+   * 停止录音
+   */
+  public stopRecording() {
     if (this.audioStream) {
       this.audioStream.getTracks().forEach((track) => track.stop())
       this.audioStream = null
@@ -167,11 +234,8 @@ class MicrophoneManager {
       this.audioContext.close()
       this.audioContext = null
     }
-
-    if (this.websocket) {
-      this.websocket.close()
-      this.websocket = null
-    }
+    // 使用新的 disconnect 方法替代直接关闭
+    this.disconnect()
   }
 }
 

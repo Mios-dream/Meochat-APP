@@ -12,24 +12,37 @@
         ></div>
       </div>
     </aside>
-    <div class="tabs-container">
-      <div id="tabs">
-        <div
-          v-for="(item, index) in tabsItems"
-          :key="index"
-          class="tab-item"
-          :class="activeTab === index ? 'active' : ''"
-          @click="item.action"
-        >
-          <div class="icon">
-            <font-awesome-icon :icon="item.icon" />
-          </div>
-        </div>
-      </div>
-    </div>
+
     <main>
       <component :is="currentComponent" v-if="currentComponent" class="slide-in" />
     </main>
+    <div id="tabs-container">
+      <div id="tabs">
+        <template v-for="(item, index) in tabsItems" :key="index">
+          <!-- 普通标签 -->
+          <div
+            v-if="!item.special"
+            class="tab-item"
+            :class="{ active: activeTab === index }"
+            @click="item.action"
+          >
+            <div class="icon">
+              <font-awesome-icon :icon="item.icon" />
+            </div>
+          </div>
+
+          <!-- 特殊标签 -->
+          <div
+            v-else
+            class="special-tab"
+            :class="{ active: activeTab === index }"
+            @click="item.action"
+          >
+            <div id="assistant-space-button"></div>
+          </div>
+        </template>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -38,6 +51,7 @@ import { computed, ref, onMounted, onUnmounted } from 'vue'
 import HomeView from './HomeView.vue'
 import AssistantManagerView from './AssistantManagerView.vue'
 import PluginsView from './PluginManagerView.vue'
+import AssistantSpaceView from './AssistantSpaceView.vue'
 
 const activeTab = ref(0)
 const isWindowFocused = ref(true) // 默认聚焦状态
@@ -48,7 +62,7 @@ const titlebarIcons = [
     text: '最小化',
     action: () => {
       console.log('minimize')
-      window.electronAPI.minimizeApp()
+      window.api.minimizeApp()
     },
   },
   {
@@ -56,7 +70,7 @@ const titlebarIcons = [
     text: '最大化',
     action: () => {
       console.log('maximize')
-      window.electronAPI.maximizeApp()
+      window.api.maximizeApp()
     },
   },
   {
@@ -64,7 +78,7 @@ const titlebarIcons = [
     text: '关闭',
     action: () => {
       console.log('close')
-      window.electronAPI.closeApp()
+      window.api.quitApp()
     },
   },
 ]
@@ -86,10 +100,16 @@ const tabsItems = computed(() => [
     },
   },
   {
+    special: true,
+    action: () => {
+      switchTab(2)
+    },
+  },
+  {
     icon: 'fa-solid fa-puzzle-piece',
     text: '插件',
     action: () => {
-      switchTab(2)
+      switchTab(3)
     },
   },
   {
@@ -100,7 +120,7 @@ const tabsItems = computed(() => [
 ])
 
 // 标签页映射表
-const tabComponents = [HomeView, AssistantManagerView, PluginsView]
+const tabComponents = [HomeView, AssistantManagerView, AssistantSpaceView, PluginsView]
 
 const currentComponent = computed(() => {
   return tabComponents[activeTab.value]
@@ -149,11 +169,7 @@ body {
 
 main {
   width: 100%;
-  height: auto;
-  margin-top: 40px;
-  padding-left: 80px;
-  overflow: auto;
-  scrollbar-width: none; /* Firefox */
+  height: 100%;
 }
 
 #container {
@@ -193,6 +209,7 @@ main {
   margin-right: 15px;
   -webkit-app-region: no-drag;
   app-region: no-drag;
+  z-index: 99999;
 }
 
 .titlebar-item {
@@ -202,24 +219,28 @@ main {
   cursor: pointer;
 }
 
-.tabs-container {
+#tabs-container {
   position: absolute;
-  left: 0;
-  width: 80px;
-  height: 100%;
+  bottom: 10px;
+  width: 100%;
+  height: 90px;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   justify-content: center;
   align-items: end;
+  transition: all 0.2s ease-in-out;
 }
+
 #tabs {
-  background-color: #eeeef6bd;
+  /* background-color: #eeeef6bd; */
+  background-color: rgb(247, 247, 247, 0.3);
+  backdrop-filter: blur(10px);
   border-radius: 50px;
   box-shadow: 0 3px 15px rgba(179, 179, 179, 0.5);
-  width: 60px;
-  height: auto;
+  width: auto;
+  height: 70px;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   justify-content: space-between;
   align-items: center;
   padding: 4px;
@@ -227,16 +248,17 @@ main {
 
 .tab-item {
   cursor: pointer;
-  width: 45px;
-  height: 45px;
-  border-radius: 100px;
+  width: 55px;
+  height: 55px;
+  border-radius: 100%;
   white-space: nowrap;
   position: relative;
-
   color: #4f4f4f;
   background-color: white;
-  margin: 4px;
+  font-size: 20px;
+  margin: 10px;
   transition: all 0.2s ease-in-out;
+  box-shadow: 0 0 10px #4f4f4f28;
 }
 
 .tab-item:hover {
@@ -258,5 +280,45 @@ main {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.special-tab {
+  margin-bottom: 30px;
+  width: 90px;
+  height: 90px;
+  /* border-radius: 100px 100px 40px 40px; */
+  border-radius: 100%;
+  color: white;
+  /* border: 2px solid #fb7299a9; */
+  border: 2px solid rgb(232, 232, 232);
+  background-color: white;
+  position: relative;
+  box-shadow: 0 0 10px #4f4f4f58;
+  transition: all 0.2s ease-in-out;
+}
+.special-tab:hover {
+  transform: scale(1.05);
+}
+
+.special-tab.active {
+  background-color: #ff9ab7;
+  border: 2px solid #fb7299a9;
+  box-shadow: 0 0 10px #fb7299;
+}
+
+#assistant-space-button {
+  position: absolute;
+  bottom: 0;
+  height: 120px;
+  width: 100%;
+  background-image: url('../assets/images/assistant_avatar_smile.png');
+  overflow: hidden;
+  border-radius: 0 0 100px 100px;
+  background-size: 120px;
+  background-position: center top;
+  background-repeat: no-repeat;
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: smooth;
+  image-rendering: auto;
 }
 </style>

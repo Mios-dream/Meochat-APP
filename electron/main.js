@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, globalShortcut } from 'electron'
 import { createMainWindow } from './windows/mainWindow.js'
 
 import { setupMainIPC } from './ipc/mainHandlers.js'
@@ -11,13 +11,10 @@ setupMainIPC()
 setupAssistantTogetherIPC()
 
 app.whenReady().then(() => {
-  createMainWindow()
+  // 获取权限
+  getPermission()
 
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createMainWindow()
-    }
-  })
+  createMainWindow()
 })
 
 app.on('window-all-closed', () => {

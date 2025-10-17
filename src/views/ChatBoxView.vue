@@ -123,7 +123,7 @@ function handleVisibilityChange() {
 }
 
 function setupLoadingListener() {
-  window.assistantAPI.ipcRenderer.on('loading-state-changed', () => {
+  window.api.ipcRenderer.on('loading-state-changed', () => {
     loading.value = false
 
     // 重新聚焦输入框，方便继续输入
@@ -151,7 +151,7 @@ async function handleSubmit() {
   loading.value = true // 设置加载状态
 
   try {
-    window.assistantAPI.ipcRenderer.send('chat-box:send-message', { text: message })
+    window.api.ipcRenderer.send('chat-box:send-message', { text: message })
     // 设置超时定时器，超过20秒后强制取消加载状态
     setTimeout(() => {
       loading.value = false
@@ -166,7 +166,7 @@ async function handleSubmit() {
     inputValue.value = message
 
     // 显示错误提示（使用 ipcRenderer 跨窗口发送给 assistant window）
-    window.assistantAPI.ipcRenderer.send('chat-box:send-temp-message', {
+    window.api.ipcRenderer.send('chat-box:send-temp-message', {
       text: '发送失败，请重试',
       timeout: 3000,
       priority: 1,
@@ -185,9 +185,7 @@ function hideChatBox() {
 
   // 等待动画完成后再隐藏窗口
   setTimeout(() => {
-    if (window.chatBoxAPI) {
-      window.chatBoxAPI.hideChatBox()
-    }
+    window.api.hideChatBox()
   }, 500)
 }
 

@@ -32,8 +32,9 @@ import { MicrophoneManager } from '../utils/MicrophoneManager'
 import AssistantTips from '../components/AssistantTips.vue'
 import ContextMenu from '../components/Live2dToolbar.vue'
 import LoadingProgress from '../components/LoadingProgress.vue'
+import Config from '../config/config'
 
-// 状态管理
+// 状态管理,是否锁定助手位置
 const isLocked = ref(JSON.parse(localStorage.getItem('assistantSettings') || '{}').locked || true)
 // 右键菜单
 const contextMenuVisible = ref(false)
@@ -48,6 +49,21 @@ const currentTip: Ref<string> = ref('')
 // 组件实例
 const live2DManager = Live2DManager.getInstance()
 const chatService = ChatService.getInstance()
+
+// 创建麦克风管理器实例
+const micManager = new MicrophoneManager()
+
+// 设置识别结果回调
+micManager.setRecognitionCallback((data) => {
+  console.log('识别结果:', data)
+  const jsonData = JSON.parse(data)
+  if (jsonData.withAssistant === true) {
+    chatService.sendMessage(jsonData.data)
+  }
+})
+
+// 连接到 WebSocket 服务
+micManager.connectToServer(Config.wsUrl + '/asr_ws_plus')
 
 // 计算属性
 const contextMenuItems = computed(() => [
@@ -137,21 +153,6 @@ function hideContextMenu() {
 }
 
 onMounted(async () => {
-  // 创建麦克风管理器实例
-  const micManager = new MicrophoneManager()
-
-  // 设置识别结果回调
-  micManager.setRecognitionCallback((data) => {
-    console.log('识别结果:', data)
-    const jsonData = JSON.parse(data)
-    if (jsonData.withAssistant === true) {
-      chatService.sendMessage(jsonData.data)
-    }
-  })
-
-  // 连接到 WebSocket 服务
-  micManager.connectToServer('ws://127.0.0.1:8001/api/asr_ws')
-
   // 开始录音
   micManager
     .startRecording()
@@ -186,8 +187,6 @@ onMounted(async () => {
   try {
     // 初始化Live2D模型
     await live2DManager.init('l2d-canvas', '/public/兔绒dlc/兔绒dlc.model3.json')
-
-    console.log('加载完毕')
 
     loadingProgress.value = 100
 

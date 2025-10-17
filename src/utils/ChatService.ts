@@ -1,5 +1,6 @@
 import { MessageTips } from './MessageTips'
 import { Live2DManager } from './Live2dManager'
+import Config from '../config/config'
 
 interface ChatMessage {
   role: 'user' | 'assistant'
@@ -13,23 +14,40 @@ interface StreamData {
 
 class ChatService {
   private static instance: ChatService
+  // 消息提示对象
   private messageTips: MessageTips
+  // 聊天记录
   private chatHistory: ChatMessage[] = []
+  // 音频队列
   private audioQueue: Blob[] = []
+  // 累积文本
   private accumulatedText: string = ''
+  // 文本缓冲区
   private textBuffer: string = ''
+  // 隐藏消息定时器
   private hideMessageTimer: number | null = null
+  // 语音播放状态
   private isPlaying: boolean = false
-  private apiUrl: string = 'http://127.0.0.1:8001/api/chat_v2'
+  // api 地址
+  private apiUrl: string = Config.apiUrl + '/chat_v2'
+  // Live2D管理器
   private live2DManager: Live2DManager | null = null
+  // AbortController 用于取消请求
+  private abortController: AbortController | null = null
 
   private constructor() {
+    // 初始化消息提示对象
     this.messageTips = new MessageTips()
-    this.initializeChatHistory()
     // 获取 Live2DManager 实例
     this.live2DManager = Live2DManager.getInstance()
+    // 初始化聊天记录
+    this.initializeChatHistory()
   }
 
+  /**
+   * 获取单例实例
+   * @returns ChatService 单例实例
+   */
   public static getInstance(): ChatService {
     if (!ChatService.instance) {
       ChatService.instance = new ChatService()
@@ -37,36 +55,67 @@ class ChatService {
     return ChatService.instance
   }
 
+  /**
+   * 初始化消息提示元素
+   * @param element 消息提示元素
+   */
   public initializeMessageTips(element: HTMLElement): void {
     this.messageTips.setTipsElement(element)
   }
 
+  /**
+   * 初始化聊天记录
+   */
   private initializeChatHistory(): void {
     this.chatHistory = []
   }
 
-  public setApiUrl(url: string): void {
-    this.apiUrl = url
-  }
-
+  /**
+   * 获取聊天记录
+   * @returns ChatMessage[] 聊天记录
+   */
   public getChatHistory(): ChatMessage[] {
     return this.chatHistory
   }
 
+  /**
+   * 清空聊天记录
+   */
   public clearChatHistory(): void {
     this.chatHistory = []
     this.initializeChatHistory()
   }
 
-  public async sendMessage(message: string): Promise<boolean> {
-    if (!message.trim()) return
+  /**
+   * 获取当前消息回复状态
+   */
+  public getReplyStatus(): boolean {
+    // 如果正在播放语音，视为正在回复
+    return this.isPlaying
+  }
 
+  /**
+   * 发送消息
+   * @param message 消息内容
+   * @returns Promise<boolean> 是否成功发送
+   */
+  public async sendMessage(message: string): Promise<boolean> {
+    if (!message.trim()) {
+      return false
+    }
+    // 停止正在播放的对话和消息
+    this.interruptCurrentPlayback()
+
+    // 重置
     this.accumulatedText = ''
     this.audioQueue = []
     this.textBuffer = ''
 
     try {
       this.chatHistory.push({ role: 'user', content: message })
+
+      // 创建 AbortController 用于可能的中断
+      this.abortController = new AbortController()
 
       const response = await fetch(this.apiUrl, {
         method: 'POST',
@@ -76,6 +125,7 @@ class ChatService {
         body: JSON.stringify({
           msg: this.chatHistory,
         }),
+        signal: this.abortController.signal, // 添加信号用于中断
       })
 
       if (!response.ok) {
@@ -99,6 +149,12 @@ class ChatService {
       }
       return true
     } catch (error) {
+      // 检查是否是因为中断导致的错误
+      if ((error as Error).name === 'AbortError') {
+        console.log('请求被中断')
+        return false
+      }
+
       console.error('请求失败:', error)
       this.messageTips.showMessage('发送消息失败，请稍后重试', 3000, 1)
       this.chatHistory.pop()
@@ -106,6 +162,62 @@ class ChatService {
     }
   }
 
+  /**
+   * 打断当前的播放对话和消息
+   */
+  public interruptCurrentPlayback(): void {
+    // 1. 停止当前音频播放
+    this.stopAudio()
+
+    // 2. 清除消息显示
+    this.hideMessage()
+
+    // 3. 重置文本缓冲区和累积文本
+    this.textBuffer = ''
+    this.accumulatedText = ''
+
+    // 4. 清除隐藏消息定时器
+    this.clearHideMessageTimer()
+
+    // 5. 重置播放状态
+    this.isPlaying = false
+
+    // 6. 如果有正在进行的请求，取消它
+    if (this.abortController) {
+      this.abortController.abort()
+      this.abortController = null
+    }
+  }
+
+  /**
+   * 显示临时消息
+   * @param text 消息内容
+   * @param timeout 消息显示时间
+   * @param priority 消息优先级
+   */
+  public showTempMessage(text: string, timeout: number = 5000, priority: number = 1): void {
+    this.messageTips.showMessage(text, timeout, priority)
+  }
+
+  /**
+   * 隐藏消息
+   */
+  public hideMessage(): void {
+    this.messageTips.hideMessage()
+  }
+
+  /**
+   * 停止播放音频
+   */
+  public stopAudio(): void {
+    this.audioQueue = []
+    this.clearHideMessageTimer()
+  }
+
+  /**
+   * 处理流数据
+   * @param chunk 流数据
+   */
   private processStreamData(chunk: string): void {
     this.textBuffer += chunk
     const lines = this.textBuffer.split('\n')
@@ -118,6 +230,10 @@ class ChatService {
     }
   }
 
+  /**
+   * 解析流数据
+   * @param chunk 流数据
+   */
   private parseStreamChunk(chunk: string): void {
     if (!chunk.startsWith('data: ')) return
 
@@ -137,12 +253,20 @@ class ChatService {
     }
   }
 
+  /**
+   * 处理文本数据
+   * @param text 文本数据
+   */
   private handleTextData(text: string): void {
     this.accumulatedText += text
     this.showTempMessage(this.accumulatedText.trim(), -1, 999)
     this.clearHideMessageTimer()
   }
 
+  /**
+   * 处理音频数据
+   * @param audioData 音频数据
+   */
   private handleAudioData(audioData: string): void {
     const audioBlob = this.base64ToBlob(audioData, 'audio/wav')
     if (audioBlob.size > 0) {
@@ -153,6 +277,9 @@ class ChatService {
     this.clearHideMessageTimer()
   }
 
+  /**
+   * 处理完成事件
+   */
   private handleComplete(): void {
     if (this.accumulatedText.trim()) {
       this.chatHistory.push({
@@ -162,6 +289,9 @@ class ChatService {
     }
   }
 
+  /**
+   * 清除隐藏消息的定时器
+   */
   private clearHideMessageTimer(): void {
     if (this.hideMessageTimer) {
       clearTimeout(this.hideMessageTimer)
@@ -169,6 +299,12 @@ class ChatService {
     }
   }
 
+  /**
+   * 将 Base64 字符串转换为 Blob 对象
+   * @param base64 Base64 字符串
+   * @param mimeType Blob 对象的 MIME 类型
+   * @returns Blob 对象
+   */
   private base64ToBlob(base64: string, mimeType: string): Blob {
     try {
       const cleanBase64 = base64.replace(/\s/g, '')
@@ -249,19 +385,6 @@ class ChatService {
 
       audio.play().catch(reject)
     })
-  }
-
-  public showTempMessage(text: string, timeout: number = 5000, priority: number = 1): void {
-    this.messageTips.showMessage(text, timeout, priority)
-  }
-
-  public hideMessage(): void {
-    this.messageTips.hideMessage()
-  }
-
-  public stopAudio(): void {
-    this.audioQueue = []
-    this.clearHideMessageTimer()
   }
 }
 

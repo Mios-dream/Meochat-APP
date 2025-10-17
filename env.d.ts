@@ -3,38 +3,33 @@ export {}
 
 declare global {
   interface Window {
-    assistantAPI: {
+    api: {
+      // 助手窗口
       openAssistant: () => void
       closeAssistant: () => void
       hideAssistant: () => void
       startDrag: () => void
       setIgnoreMouse: (ignore: boolean) => void
-      ipcRenderer: {
-        invoke: (channel: string, data: any) => Promise<any>
-        send: (channel: string, data: any) => void
-        on: (channel: string, callback: (event, data) => void) => void
-      }
-    }
-    chatBoxAPI: {
+
+      // 聊天窗口
       openChatBox: () => void
       closeChatBox: () => void
       hideChatBox: () => void
       showChatBox: () => void
-      ipcRenderer: {
-        send: (channel: string, data: any) => void
-        invoke: (channel: string, data: any) => Promise<any>
-        on: (channel: string, callback: (data: any) => void) => void
-      }
-    }
 
-    electronAPI: {
+      // 主窗口
       minimizeApp: () => void
       maximizeApp: () => void
       quitApp: () => void
-      openAssistant: () => void
-      closeAssistant: () => void
       //获取助手开关状态
       getAssistantStatus: () => Promise<boolean>
+
+      ipcRenderer: {
+        send: (channel: string, data: any) => void
+        invoke: (channel: string, data: any) => Promise<any>
+        on: (channel: string, listener: (event: any, ...args: any[]) => void) => void
+        removeAllListeners: (channel: string) => void
+      }
     }
   }
 }

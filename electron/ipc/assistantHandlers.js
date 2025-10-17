@@ -173,8 +173,6 @@ function setupAssistantIPC() {
   })
 }
 
-let targetWindow = null
-
 function setupAssistantTogetherIPC() {
   setupAssistantIPC()
   setupChatBoxIPC()

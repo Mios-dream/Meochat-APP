@@ -1,7 +1,10 @@
 <!-- src/components/AssistantTips.vue -->
 <template>
-  <div id="assistant-tips" :class="{ active: isActive }">
-    <slot></slot>
+  <div id="tips-container">
+    <div id="assistant-tips" :class="{ active: isActive }">
+      <slot></slot>
+      <font-awesome-icon style="color: #ff96b4" icon="fa-solid fa-heart" />
+    </div>
   </div>
 </template>
 
@@ -18,11 +21,12 @@ onMounted(() => {
 
 defineProps<{
   isActive: boolean
+  fontSize?: string
 }>()
 </script>
 
 <style scoped>
-#assistant-tips {
+/* #assistant-tips {
   animation: shake 50s ease-in-out 5s infinite;
   background-color: rgba(236, 217, 188, 0.5);
   border: 1px solid rgba(224, 186, 140, 0.62);
@@ -42,6 +46,39 @@ defineProps<{
   word-break: break-all;
   z-index: 10;
   pointer-events: none;
+} */
+
+#tips-container {
+  top: 50%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 80%;
+  max-width: 600px;
+  position: absolute;
+}
+
+#assistant-tips {
+  width: 100%;
+  animation: shake 50s ease-in-out 5s infinite;
+  background-color: rgba(255, 255, 255, 0.8);
+  border: 1px solid #ff96b4;
+  border-radius: 12px;
+  font-size: v-bind(fontSize || '14px');
+  line-height: 24px;
+  margin: 20px 20px;
+  min-height: 70px;
+  opacity: 0;
+  overflow: hidden;
+  padding: 20px 20px;
+  text-overflow: ellipsis;
+  transition: opacity 1s;
+  word-break: break-all;
+  z-index: 10;
+  pointer-events: none;
+  color: rgba(80, 80, 80);
+  display: flex;
+  align-items: center;
+  justify-content: start;
 }
 
 #assistant-tips.active {

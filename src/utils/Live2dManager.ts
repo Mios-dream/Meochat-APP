@@ -3,11 +3,10 @@ import * as PIXI from 'pixi.js'
 // import { ChatService } from '../utils/ChatService'
 import throttle from './Throttle'
 
+// 设置模型配置
 config.motionFadingDuration = 500
 config.idleMotionFadingDuration = 500
 config.expressionFadingDuration = 500
-
-// const chatService = ChatService.getInstance()
 
 export class Live2DManager {
   // 单例模式
@@ -20,20 +19,37 @@ export class Live2DManager {
   private model: Live2DModel | null = null
   // 音频上下文
   private audioContext: AudioContext | null = null
-  // 是否聚焦鼠标
+  // 是否聚焦鼠标，用于全局鼠标跟踪
   private isMouseTracking = false
-
   // 用于控制聚焦的状态
   private isFocusEnabled = false
   // 聚焦超时定时器
   private focusTimeout: number | null = null
-  private readonly FOCUS_TIMEOUT_MS = 5000 // 5秒无点击后取消聚焦
+  // 聚焦超时
+  public focus_timeout_ms = 5000 // 5秒无点击后取消聚焦
   // 用于控制忽略状态
   private ignoreState = false
   // 恢复模型状态的定时器
   private restoreTimer: number | null = null
 
-  private constructor() {}
+  // 用于画布内鼠标跟踪
+  // 鼠标点击和长按状态
+  private isMousePressed = false
+  // 鼠标按下的定时器
+  private mousePressTimer: number | null = null
+  // 鼠标长按触发时间
+  private longPressDuration = 200 // 长按触发时间（毫秒）
+
+  private dragStartX = 0
+  private dragStartY = 0
+
+  // 缩放相关
+  private currentScale = 1
+  private minScale = 0.1
+  private maxScale = 2
+  private scaleStep = 0.05
+  // 锁定相关
+  private isLocked = false
 
   /**
    * 获取单例实例
@@ -47,6 +63,40 @@ export class Live2DManager {
   }
 
   /**
+   * 计算模型缩放比例
+   * @param canvasWidth 画布宽度
+   * @param canvasHeight 画布高度
+   * @param modelWidth 模型宽度
+   * @param modelHeight 模型高度
+   * @returns 模型缩放比例
+   */
+  private calculateOptimalScale(
+    canvasWidth: number,
+    canvasHeight: number,
+    modelWidth: number,
+    modelHeight: number,
+  ): number {
+    // 计算基于宽高的缩放比例，让模型尽可能大地填充画布
+    const scaleX = canvasWidth / modelWidth
+    const scaleY = canvasHeight / modelHeight
+
+    // 选择较小的缩放比例以确保模型完整显示
+    const scale = Math.min(scaleX, scaleY)
+
+    console.log('Scale calculation:', {
+      canvasWidth,
+      canvasHeight,
+      modelWidth,
+      modelHeight,
+      scaleX,
+      scaleY,
+      finalScale: scale,
+    })
+
+    return scale
+  }
+
+  /**
    * 初始化Live2D模型
    * @param canvasId 画布ID
    * @param modelPath 模型路径
@@ -55,10 +105,6 @@ export class Live2DManager {
   public async init(canvasId: string, modelPath: string): Promise<Live2DModel> {
     // 获取画布元素
     this.canvasElement = document.getElementById(canvasId) as HTMLCanvasElement
-
-    // 获取画布尺寸
-    let canvasHeight = this.canvasElement.height
-    let canvasWidth = this.canvasElement.width
     // 创建渲染器
     this.app = new PIXI.Application({
       view: this.canvasElement,
@@ -76,24 +122,253 @@ export class Live2DManager {
       autoInteract: false,
     })
 
-    // 适配移动设备
-    const xs = window.matchMedia('screen and (max-width: 768px)')
-    xs.addEventListener('change', (e) => {
-      if (e.matches) this.model.scale.set(0.1)
-    })
+    // 设置模型位置和缩放
+    // 获取渲染器的实际显示尺寸（考虑resolution）
+    const displayWidth = this.app.renderer.width / this.app.renderer.resolution
+    const displayHeight = this.app.renderer.height / this.app.renderer.resolution
 
-    // 设置模型位置
+    // 计算最优缩放
+    const optimalScale = this.calculateOptimalScale(
+      displayWidth,
+      displayHeight,
+      this.model.width,
+      this.model.height,
+    )
+    this.currentScale = optimalScale
+
+    this.model.scale.set(optimalScale)
+
+    // 设置模型锚点为中心
     this.model.anchor.set(0.5, 0.5)
-    this.model.scale.set(0.13)
-    this.model.x = canvasWidth / 2
-    this.model.y = canvasHeight + 100
+    // 居中模型（使用显示尺寸的中心）
+    this.model.x = displayWidth / 2
+    this.model.y = displayHeight / 2
+
     // 添加模型到舞台
     this.app.stage.addChild(this.model)
-    this.initListeners()
     // 初始化 AudioContext
     this.audioContext = new AudioContext()
 
     return this.model
+  }
+
+  /*
+   * 设置画布内的监听器（鼠标跟踪）
+   */
+  public initBaseListeners(): void {
+    // 鼠标按下事件
+    this.canvasElement.addEventListener('pointerdown', (e) => {
+      this.isMousePressed = true
+      this.dragStartX = e.clientX
+      this.dragStartY = e.clientY
+
+      // 设置长按定时器
+      this.mousePressTimer = window.setTimeout(() => {
+        // 长按触发，如果已锁定则启用注视
+        if (this.isMousePressed && this.model && this.isLocked) {
+          this.isFocusEnabled = true
+          console.log('Long press detected, model starts gazing at mouse')
+        }
+      }, this.longPressDuration)
+    })
+
+    // 鼠标移动事件
+    this.canvasElement.addEventListener('pointermove', (e) => {
+      // 长按期间持续更新模型视线（仅在锁定且启用注视时）
+      if (this.isMousePressed && this.isFocusEnabled && this.model && this.app && this.isLocked) {
+        const rect = this.canvasElement.getBoundingClientRect()
+        const relativeX = e.clientX - rect.left
+        const relativeY = e.clientY - rect.top
+
+        this.model.focus(relativeX, relativeY, false)
+      }
+
+      // 拖动模型（仅在未锁定时可用）
+      if (this.isMousePressed && !this.isLocked && this.model) {
+        const deltaX = e.clientX - this.dragStartX
+        const deltaY = e.clientY - this.dragStartY
+
+        this.model.x += deltaX
+        this.model.y += deltaY
+
+        this.dragStartX = e.clientX
+        this.dragStartY = e.clientY
+      }
+    })
+
+    // 鼠标抬起事件
+    this.canvasElement.addEventListener('pointerup', () => {
+      this.isMousePressed = false
+
+      // 清除长按定时器
+      if (this.mousePressTimer) {
+        clearTimeout(this.mousePressTimer)
+        this.mousePressTimer = null
+      }
+
+      // 取消注视，平滑过渡回中心（仅在锁定模式下）
+      if (this.isFocusEnabled && this.isLocked) {
+        this.smoothDisableFocus(500)
+      }
+
+      // 如果未锁定，确保注视功能关闭
+      if (!this.isLocked) {
+        this.isFocusEnabled = false
+      }
+    })
+
+    // 鼠标离开画布
+    this.canvasElement.addEventListener('pointerleave', () => {
+      this.isMousePressed = false
+
+      // 清除长按定时器
+      if (this.mousePressTimer) {
+        clearTimeout(this.mousePressTimer)
+        this.mousePressTimer = null
+      }
+
+      // 取消注视（仅在锁定模式下）
+      if (this.isFocusEnabled && this.isLocked) {
+        this.smoothDisableFocus(500)
+      }
+
+      // 如果未锁定，确保注视功能关闭
+      if (!this.isLocked) {
+        this.isFocusEnabled = false
+      }
+    })
+
+    // 鼠标滚轮事件
+    this.canvasElement.addEventListener(
+      'wheel',
+      (e) => {
+        e.preventDefault()
+
+        // 仅在未锁定时允许缩放
+        if (!this.model || this.isLocked) return
+
+        // 获取当前缩放值
+        let newScale = this.currentScale
+
+        // 向上滚动放大，向下滚动缩小
+        if (e.deltaY < 0) {
+          newScale += this.scaleStep
+        } else {
+          newScale -= this.scaleStep
+        }
+
+        // 限制缩放范围
+        newScale = Math.max(this.minScale, Math.min(newScale, this.maxScale))
+
+        // 更新模型缩放
+        this.model.scale.set(newScale)
+        this.currentScale = newScale
+      },
+      { passive: false },
+    )
+  }
+
+  /**
+   * 重置模型到初始位置和缩放
+   */
+  public resetModelTransform(): void {
+    if (!this.model || !this.app) return
+
+    const displayWidth = this.app.renderer.width / this.app.renderer.resolution
+    const displayHeight = this.app.renderer.height / this.app.renderer.resolution
+
+    const initialScale = this.calculateOptimalScale(
+      displayWidth,
+      displayHeight,
+      this.model.width,
+      this.model.height,
+    )
+
+    this.model.scale.set(initialScale)
+    this.model.x = displayWidth / 2
+    this.model.y = displayHeight / 2
+    this.currentScale = initialScale
+
+    console.log('Model transform reset')
+  }
+
+  /**
+   * 获取当前模型的缩放值
+   */
+  public getModelScale(): number {
+    return this.currentScale
+  }
+
+  /**
+   * 设置模型的缩放值
+   * @param scale 缩放值
+   */
+  public setModelScale(scale: number): void {
+    const newScale = Math.max(this.minScale, Math.min(scale, this.maxScale))
+    if (this.model) {
+      this.model.scale.set(newScale)
+      this.currentScale = newScale
+    }
+  }
+
+  /**
+   * 设置模型的位置
+   * @param x X坐标
+   * @param y Y坐标
+   */
+  public setModelPosition(x: number, y: number): void {
+    if (this.model) {
+      this.model.x = x
+      this.model.y = y
+    }
+  }
+
+  /**
+   * 获取模型的位置
+   */
+  public getModelPosition(): { x: number; y: number } {
+    if (this.model) {
+      return { x: this.model.x, y: this.model.y }
+    }
+    return { x: 0, y: 0 }
+  }
+
+  /**
+   * 切换锁定状态
+   * 锁定时：模型注视鼠标，无法调整大小和位置
+   * 未锁定时：可以拖动和滚轮缩放
+   */
+  public toggleLock(): void {
+    this.isLocked = !this.isLocked
+    console.log('Lock status:', this.isLocked ? 'LOCKED' : 'UNLOCKED')
+
+    // 如果解锁，平滑取消注视
+    if (!this.isLocked && this.isFocusEnabled) {
+      this.smoothDisableFocus(500)
+    }
+  }
+
+  /**
+   * 设置锁定状态
+   * @param locked 是否锁定
+   */
+  public setLocked(locked: boolean): void {
+    if (this.isLocked === locked) return
+
+    this.isLocked = locked
+    console.log('Lock status:', this.isLocked ? 'LOCKED' : 'UNLOCKED')
+
+    // 如果解锁，平滑取消注视
+    if (!this.isLocked && this.isFocusEnabled) {
+      this.smoothDisableFocus(500)
+    }
+  }
+
+  /**
+   * 获取锁定状态
+   */
+  public getLocked(): boolean {
+    return this.isLocked
   }
 
   /**
@@ -104,7 +379,7 @@ export class Live2DManager {
     this.startMouseTracking()
 
     // 监听来自主进程的鼠标位置更新
-    window.assistantAPI.ipcRenderer.on('assistant:mouse-position', (event, data) => {
+    window.api.ipcRenderer.on('assistant:mouse-position', (event, data) => {
       // 检测鼠标点击状态
       if (data.isMouseDown) {
         this.handleMouseClick()
@@ -122,7 +397,7 @@ export class Live2DManager {
     // 鼠标离开时取消穿透状态
     this.canvasElement.addEventListener('mouseleave', () => {
       this.ignoreState = false
-      window.assistantAPI.setIgnoreMouse(false)
+      window.api.setIgnoreMouse(false)
       if (this.restoreTimer) {
         clearTimeout(this.restoreTimer)
         this.restoreTimer = null
@@ -155,7 +430,7 @@ export class Live2DManager {
     this.focusTimeout = setTimeout(() => {
       // this.disableFocus()
       this.smoothDisableFocus(1500)
-    }, this.FOCUS_TIMEOUT_MS)
+    }, this.focus_timeout_ms)
   }
 
   /**
@@ -244,7 +519,7 @@ export class Live2DManager {
    */
   public startMouseTracking() {
     if (!this.isMouseTracking) {
-      window.assistantAPI.ipcRenderer.send('assistant:start-mouse-tracking', null)
+      window.api.ipcRenderer.send('assistant:start-mouse-tracking', null)
       this.isMouseTracking = true
     }
   }
@@ -254,7 +529,7 @@ export class Live2DManager {
    */
   public stopMouseTracking() {
     if (this.isMouseTracking) {
-      window.assistantAPI.ipcRenderer.send('assistant:stop-mouse-tracking', null)
+      window.api.ipcRenderer.send('assistant:stop-mouse-tracking', null)
       this.isMouseTracking = false
     }
 
@@ -292,9 +567,10 @@ export class Live2DManager {
             cancelAnimationFrame(requestId)
           }
           if (this.model) {
+            // @ts-ignore
             this.model.internalModel.coreModel.setParameterValueById('ParamMouthOpenY', 0)
           }
-          resolve() // 在这里 resolve Promise
+          resolve()
         }
 
         source.start(0)
@@ -304,7 +580,7 @@ export class Live2DManager {
           analyser.getByteFrequencyData(dataArray)
           const volume = dataArray.reduce((a, b) => a + b) / dataArray.length
           const mouthOpen = Math.min(1, volume / 50)
-
+          // @ts-ignore
           this.model.internalModel.coreModel.setParameterValueById('ParamMouthOpenY', mouthOpen)
           requestId = requestAnimationFrame(updateMouth)
         }
@@ -369,7 +645,7 @@ export class Live2DManager {
       // 更新状态
       this.ignoreState = shouldIgnore
       // 通知 API
-      window.assistantAPI.setIgnoreMouse(this.ignoreState)
+      window.api.setIgnoreMouse(this.ignoreState)
       // 如果 forward 在某些环境不工作，启用回退恢复，防止长时间卡死
       if (this.ignoreState) {
         // 如果存在计时器，则取消
@@ -379,7 +655,7 @@ export class Live2DManager {
         // 设置计时器
         this.restoreTimer = window.setTimeout(() => {
           this.ignoreState = false
-          window.assistantAPI.setIgnoreMouse(false)
+          window.api.setIgnoreMouse(false)
           this.restoreTimer = null
         }, 1000) // 1000ms后强制回退
       } else {
@@ -399,20 +675,29 @@ export class Live2DManager {
     // 清理监听器
     this.stopMouseTracking()
 
+    // 清理长按定时器
+    if (this.mousePressTimer) {
+      clearTimeout(this.mousePressTimer)
+      this.mousePressTimer = null
+    }
+
     // 清理聚焦定时器
     if (this.focusTimeout) {
       clearTimeout(this.focusTimeout)
       this.focusTimeout = null
     }
+
     // 清理重设定时器
     if (this.restoreTimer) {
       clearTimeout(this.restoreTimer)
     }
+
     // 销毁模型
     if (this.model) {
       this.model.destroy()
       this.model = null
     }
+
     // 销毁渲染器
     if (this.app) {
       this.app.destroy(true)

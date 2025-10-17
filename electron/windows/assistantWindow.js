@@ -3,22 +3,49 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import { dirname } from 'path'
 import { createChatBoxWindow } from './chatBoxWindow.js'
+import Store from 'electron-store'
 
 // 在 ESM 中获取 __dirname 的等效方法
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
 
+// 创建配置存储实例
+const store = new Store()
+
 let assistantWindow = null
 
-export function createAssistantWindow() {
+function createAssistantWindow() {
   if (assistantWindow && !assistantWindow.isDestroyed()) {
     assistantWindow.focus()
     return
   }
 
-  assistantWindow = new BrowserWindow({
+  // 从存储中读取窗口配置，如果不存在则使用默认值
+  const savedBounds = store.get('assistantWindowBounds')
+  const defaultBounds = {
     width: 300,
     height: 500,
+  }
+
+  // 验证保存的位置是否在当前屏幕范围内
+  let windowBounds = defaultBounds
+  if (savedBounds) {
+    const primaryDisplay = screen.getPrimaryDisplay()
+    const displayBounds = primaryDisplay.bounds
+
+    // 检查保存的位置是否在屏幕范围内
+    if (
+      savedBounds.x >= displayBounds.x &&
+      savedBounds.y >= displayBounds.y &&
+      savedBounds.x + savedBounds.width <= displayBounds.x + displayBounds.width &&
+      savedBounds.y + savedBounds.height <= displayBounds.y + displayBounds.height
+    ) {
+      windowBounds = savedBounds
+    }
+  }
+
+  assistantWindow = new BrowserWindow({
+    ...windowBounds,
     frame: false,
     transparent: true,
     alwaysOnTop: true,
@@ -50,6 +77,11 @@ export function createAssistantWindow() {
   })
 
   assistantWindow.on('closed', () => {
+    if (assistantWindow) {
+      store.set('assistantWindowBounds', assistantWindow.getBounds())
+    }
+    assistantWindow = null
+
     globalShortcut.unregisterAll()
   })
 
@@ -57,6 +89,8 @@ export function createAssistantWindow() {
 }
 
 // 提供外部访问当前宠物窗口的方法
-export function getAssistantWindow() {
+function getAssistantWindow() {
   return assistantWindow && !assistantWindow.isDestroyed() ? assistantWindow : null
 }
+
+export { createAssistantWindow, getAssistantWindow }
