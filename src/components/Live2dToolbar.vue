@@ -60,8 +60,12 @@ const toggleLock = () => {
 }
 
 #live2d-context-menu:not(.collapsed) {
-  width: 150px;
+  /* width: 150px; */
   transition: width 0.5s;
+}
+
+#live2d-context-menu:hover {
+  width: 150px;
 }
 
 #live2d-context-menu .menu-item {

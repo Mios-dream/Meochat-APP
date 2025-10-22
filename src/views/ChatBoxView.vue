@@ -1,5 +1,5 @@
 <template>
-  <div class="w-screen h-screen flex items-center justify-center mg-20">
+  <div id="chatBoxContainer">
     <div id="chatBox" :class="{ 'slide-up': isVisible }">
       <input
         id="chatBoxInput"
@@ -20,6 +20,15 @@
 </template>
 
 <style>
+#chatBoxContainer {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 20px;
+}
+
 #chatBox {
   width: 80%;
   height: 50%;

@@ -1,6 +1,7 @@
 import { MessageTips } from './MessageTips'
 import { Live2DManager } from './Live2dManager'
-import Config from '../config/config'
+import { useConfigStore } from '@/stores/useConfigStore'
+import { computed } from 'vue'
 
 interface ChatMessage {
   role: 'user' | 'assistant'
@@ -29,11 +30,17 @@ class ChatService {
   // 语音播放状态
   private isPlaying: boolean = false
   // api 地址
-  private apiUrl: string = Config.apiUrl + '/chat_v2'
+  private apiUrl = computed(() => {
+    // 延迟获取 configStore
+    const configStore = useConfigStore()
+    return `http://${configStore.config.baseUrl}/api/chat_v2`
+  })
   // Live2D管理器
   private live2DManager: Live2DManager | null = null
   // AbortController 用于取消请求
   private abortController: AbortController | null = null
+  // 音量属性
+  private volume: number = 1.0
 
   private constructor() {
     // 初始化消息提示对象
@@ -117,7 +124,7 @@ class ChatService {
       // 创建 AbortController 用于可能的中断
       this.abortController = new AbortController()
 
-      const response = await fetch(this.apiUrl, {
+      const response = await fetch(this.apiUrl.value, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -333,6 +340,26 @@ class ChatService {
   }
 
   /**
+   * 设置音量
+   * @param volume 音量值 (0.0 to 1.0)
+   */
+  public setVolume(volume: number): void {
+    this.volume = Math.max(0, Math.min(1, volume))
+    // 如果有 Live2DManager 实例，也同步设置其音量
+    if (this.live2DManager) {
+      this.live2DManager.setVolume(volume)
+    }
+  }
+
+  /**
+   * 获取当前音量
+   * @returns 当前音量值
+   */
+  public getVolume(): number {
+    return this.volume
+  }
+
+  /**
    * 使用 Live2D 模型播放音频队列（带口型同步）
    */
   private async playAudioQueueWithLive2D(): Promise<void> {
@@ -349,7 +376,7 @@ class ChatService {
         try {
           // 使用 Live2DManager 的 speak 方法播放音频并同步口型
           if (this.live2DManager) {
-            await this.live2DManager.speak(audioUrl)
+            await this.live2DManager.speak(audioUrl, this.volume)
           } else {
             // 如果 Live2DManager 不可用，降级到普通播放
             await this.playAudioSimple(audioUrl)

@@ -4,6 +4,7 @@ const globalAPI = {
   // 主窗口专用 API
   minimizeApp: () => ipcRenderer.send('app:minimize'),
   maximizeApp: () => ipcRenderer.send('app:maximize'),
+  hideApp: () => ipcRenderer.send('app:hide'),
   quitApp: () => ipcRenderer.send('app:quit'),
 
   // 助手页面的preload
@@ -23,6 +24,12 @@ const globalAPI = {
   openChatBox: () => ipcRenderer.send('chat-box:create'),
   // 关闭聊天窗口
   closeChatBox: () => ipcRenderer.send('chat-box:close'),
+
+  config: {
+    get: (key) => ipcRenderer.invoke('config:get', key),
+    set: (key, value) => ipcRenderer.invoke('config:set', key, value),
+    onChange: (callback) => ipcRenderer.on('config:changed', (_, config) => callback(config)),
+  },
 
   ipcRenderer: {
     send: (channel, data) => ipcRenderer.send(channel, data),

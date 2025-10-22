@@ -11,11 +11,12 @@ class Config {
     }
     return Config.instance
   }
-  public setBaseUrl(url: string) {
+  public setBaseUrl(url: string): void {
     this.baseUrl = url
+    this.apiUrl = `http://${url}/api`
+    this.wsUrl = `ws://${url}/api`
   }
 }
+const appConfig = Config.getInstance()
 
-const config = Config.getInstance()
-
-export default config
+export { Config, appConfig }

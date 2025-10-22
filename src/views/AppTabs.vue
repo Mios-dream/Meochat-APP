@@ -14,7 +14,7 @@
     </aside>
 
     <main>
-      <component :is="currentComponent" v-if="currentComponent" class="slide-in" />
+      <component :is="currentComponent" v-if="currentComponent" />
     </main>
     <div id="tabs-container">
       <div id="tabs">
@@ -52,6 +52,7 @@ import HomeView from './HomeView.vue'
 import AssistantManagerView from './AssistantManagerView.vue'
 import PluginsView from './PluginManagerView.vue'
 import AssistantSpaceView from './AssistantSpaceView.vue'
+import SettingView from './SettingView.vue'
 
 const activeTab = ref(0)
 const isWindowFocused = ref(true) // 默认聚焦状态
@@ -78,7 +79,7 @@ const titlebarIcons = [
     text: '关闭',
     action: () => {
       console.log('close')
-      window.api.quitApp()
+      window.api.hideApp()
     },
   },
 ]
@@ -115,12 +116,14 @@ const tabsItems = computed(() => [
   {
     icon: 'fa-solid fa-gear',
     text: '设置',
-    action: () => {},
+    action: () => {
+      switchTab(4)
+    },
   },
 ])
 
 // 标签页映射表
-const tabComponents = [HomeView, AssistantManagerView, AssistantSpaceView, PluginsView]
+const tabComponents = [HomeView, AssistantManagerView, AssistantSpaceView, PluginsView, SettingView]
 
 const currentComponent = computed(() => {
   return tabComponents[activeTab.value]
@@ -311,7 +314,7 @@ main {
   bottom: 0;
   height: 120px;
   width: 100%;
-  background-image: url('../assets/images/assistant_avatar_smile.png');
+  background-image: url('../assets/images/assistant_avatar_small.png');
   overflow: hidden;
   border-radius: 0 0 100px 100px;
   background-size: 120px;

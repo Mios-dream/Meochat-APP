@@ -25,7 +25,7 @@ export class Live2DManager {
   private isFocusEnabled = false
   // 聚焦超时定时器
   private focusTimeout: number | null = null
-  // 聚焦超时
+  // 聚焦超时,用于全局
   public focus_timeout_ms = 5000 // 5秒无点击后取消聚焦
   // 用于控制忽略状态
   private ignoreState = false
@@ -38,7 +38,7 @@ export class Live2DManager {
   // 鼠标按下的定时器
   private mousePressTimer: number | null = null
   // 鼠标长按触发时间
-  private longPressDuration = 200 // 长按触发时间（毫秒）
+  private longPressDuration = 100 // 长按触发时间（毫秒）
 
   private dragStartX = 0
   private dragStartY = 0
@@ -48,8 +48,11 @@ export class Live2DManager {
   private minScale = 0.1
   private maxScale = 2
   private scaleStep = 0.05
-  // 锁定相关
+  // 画步锁定相关
   private isLocked = false
+
+  // 音量控制属性
+  private volume: number = 1.0 // 0.0 to 1.0
 
   /**
    * 获取单例实例
@@ -122,27 +125,7 @@ export class Live2DManager {
       autoInteract: false,
     })
 
-    // 设置模型位置和缩放
-    // 获取渲染器的实际显示尺寸（考虑resolution）
-    const displayWidth = this.app.renderer.width / this.app.renderer.resolution
-    const displayHeight = this.app.renderer.height / this.app.renderer.resolution
-
-    // 计算最优缩放
-    const optimalScale = this.calculateOptimalScale(
-      displayWidth,
-      displayHeight,
-      this.model.width,
-      this.model.height,
-    )
-    this.currentScale = optimalScale
-
-    this.model.scale.set(optimalScale)
-
-    // 设置模型锚点为中心
-    this.model.anchor.set(0.5, 0.5)
-    // 居中模型（使用显示尺寸的中心）
-    this.model.x = displayWidth / 2
-    this.model.y = displayHeight / 2
+    this.resetModelTransform()
 
     // 添加模型到舞台
     this.app.stage.addChild(this.model)
@@ -277,19 +260,22 @@ export class Live2DManager {
     const displayWidth = this.app.renderer.width / this.app.renderer.resolution
     const displayHeight = this.app.renderer.height / this.app.renderer.resolution
 
-    const initialScale = this.calculateOptimalScale(
+    // 计算最优缩放
+    const optimalScale = this.calculateOptimalScale(
       displayWidth,
       displayHeight,
       this.model.width,
       this.model.height,
     )
+    this.currentScale = optimalScale
 
-    this.model.scale.set(initialScale)
+    this.model.scale.set(optimalScale)
+
+    // 设置模型锚点为中心
+    this.model.anchor.set(0.5, 0.5)
+    // 居中模型（使用显示尺寸的中心）
     this.model.x = displayWidth / 2
     this.model.y = displayHeight / 2
-    this.currentScale = initialScale
-
-    console.log('Model transform reset')
   }
 
   /**
@@ -436,7 +422,7 @@ export class Live2DManager {
   /**
    * 取消聚焦状态
    */
-  private disableFocus(): void {
+  public disableFocus(): void {
     if (this.isFocusEnabled) {
       this.isFocusEnabled = false
       // 重置模型视线到模型（中心）
@@ -451,7 +437,7 @@ export class Live2DManager {
    * 平滑地将模型焦点移回中心位置
    * @param duration 过渡持续时间（毫秒）
    */
-  private smoothDisableFocus(duration: number = 1000): void {
+  public smoothDisableFocus(duration: number = 1000): void {
     if (this.isFocusEnabled && this.model) {
       this.isFocusEnabled = false
 
@@ -543,21 +529,41 @@ export class Live2DManager {
   }
 
   /**
+   * 设置音量
+   * @param volume 音量值 (0.0 to 1.0)
+   */
+  public setVolume(volume: number): void {
+    this.volume = Math.max(0, Math.min(1, volume))
+  }
+
+  /**
+   * 获取当前音量
+   * @returns 当前音量值
+   */
+  public getVolume(): number {
+    return this.volume
+  }
+  /**
    * 播放音频,并同步口型
    * @param audioFile 音频文件路径
    */
-  public async speak(audioFile: string): Promise<void> {
+  public async speak(audioFile: string, volume: number = this.volume): Promise<void> {
     return new Promise(async (resolve, reject) => {
       try {
+        this.model.internalModel.motionManager.state.shouldRequestIdleMotion = () => false // 取消idle 动作
         const response = await fetch(audioFile)
         const audioData = await response.arrayBuffer()
         const audioBuffer = await this.audioContext.decodeAudioData(audioData)
         const source = this.audioContext.createBufferSource()
         const analyser = this.audioContext.createAnalyser()
+        const gainNode = this.audioContext.createGain()
+        // 设置音量
+        gainNode.gain.value = Math.max(0, Math.min(1, volume))
 
         source.buffer = audioBuffer
         analyser.connect(this.audioContext.destination)
         source.connect(analyser)
+        gainNode.connect(this.audioContext.destination)
 
         let requestId: number | null = null
 
@@ -567,9 +573,10 @@ export class Live2DManager {
             cancelAnimationFrame(requestId)
           }
           if (this.model) {
-            // @ts-ignore
+            // @ts-expect-error 无法找到模型参数
             this.model.internalModel.coreModel.setParameterValueById('ParamMouthOpenY', 0)
           }
+          this.model.internalModel.motionManager.state.shouldRequestIdleMotion = () => true // 恢复idle 动作
           resolve()
         }
 
@@ -579,14 +586,15 @@ export class Live2DManager {
           const dataArray = new Uint8Array(analyser.frequencyBinCount)
           analyser.getByteFrequencyData(dataArray)
           const volume = dataArray.reduce((a, b) => a + b) / dataArray.length
-          const mouthOpen = Math.min(1, volume / 50)
-          // @ts-ignore
+          const mouthOpen = Math.min(1, volume / 40)
+          // @ts-expect-error 无法找到模型参数
           this.model.internalModel.coreModel.setParameterValueById('ParamMouthOpenY', mouthOpen)
           requestId = requestAnimationFrame(updateMouth)
         }
 
         requestId = requestAnimationFrame(updateMouth)
       } catch (error) {
+        this.model.internalModel.motionManager.state.shouldRequestIdleMotion = () => true // 恢复idle 动作
         reject(error)
       }
     })

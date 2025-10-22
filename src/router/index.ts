@@ -1,5 +1,5 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
-import Tabs from '../views/Tabs.vue'
+import Tabs from '../views/AppTabs.vue'
 import HomeView from '../views/HomeView.vue'
 import PluginManager from '../views/PluginManagerView.vue'
 import AssistantManagerView from '../views/AssistantManagerView.vue'

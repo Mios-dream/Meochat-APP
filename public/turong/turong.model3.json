@@ -1,10 +1,10 @@
 {
   "Version": 3,
   "FileReferences": {
-    "Moc": "兔绒DLC.moc3",
-    "Textures": ["兔绒DLC.8192/texture_00.png"],
-    "Physics": "兔绒DLC.physics3.json",
-    "DisplayInfo": "兔绒DLC.cdi3.json",
+    "Moc": "turong.moc3",
+    "Textures": ["turong.8192/texture_00.png"],
+    "Physics": "turong.physics3.json",
+    "DisplayInfo": "turong.cdi3.json",
     "Expressions": [
       {
         "Name": "shy",
@@ -59,6 +59,16 @@
           "FadeOutTime": 0.5
         },
         {
+          "File": "motions/idle_1.motion3.json",
+          "FadeInTime": 0.5,
+          "FadeOutTime": 0.5
+        },
+        {
+          "File": "motions/idle_1.motion3.json",
+          "FadeInTime": 0.5,
+          "FadeOutTime": 0.5
+        },
+        {
           "File": "motions/Hiyori_m02.motion3.json",
           "FadeInTime": 0.5,
           "FadeOutTime": 0.5
@@ -90,11 +100,6 @@
         },
         {
           "File": "motions/Hiyori_m09.motion3.json",
-          "FadeInTime": 0.5,
-          "FadeOutTime": 0.5
-        },
-        {
-          "File": "motions/Hiyori_m10.motion3.json",
           "FadeInTime": 0.5,
           "FadeOutTime": 0.5
         }

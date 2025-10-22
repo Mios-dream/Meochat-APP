@@ -1,11 +1,10 @@
-<template>
+<!-- <template>
   <div id="plugins-content" class="p-12 slide-in">
     <div class="mb-8">
       <h1 class="text-[clamp(1.5rem,3vw,2.5rem)] font-bold mb-2">插件管理</h1>
       <p class="text-gray-500">管理已安装的插件和浏览可用插件</p>
     </div>
 
-    <!-- 插件管理工具栏 -->
     <div
       class="bg-white rounded-xl shadow-soft p-4 mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4"
     >
@@ -43,7 +42,6 @@
       </div>
     </div>
 
-    <!-- 插件列表 -->
     <div class="bg-white rounded-xl shadow-soft overflow-hidden mb-8">
       <div
         class="grid grid-cols-12 py-3 px-6 bg-gray-50 text-sm font-medium text-gray-500 border-b border-gray-100"
@@ -56,7 +54,6 @@
       </div>
 
       <div class="divide-y divide-gray-100">
-        <!-- 插件项 1 -->
         <div class="grid grid-cols-12 py-4 px-6 items-center hover:bg-gray-50 transition-colors">
           <div class="col-span-12 md:col-span-4">
             <div class="flex items-center">
@@ -81,7 +78,6 @@
           </div>
         </div>
 
-        <!-- 插件项 2 -->
         <div class="grid grid-cols-12 py-4 px-6 items-center hover:bg-gray-50 transition-colors">
           <div class="col-span-12 md:col-span-4">
             <div class="flex items-center">
@@ -106,7 +102,6 @@
           </div>
         </div>
 
-        <!-- 插件项 3 -->
         <div class="grid grid-cols-12 py-4 px-6 items-center hover:bg-gray-50 transition-colors">
           <div class="col-span-12 md:col-span-4">
             <div class="flex items-center">
@@ -131,7 +126,6 @@
           </div>
         </div>
 
-        <!-- 插件项 4 -->
         <div class="grid grid-cols-12 py-4 px-6 items-center hover:bg-gray-50 transition-colors">
           <div class="col-span-12 md:col-span-4">
             <div class="flex items-center">
@@ -156,7 +150,6 @@
           </div>
         </div>
 
-        <!-- 插件项 5 -->
         <div class="grid grid-cols-12 py-4 px-6 items-center hover:bg-gray-50 transition-colors">
           <div class="col-span-12 md:col-span-4">
             <div class="flex items-center">
@@ -185,7 +178,6 @@
       </div>
     </div>
 
-    <!-- 可用插件 -->
     <div>
       <div class="flex items-center justify-between mb-6">
         <h3 class="font-semibold text-lg">推荐插件</h3>
@@ -193,7 +185,6 @@
       </div>
 
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <!-- 推荐插件 1 -->
         <div
           class="bg-white rounded-xl shadow-soft overflow-hidden transition-all duration-300 hover:shadow-hover"
         >
@@ -223,7 +214,6 @@
           </div>
         </div>
 
-        <!-- 推荐插件 2 -->
         <div
           class="bg-white rounded-xl shadow-soft overflow-hidden transition-all duration-300 hover:shadow-hover"
         >
@@ -247,7 +237,6 @@
           </div>
         </div>
 
-        <!-- 推荐插件 3 -->
         <div
           class="bg-white rounded-xl shadow-soft overflow-hidden transition-all duration-300 hover:shadow-hover"
         >
@@ -273,4 +262,36 @@
       </div>
     </div>
   </div>
+</template> -->
+
+<template>
+  <div class="background-container">
+    <div class="dashboard-content">
+      <div class="unavailable">暂时不可用</div>
+    </div>
+  </div>
 </template>
+
+<style scoped>
+/* #background-container {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+#dashboard-content {
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+  scrollbar-width: none;
+} */
+
+.unavailable {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-size: 30px;
+}
+</style>

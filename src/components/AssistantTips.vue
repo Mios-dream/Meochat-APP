@@ -3,7 +3,6 @@
   <div id="tips-container">
     <div id="assistant-tips" :class="{ active: isActive }">
       <slot></slot>
-      <font-awesome-icon style="color: #ff96b4" icon="fa-solid fa-heart" />
     </div>
   </div>
 </template>
@@ -63,7 +62,7 @@ defineProps<{
   background-color: rgba(255, 255, 255, 0.8);
   border: 1px solid #ff96b4;
   border-radius: 12px;
-  font-size: v-bind(fontSize || '14px');
+  font-size: v-bind("fontSize || '14px'");
   line-height: 24px;
   margin: 20px 20px;
   min-height: 70px;

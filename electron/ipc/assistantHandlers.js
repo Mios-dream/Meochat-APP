@@ -1,9 +1,10 @@
 import { ipcMain, screen, BrowserWindow } from 'electron'
 import { getAssistantWindow, createAssistantWindow } from '../windows/assistantWindow.js'
-import { getChatBoxWindow } from '../windows/chatBoxWindow.js'
+import { getChatBoxWindow, createChatBoxWindow } from '../windows/chatBoxWindow.js'
 import dragAddon from 'electron-click-drag-plugin'
 import robot from '@jitsi/robotjs'
 import { uIOhook } from 'uiohook-napi'
+import { MicaBrowserWindow } from 'mica-electron'
 
 let mouseTrackingInterval = null
 let isMousePressed = false // 追踪鼠标按下状态
@@ -22,12 +23,12 @@ function initUiohook() {
   if (isUiohookStarted) return
 
   // 监听鼠标按下事件
-  uIOhook.on('mousedown', (e) => {
+  uIOhook.on('mousedown', () => {
     isMousePressed = true
   })
 
   // 监听鼠标释放事件
-  uIOhook.on('mouseup', (e) => {
+  uIOhook.on('mouseup', () => {
     isMousePressed = false
   })
   uIOhook.start()
@@ -55,26 +56,47 @@ function setupChatBoxIPC() {
   })
 
   ipcMain.on('show-assistant-message', (data) => {
-    let assistantWindow = getAssistantWindow()
-    if (assistantWindow && !assistantWindow.isDestroyed()) {
-      assistantWindow.webContents.send('show-assistant-message', data)
-    }
+    // let assistantWindow = getAssistantWindow()
+    // if (assistantWindow && !assistantWindow.isDestroyed()) {
+    //   assistantWindow.webContents.send('show-assistant-message', data)
+    // }
+    BrowserWindow.getAllWindows().forEach((win) => {
+      win.webContents.send('show-assistant-message', data)
+    })
+
+    MicaBrowserWindow.getAllWindows().forEach((win) => {
+      win.webContents.send('show-assistant-message', data)
+    })
   })
 
   ipcMain.on('chat-box:send-message', (event, data) => {
     console.log('show-assistant-message', data)
-    let assistantWindow = getAssistantWindow()
-    if (assistantWindow && !assistantWindow.isDestroyed()) {
-      assistantWindow.webContents.send('chat-box:send-message', data)
-    }
+    // let assistantWindow = getAssistantWindow()
+    // if (assistantWindow && !assistantWindow.isDestroyed()) {
+    //   assistantWindow.webContents.send('chat-box:send-message', data)
+    // }
+    BrowserWindow.getAllWindows().forEach((win) => {
+      win.webContents.send('chat-box:send-message', data)
+    })
+
+    MicaBrowserWindow.getAllWindows().forEach((win) => {
+      win.webContents.send('chat-box:send-message', data)
+    })
   })
 
   ipcMain.on('loading-state-changed', (event, data) => {
     console.log('loading-state-changed', data)
-    let chatBoxWindow = getChatBoxWindow()
-    if (chatBoxWindow && !chatBoxWindow.isDestroyed()) {
-      chatBoxWindow.webContents.send('loading-state-changed', data)
-    }
+    // let chatBoxWindow = getChatBoxWindow()
+    // if (chatBoxWindow && !chatBoxWindow.isDestroyed()) {
+    //   chatBoxWindow.webContents.send('loading-state-changed', data)
+    // }
+    BrowserWindow.getAllWindows().forEach((win) => {
+      win.webContents.send('loading-state-changed', data)
+    })
+
+    MicaBrowserWindow.getAllWindows().forEach((win) => {
+      win.webContents.send('loading-state-changed', data)
+    })
   })
 }
 
@@ -140,7 +162,9 @@ function setupAssistantIPC() {
 
     // 每100ms检查鼠标状态
     mouseTrackingInterval = setInterval(() => {
-      try {
+      if (assistantWin.isDestroyed()) {
+        cleanupMouseTracking()
+      } else {
         const mousePos = robot.getMousePos()
         const windowBounds = assistantWin.getBounds()
 
@@ -153,9 +177,6 @@ function setupAssistantIPC() {
           windowHeight: windowBounds.height,
           isMouseDown: isMousePressed, // 使用 uiohook 追踪的状态
         })
-      } catch (error) {
-        console.error('Error getting mouse position:', error)
-        cleanupMouseTracking()
       }
     }, 100)
   })

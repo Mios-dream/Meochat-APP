@@ -1,13 +1,7 @@
 import { BrowserWindow, globalShortcut } from 'electron'
-import path from 'path'
-import { fileURLToPath } from 'url'
-import { dirname } from 'path'
 import { createChatBoxWindow } from './chatBoxWindow.js'
 import Store from 'electron-store'
-
-// 在 ESM 中获取 __dirname 的等效方法
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = dirname(__filename)
+import { getAppUrl, getPreloadPath, isDevelopment } from '../utils/pathResolve.js'
 
 // 创建配置存储实例
 const store = new Store()
@@ -56,8 +50,11 @@ function createAssistantWindow() {
     ignoreMouseEvents: true, // 默认忽略鼠标事件
     hasShadow: false,
     webPreferences: {
+      // preload: path.join(__dirname, '../preload/assistantPreload.js'),
+      preload: getPreloadPath('assistantPreload.js'),
       contextIsolation: true,
-      preload: path.join(__dirname, '../preload/assistantPreload.js'),
+      sandbox: false,
+      nodeIntegration: false,
     },
   })
   assistantWindow.setIgnoreMouseEvents(false) // 初始可交互
@@ -67,8 +64,14 @@ function createAssistantWindow() {
     createChatBoxWindow()
   })
 
-  // 加载助手页面
-  assistantWindow.loadURL(`http://localhost:5173/#/assistant`)
+  console.log('getAppUrl:', getAppUrl())
+  if (isDevelopment()) {
+    assistantWindow.loadURL(getAppUrl() + '#/assistant')
+  } else {
+    assistantWindow.loadFile(getAppUrl(), {
+      hash: '/assistant',
+    })
+  }
 
   assistantWindow.webContents.openDevTools({ mode: 'detach' })
 
@@ -76,12 +79,17 @@ function createAssistantWindow() {
     assistantWindow.show()
   })
 
-  assistantWindow.on('closed', () => {
+  assistantWindow.on('before-quite', () => {
     if (assistantWindow) {
       store.set('assistantWindowBounds', assistantWindow.getBounds())
+      console.log('保存窗口位置：', assistantWindow.getBounds())
+    } else {
+      console.log('assistantWindow is null')
     }
-    assistantWindow = null
+  })
 
+  assistantWindow.on('closed', () => {
+    assistantWindow = null
     globalShortcut.unregisterAll()
   })
 

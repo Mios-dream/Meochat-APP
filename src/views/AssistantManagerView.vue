@@ -1,9 +1,9 @@
 <template>
-  <div id="background-container">
-    <div id="assistant-content" class="p-12 slide-in">
-      <div class="mb-8">
-        <h1 class="text-[clamp(1.5rem,3vw,2.5rem)] font-bold mb-2">助手管理</h1>
-        <p class="text-gray-500">管理助手状态、配置和相关信息</p>
+  <div class="background-container">
+    <div class="dashboard-content">
+      <div style="margin: 8px">
+        <h1 class="page-title">助手管理</h1>
+        <p class="page-title-description">管理助手状态、配置和相关信息</p>
       </div>
       <div id="assistant-container-background">
         <div id="assistant-container-background-inner"></div>
@@ -326,12 +326,6 @@ onMounted(() => {
 </script>
 
 <style>
-#background-container {
-  width: 100%;
-  height: 100%;
-  overflow: hidden;
-}
-
 #assistant-container-background {
   width: 100%;
   height: 500px;

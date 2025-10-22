@@ -1,12 +1,6 @@
 // electron/windows/chatBoxWindow.js
 import { BrowserWindow, screen } from 'electron'
-import path from 'path'
-import { fileURLToPath } from 'url'
-import { dirname } from 'path'
-
-// 在 ESM 中获取 __dirname 的等效方法
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = dirname(__filename)
+import { getAppUrl, getPreloadPath, isDevelopment } from '../utils/pathResolve.js'
 
 let chatBoxWindow = null
 
@@ -23,6 +17,7 @@ export function createChatBoxWindow() {
   const windowWidth = Math.floor(screenWidth / 2)
   const windowHeight = 200
   const x = Math.floor((screenWidth - windowWidth) / 2)
+  // 距离底部抬升
   const targetY = screenHeight - 200 // 目标位置
 
   chatBoxWindow = new BrowserWindow({
@@ -37,11 +32,20 @@ export function createChatBoxWindow() {
     resizable: false,
     webPreferences: {
       contextIsolation: true,
-      preload: path.join(__dirname, '../preload/assistantPreload.js'),
+      sandbox: false,
+      nodeIntegration: false,
+      preload: getPreloadPath('assistantPreload.js'),
     },
   })
 
-  chatBoxWindow.loadURL('http://localhost:5173/#/chat-box')
+  if (isDevelopment()) {
+    chatBoxWindow.loadURL(getAppUrl() + '#/chat-box')
+  } else {
+    chatBoxWindow.loadFile(getAppUrl(), {
+      hash: '/chat-box',
+    })
+  }
+
   chatBoxWindow.webContents.openDevTools({ mode: 'detach' })
 
   chatBoxWindow.on('closed', () => {

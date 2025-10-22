@@ -1,7 +1,6 @@
-<template>
+<!-- <template>
   <div id="background-container">
     <div id="dashboard-content" class="p-12 slide-in">
-      <!-- 欢迎区域 -->
       <div class="mb-8">
         <h1 class="text-[clamp(1.5rem,3vw,2.5rem)] font-bold mb-2">欢迎回来，阁下</h1>
         <p class="text-gray-500">
@@ -10,7 +9,6 @@
         </p>
       </div>
 
-      <!-- 状态卡片 -->
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         <div
           class="bg-white rounded-xl shadow-soft p-6 transition-all duration-300 hover:shadow-hover transform hover:-translate-y-1"
@@ -81,9 +79,7 @@
         </div>
       </div>
 
-      <!-- 图表和快速操作 -->
       <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-        <!-- 统计表格 -->
         <div class="lg:col-span-2 bg-white rounded-xl shadow-soft p-6">
           <h3 class="font-semibold text-lg mb-6">时间统计</h3>
           <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
@@ -118,7 +114,6 @@
           </div>
         </div>
 
-        <!-- 快速操作 -->
         <div class="bg-white rounded-xl shadow-soft p-6">
           <h3 class="font-semibold text-lg mb-6">快速操作</h3>
           <div class="grid grid-cols-2 gap-4">
@@ -162,9 +157,7 @@
         </div>
       </div>
 
-      <!-- 插件和任务列表 -->
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <!-- 最近活动插件 -->
         <div class="bg-white rounded-xl shadow-soft p-6">
           <div class="flex items-center justify-between mb-6">
             <h3 class="font-semibold text-lg">活跃插件</h3>
@@ -247,7 +240,6 @@
           </div>
         </div>
 
-        <!-- 即将进行的任务 -->
         <div class="bg-white rounded-xl shadow-soft p-6">
           <div class="flex items-center justify-between mb-6">
             <h3 class="font-semibold text-lg">即将进行的任务</h3>
@@ -336,7 +328,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import Chart from 'chart.js/auto'
+// import Chart from 'chart.js/auto'
 
 const statisticsData = [
   { label: '平均首字', value: '4.38', unit: 's', change: '+0.2s' },
@@ -357,7 +349,7 @@ onMounted(() => {
 })
 </script>
 
-<style>
+<style scoped>
 #background-container {
   width: 100%;
   height: 100%;
@@ -368,6 +360,25 @@ onMounted(() => {
   width: 100%;
   height: 100%;
   overflow: auto;
-  scrollbar-width: none; /* Firefox */
+  scrollbar-width: none;
+}
+</style> -->
+
+<template>
+  <div class="background-container">
+    <div class="dashboard-content">
+      <div class="unavailable">暂时不可用</div>
+    </div>
+  </div>
+</template>
+
+<style scoped>
+.unavailable {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-size: 30px;
 }
 </style>

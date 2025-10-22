@@ -1,6 +1,5 @@
-import globalAPI from './sharePreload.js'
-
 import { contextBridge, ipcRenderer } from 'electron'
+import globalAPI from './sharePreload.js'
 
 contextBridge.exposeInMainWorld('api', {
   ...globalAPI,

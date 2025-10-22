@@ -32,7 +32,11 @@ import { MicrophoneManager } from '../utils/MicrophoneManager'
 import AssistantTips from '../components/AssistantTips.vue'
 import ContextMenu from '../components/Live2dToolbar.vue'
 import LoadingProgress from '../components/LoadingProgress.vue'
-import Config from '../config/config'
+import { useConfigStore } from '@/stores/useConfigStore'
+import { storeToRefs } from 'pinia'
+
+const configStore = useConfigStore()
+const { config } = storeToRefs(configStore)
 
 // 状态管理,是否锁定助手位置
 const isLocked = ref(JSON.parse(localStorage.getItem('assistantSettings') || '{}').locked || true)
@@ -62,8 +66,11 @@ micManager.setRecognitionCallback((data) => {
   }
 })
 
-// 连接到 WebSocket 服务
-micManager.connectToServer(Config.wsUrl + '/asr_ws_plus')
+// 获取麦克风权限
+micManager.getPermissionStatus().then((status) => {
+  console.log('麦克风权限状态:', status)
+})
+const wsUrl = computed(() => `ws://${config.value.baseUrl}/api/asr_ws_plus`)
 
 // 计算属性
 const contextMenuItems = computed(() => [
@@ -93,18 +100,18 @@ function toggleLock() {
 }
 
 function openSettings() {
-  window.assistantAPI.ipcRenderer.send('app:maximize', null)
+  window.api.ipcRenderer.send('app:maximize', null)
   hideContextMenu()
 }
 
 function closeApp() {
-  window.assistantAPI.ipcRenderer.send('app:quite', null)
+  window.api.ipcRenderer.send('app:quite', null)
   hideContextMenu()
 }
 
 function handleMouseDown(event: MouseEvent) {
   if (event.button !== 0 || contextMenuVisible.value || isLocked.value) return
-  window.assistantAPI.startDrag()
+  window.api.startDrag()
 }
 
 function showContextMenu(event: MouseEvent) {
@@ -153,25 +160,29 @@ function hideContextMenu() {
 }
 
 onMounted(async () => {
-  // 开始录音
-  micManager
-    .startRecording()
-    .then(() => {
-      console.log('开始录音')
-    })
-    .catch((error) => {
-      console.error('录音启动失败:', error)
-    })
+  if (config.value.autoChat) {
+    // 连接到 WebSocket 服务
+    micManager.connectToServer(wsUrl.value)
+    // 开始录音
+    micManager
+      .startRecording()
+      .then(() => {
+        console.log('开始录音')
+      })
+      .catch((error) => {
+        console.error('录音启动失败:', error)
+      })
+  }
 
   // 接收来自主进程的消息，是否显示消息
-  window.assistantAPI.ipcRenderer.on('show-assistant-message', (event, data) => {
+  window.api.ipcRenderer.on('show-assistant-message', (event, data) => {
     chatService.showTempMessage(data.text, data.timeout, data.priority)
   })
 
-  window.assistantAPI.ipcRenderer.on('chat-box:send-message', async (event, data) => {
+  window.api.ipcRenderer.on('chat-box:send-message', async (event, data) => {
     console.log('收到请求:', data)
     await chatService.sendMessage(data.text).then(() => {
-      window.assistantAPI.ipcRenderer.send('loading-state-changed', false)
+      window.api.ipcRenderer.send('loading-state-changed', false)
     })
   })
 
@@ -186,7 +197,9 @@ onMounted(async () => {
 
   try {
     // 初始化Live2D模型
-    await live2DManager.init('l2d-canvas', '/public/兔绒dlc/兔绒dlc.model3.json')
+    await live2DManager.init('l2d-canvas', './turong/turong.model3.json')
+
+    live2DManager.initListeners()
 
     loadingProgress.value = 100
 
@@ -209,6 +222,8 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  window.api.ipcRenderer.removeAllListeners('show-assistant-message')
+  window.api.ipcRenderer.removeAllListeners('chat-box:send-message')
   live2DManager.destroy()
 })
 </script>
