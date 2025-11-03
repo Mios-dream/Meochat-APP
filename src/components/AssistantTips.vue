@@ -9,7 +9,7 @@
 
 <script setup lang="ts">
 import { onMounted } from 'vue'
-import { ChatService } from '../utils/ChatService'
+import { ChatService } from '../server/ChatService'
 const chatService = ChatService.getInstance()
 // 初始化聊天服务
 

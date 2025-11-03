@@ -132,7 +132,10 @@
               <label for="lock-assistant">随机行为</label>
               <div class="description">助手偶尔会和阁下产生互动</div>
             </div>
-            <ToggleSwitch v-model="isLocked" />
+            <ToggleSwitch
+              :model-value="config.idleEvent"
+              @update:model-value="(v) => change('idleEvent', v)"
+            />
           </form>
           <div class="divider"></div>
           <form class="setting-from">
@@ -166,8 +169,8 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, Ref, watch } from 'vue'
-import { ChatService } from '../utils/ChatService'
-import { Live2DManager } from '../utils/Live2dManager'
+import { ChatService } from '../server/ChatService'
+import { Live2DManager } from '../server/Live2dManager'
 import AssistantTips from '../components/AssistantTips.vue'
 import LoadingProgress from '../components/LoadingProgress.vue'
 import BlurModal from '../components/BlurModal.vue'
@@ -216,7 +219,7 @@ onMounted(async () => {
 
   window.api.ipcRenderer.on('chat-box:send-message', async (event, data) => {
     console.log('收到请求:', data)
-    await chatService.sendMessage(data.text).then(() => {
+    await chatService.chat(data.text).then(() => {
       window.api.ipcRenderer.send('loading-state-changed', false)
     })
   })

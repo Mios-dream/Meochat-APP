@@ -1,5 +1,5 @@
 // electron/ipc/mainHandlers.js
-import { ipcMain, app } from 'electron'
+import { ipcMain, app, shell } from 'electron'
 import { getMainWindow } from '../windows/mainWindow.js'
 
 function setupMainIPC() {
@@ -22,6 +22,7 @@ function setupMainIPC() {
     const win = getMainWindow()
     if (win) {
       if (win.isMaximized()) {
+        win.setBounds({ width: 1200, height: 800 })
         win.unmaximize()
       } else {
         win.show()
@@ -32,6 +33,10 @@ function setupMainIPC() {
 
   ipcMain.on('app:quit', () => {
     app.quit()
+  })
+
+  ipcMain.on('open-external', (event, url) => {
+    shell.openExternal(url)
   })
 }
 

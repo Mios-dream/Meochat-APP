@@ -3,7 +3,7 @@ import { FuseV1Options, FuseVersion } from '@electron/fuses'
 
 export default {
   packagerConfig: {
-    icon: './asset/icon/app_small',
+    icon: './asset/icon/app',
     prune: true,
     ignore: [
       // 忽略开发相关文件

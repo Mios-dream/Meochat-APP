@@ -1,6 +1,10 @@
 // electron/windows/chatBoxWindow.js
 import { BrowserWindow, screen } from 'electron'
 import { getAppUrl, getPreloadPath, isDevelopment } from '../utils/pathResolve.js'
+import Store from 'electron-store'
+
+// 创建配置存储实例
+const store = new Store()
 
 let chatBoxWindow = null
 
@@ -46,7 +50,9 @@ export function createChatBoxWindow() {
     })
   }
 
-  chatBoxWindow.webContents.openDevTools({ mode: 'detach' })
+  if (store.get('debugMode')) {
+    chatBoxWindow.webContents.openDevTools({ mode: 'detach' })
+  }
 
   chatBoxWindow.on('closed', () => {
     chatBoxWindow = null

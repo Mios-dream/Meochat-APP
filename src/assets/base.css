@@ -5,12 +5,15 @@
 .page-title {
   font-size: clamp(1.5rem, 3vw, 2.5rem);
   font-weight: bold;
+  margin-top: 10px;
   margin-bottom: 10px;
 }
 
 .page-title-description {
   font-size: 16px;
   color: gray;
+  margin-top: 5px;
+  margin-bottom: 20px;
 }
 
 .background-container {
@@ -21,6 +24,8 @@
 .dashboard-content {
   width: 100%;
   height: 100%;
-  overflow: hidden;
+  overflow-y: auto;
   padding: 30px 50px;
+
+  scrollbar-width: none;
 }

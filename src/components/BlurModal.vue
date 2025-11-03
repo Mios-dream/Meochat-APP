@@ -65,7 +65,8 @@ const handleOverlayClick = () => {
 }
 
 .blur-modal-container {
-  background: #f6eef1bd;
+  /* background: #f6eef1bd; */
+  background: rgba(255, 255, 255, 0.5);
   backdrop-filter: blur(20px);
   border-radius: 15px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);

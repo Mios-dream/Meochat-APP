@@ -1,7 +1,7 @@
 import { Live2DModel, config } from 'pixi-live2d-display-lipsyncpatch'
 import * as PIXI from 'pixi.js'
 // import { ChatService } from '../utils/ChatService'
-import throttle from './Throttle'
+import throttle from '../utils/Throttle'
 
 // 设置模型配置
 config.motionFadingDuration = 500

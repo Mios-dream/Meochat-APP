@@ -9,6 +9,10 @@ export const useConfigStore = defineStore('config', () => {
     autoStartOnBoot: false,
     autoUpdate: true,
     autoChat: false,
+    debugMode: false,
+    silentMode: false,
+    idleEvent: true,
+    idleTime: 2,
   })
 
   async function loadConfig() {

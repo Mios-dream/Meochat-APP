@@ -1,4 +1,4 @@
-import { BrowserWindow, globalShortcut } from 'electron'
+import { BrowserWindow, globalShortcut, screen } from 'electron'
 import { createChatBoxWindow } from './chatBoxWindow.js'
 import Store from 'electron-store'
 import { getAppUrl, getPreloadPath, isDevelopment } from '../utils/pathResolve.js'
@@ -73,13 +73,15 @@ function createAssistantWindow() {
     })
   }
 
-  assistantWindow.webContents.openDevTools({ mode: 'detach' })
+  if (store.get('debugMode')) {
+    assistantWindow.webContents.openDevTools({ mode: 'detach' })
+  }
 
   assistantWindow.once('ready-to-show', () => {
     assistantWindow.show()
   })
 
-  assistantWindow.on('before-quite', () => {
+  assistantWindow.on('close', () => {
     if (assistantWindow) {
       store.set('assistantWindowBounds', assistantWindow.getBounds())
       console.log('保存窗口位置：', assistantWindow.getBounds())

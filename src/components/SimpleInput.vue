@@ -107,6 +107,8 @@ const handleBlur = async () => {
           emit('validated', true)
         } else {
           localError.value = props.validationErrorMessage
+          // 验证失败但依然更新
+          emit('update:modelValue', localValue.value)
           emit('validated', false)
         }
       } catch (error) {

@@ -58,18 +58,14 @@
           "FadeInTime": 0.5,
           "FadeOutTime": 0.5
         },
-        {
-          "File": "motions/idle_1.motion3.json",
-          "FadeInTime": 0.5,
-          "FadeOutTime": 0.5
-        },
-        {
-          "File": "motions/idle_1.motion3.json",
-          "FadeInTime": 0.5,
-          "FadeOutTime": 0.5
-        },
+
         {
           "File": "motions/Hiyori_m02.motion3.json",
+          "FadeInTime": 0.5,
+          "FadeOutTime": 0.5
+        },
+        {
+          "File": "motions/idle_1.motion3.json",
           "FadeInTime": 0.5,
           "FadeOutTime": 0.5
         },
@@ -84,12 +80,13 @@
           "FadeOutTime": 0.5
         },
         {
-          "File": "motions/Hiyori_m06.motion3.json",
+          "File": "motions/idle_1.motion3.json",
           "FadeInTime": 0.5,
           "FadeOutTime": 0.5
         },
+
         {
-          "File": "motions/Hiyori_m07.motion3.json",
+          "File": "motions/Hiyori_m06.motion3.json",
           "FadeInTime": 0.5,
           "FadeOutTime": 0.5
         },
@@ -99,7 +96,7 @@
           "FadeOutTime": 0.5
         },
         {
-          "File": "motions/Hiyori_m09.motion3.json",
+          "File": "motions/Hiyori_m07.motion3.json",
           "FadeInTime": 0.5,
           "FadeOutTime": 0.5
         }

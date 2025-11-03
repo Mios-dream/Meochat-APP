@@ -26,14 +26,15 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed, Ref } from 'vue'
-import { ChatService } from '../utils/ChatService'
-import { Live2DManager } from '../utils/Live2dManager'
-import { MicrophoneManager } from '../utils/MicrophoneManager'
+import { ChatService } from '../server/ChatService'
+import { Live2DManager } from '../server/Live2dManager'
+import { MicrophoneManager } from '../server/MicrophoneManager'
 import AssistantTips from '../components/AssistantTips.vue'
 import ContextMenu from '../components/Live2dToolbar.vue'
 import LoadingProgress from '../components/LoadingProgress.vue'
 import { useConfigStore } from '@/stores/useConfigStore'
 import { storeToRefs } from 'pinia'
+import { InteractionSystem } from '@/server/InteractionSystem/InteractionSystem'
 
 const configStore = useConfigStore()
 const { config } = storeToRefs(configStore)
@@ -53,6 +54,7 @@ const currentTip: Ref<string> = ref('')
 // 组件实例
 const live2DManager = Live2DManager.getInstance()
 const chatService = ChatService.getInstance()
+const interactionSystem = InteractionSystem.getInstance()
 
 // 创建麦克风管理器实例
 const micManager = new MicrophoneManager()
@@ -62,7 +64,7 @@ micManager.setRecognitionCallback((data) => {
   console.log('识别结果:', data)
   const jsonData = JSON.parse(data)
   if (jsonData.withAssistant === true) {
-    chatService.sendMessage(jsonData.data)
+    chatService.chat(jsonData.data)
   }
 })
 
@@ -173,6 +175,7 @@ onMounted(async () => {
         console.error('录音启动失败:', error)
       })
   }
+  interactionSystem.start()
 
   // 接收来自主进程的消息，是否显示消息
   window.api.ipcRenderer.on('show-assistant-message', (event, data) => {
@@ -181,7 +184,7 @@ onMounted(async () => {
 
   window.api.ipcRenderer.on('chat-box:send-message', async (event, data) => {
     console.log('收到请求:', data)
-    await chatService.sendMessage(data.text).then(() => {
+    await chatService.chat(data.text).then(() => {
       window.api.ipcRenderer.send('loading-state-changed', false)
     })
   })
@@ -222,6 +225,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  interactionSystem.stop()
   window.api.ipcRenderer.removeAllListeners('show-assistant-message')
   window.api.ipcRenderer.removeAllListeners('chat-box:send-message')
   live2DManager.destroy()

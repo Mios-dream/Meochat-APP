@@ -168,6 +168,7 @@ body {
   padding: 0;
   width: 100%;
   overflow: hidden;
+  background: transparent;
 }
 
 main {
@@ -296,7 +297,7 @@ main {
   border: 2px solid rgb(232, 232, 232);
   background-color: white;
   position: relative;
-  box-shadow: 0 0 10px #4f4f4f58;
+  box-shadow: 0 0 10px #4f4f4f28;
   transition: all 0.2s ease-in-out;
 }
 .special-tab:hover {

@@ -1,4 +1,4 @@
-import { MessageTips } from './MessageTips'
+import { MessageTips } from '@/server/MessageTips'
 import { Live2DManager } from './Live2dManager'
 import { useConfigStore } from '@/stores/useConfigStore'
 import { computed } from 'vue'
@@ -11,6 +11,11 @@ interface ChatMessage {
 interface StreamData {
   type: 'text' | 'audio' | 'complete'
   data: string
+}
+
+interface TextAndAudioData {
+  text: string
+  audio: string
 }
 
 class ChatService {
@@ -106,8 +111,71 @@ class ChatService {
    * @param message 消息内容
    * @returns Promise<boolean> 是否成功发送
    */
+  public async chat(message: string): Promise<boolean> {
+    if (!message || !message.trim()) {
+      return false
+    }
+    // 停止正在播放的对话和消息
+    this.interruptCurrentPlayback()
+
+    // 重置
+    this.accumulatedText = ''
+    this.audioQueue = []
+    this.textBuffer = ''
+
+    try {
+      this.chatHistory.push({ role: 'user', content: message })
+
+      // 创建 AbortController 用于可能的中断
+      this.abortController = new AbortController()
+
+      const response = await fetch(this.apiUrl.value, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          msg: this.chatHistory,
+        }),
+        signal: this.abortController.signal, // 添加信号用于中断
+      })
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
+      const reader = response.body!.getReader()
+      const decoder = new TextDecoder()
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) {
+          if (this.textBuffer.trim()) {
+            this.parseStreamChunk(this.textBuffer)
+          }
+          break
+        }
+
+        const chunk = decoder.decode(value, { stream: true })
+        this.processStreamData(chunk)
+      }
+      return true
+    } catch (error) {
+      // 检查是否是因为中断导致的错误
+      if ((error as Error).name === 'AbortError') {
+        console.log('请求被中断')
+        return false
+      }
+
+      console.error('请求失败:', error)
+      this.messageTips.showMessage('发送消息失败，请稍后重试', 3000, 1)
+      this.chatHistory.pop()
+      return false
+    }
+  }
+
   public async sendMessage(message: string): Promise<boolean> {
-    if (!message.trim()) {
+    if (!message || !message.trim()) {
       return false
     }
     // 停止正在播放的对话和消息
@@ -260,6 +328,12 @@ class ChatService {
     }
   }
 
+  public handleTextAndAudio(data: TextAndAudioData): void {
+    this.handleTextData(data.text)
+    this.handleAudioData(data.audio)
+    this.accumulatedText = ''
+  }
+
   /**
    * 处理文本数据
    * @param text 文本数据
@@ -314,17 +388,19 @@ class ChatService {
    */
   private base64ToBlob(base64: string, mimeType: string): Blob {
     try {
-      const cleanBase64 = base64.replace(/\s/g, '')
-      const standardBase64 = cleanBase64
-        .replace(/-/g, '+')
-        .replace(/_/g, '/')
-        .padEnd(cleanBase64.length + ((4 - (cleanBase64.length % 4)) % 4), '=')
+      // 取消url安全的替换
+      // const cleanBase64 = base64.replace(/\s/g, '')
+      // const standardBase64 = cleanBase64
+      //   .replace(/-/g, '+')
+      //   .replace(/_/g, '/')
+      //   .padEnd(cleanBase64.length + ((4 - (cleanBase64.length % 4)) % 4), '=')
 
-      if (!/^[A-Za-z0-9+/]*={0,2}$/.test(standardBase64)) {
-        throw new Error('Invalid base64 format')
-      }
+      // if (!/^[A-Za-z0-9+/]*={0,2}$/.test(standardBase64)) {
+      //   throw new Error('Invalid base64 format')
+      // }
 
-      const byteCharacters = atob(standardBase64)
+      // const byteCharacters = atob(standardBase64)
+      const byteCharacters = atob(base64)
       const byteNumbers = new Array(byteCharacters.length)
 
       for (let i = 0; i < byteCharacters.length; i++) {
@@ -415,4 +491,4 @@ class ChatService {
   }
 }
 
-export { ChatService, ChatMessage }
+export { ChatService, ChatMessage, TextAndAudioData }

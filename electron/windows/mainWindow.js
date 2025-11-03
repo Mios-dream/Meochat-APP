@@ -3,6 +3,13 @@ import { powerMonitor, app } from 'electron'
 import { MicaBrowserWindow, IS_WINDOWS_11, WIN10 } from 'mica-electron'
 import path from 'path'
 import { getAppUrl, getPreloadPath, isDevelopment } from '../utils/pathResolve.js'
+import Store from 'electron-store'
+
+// 创建配置存储实例
+const store = new Store()
+// 检查是否是开机自启
+const isAutoStarted = process.argv.includes('--auto-start')
+
 /*
  * 根据当前电源配置和系统更新窗口效果
  */
@@ -15,7 +22,6 @@ function updateWindowEffect() {
   // 否则使用Acrylic
   if (IS_WINDOWS_11) {
     mainWindow.setMicaAcrylicEffect()
-    // mainWindow.setMicaEffect()
     return
   }
   if (WIN10) {
@@ -39,9 +45,15 @@ function createMainWindow() {
   mainWindow = new MicaBrowserWindow({
     width: 1200,
     height: 800,
+    minWidth: 1200, // 添加最小宽度
+    minHeight: 800,
     icon: path.join(app.getAppPath(), 'asset', 'icon', 'app_small.ico'),
-    frame: false,
     resizable: true,
+    autoHideMenuBar: true,
+    frame: false,
+    thickFrame: true,
+    show: false,
+    transparent: true,
     webPreferences: {
       devTools: true,
       preload: getPreloadPath('mainPreload.js'),
@@ -50,6 +62,8 @@ function createMainWindow() {
     },
   })
   updateWindowEffect()
+
+  mainWindow.resizable = true
 
   powerMonitor.on('on-ac', () => {
     updateWindowEffect()
@@ -69,10 +83,15 @@ function createMainWindow() {
   } else {
     mainWindow.loadFile(getAppUrl())
   }
-  // 打开开发者工具
-  mainWindow.webContents.openDevTools({ mode: 'detach' })
 
-  mainWindow.once('did-finish-load', () => {
+  if (store.get('debugMode')) {
+    mainWindow.webContents.openDevTools({ mode: 'detach' })
+  }
+
+  mainWindow.webContents.once('dom-ready', () => {
+    if (store.get('silentMode') && isAutoStarted) {
+      return
+    }
     mainWindow.show()
   })
 

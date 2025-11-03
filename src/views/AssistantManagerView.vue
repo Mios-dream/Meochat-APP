@@ -107,184 +107,27 @@
           </div>
         </button>
       </div>
-
-      <!-- 资源使用和信息 -->
-      <!-- <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-      <div class="lg:col-span-2 bg-white rounded-xl shadow-soft p-6">
-        <h3 class="font-semibold text-lg mb-6">资源使用情况</h3>
-        <div class="space-y-6">
-          <div>
-            <div class="flex justify-between mb-2">
-              <span class="text-sm font-medium">CPU 使用率</span>
-              <span class="text-sm font-medium">24%</span>
-            </div>
-            <div class="w-full bg-gray-100 rounded-full h-2.5">
-              <div class="bg-primary h-2.5 rounded-full" style="width: 24%"></div>
-            </div>
+      <div class="assistant-select-container">
+        <div class="title">助手列表</div>
+        <div class="assistant-list">
+          <div class="assistant-item active"></div>
+          <div class="assistant-item add-assistant" @click="openAddAssistantDialog">
+            <font-awesome-icon icon="fa-solid fa-plus" />
           </div>
-
-          <div>
-            <div class="flex justify-between mb-2">
-              <span class="text-sm font-medium">内存使用率</span>
-              <span class="text-sm font-medium">32%</span>
-            </div>
-            <div class="w-full bg-gray-100 rounded-full h-2.5">
-              <div class="bg-secondary h-2.5 rounded-full" style="width: 32%"></div>
-            </div>
-          </div>
-
-          <div>
-            <div class="flex justify-between mb-2">
-              <span class="text-sm font-medium">磁盘使用率</span>
-              <span class="text-sm font-medium">18%</span>
-            </div>
-            <div class="w-full bg-gray-100 rounded-full h-2.5">
-              <div class="bg-accent h-2.5 rounded-full" style="width: 18%"></div>
-            </div>
-          </div>
-
-          <div>
-            <div class="flex justify-between mb-2">
-              <span class="text-sm font-medium">网络流量</span>
-              <span class="text-sm font-medium">上行: 128KB/s 下行: 456KB/s</span>
-            </div>
-            <div class="w-full bg-gray-100 rounded-full h-2.5">
-              <div class="gradient-bg h-2.5 rounded-full" style="width: 45%"></div>
-            </div>
-          </div>
-        </div>
-      </div> -->
-
-      <!-- 助手信息 -->
-      <!-- <div class="bg-white rounded-xl shadow-soft p-6">
-        <h3 class="font-semibold text-lg mb-6">助手信息</h3>
-        <div class="space-y-4">
-          <div class="flex justify-between pb-3 border-b border-gray-100">
-            <span class="text-gray-500">核心版本</span>
-            <span class="font-medium">v0.0.1</span>
-          </div>
-          <div class="flex justify-between pb-3 border-b border-gray-100">
-            <span class="text-gray-500">更新时间</span>
-            <span class="font-medium">2025-09-30</span>
-          </div>
-          <div class="flex justify-between pb-3 border-b border-gray-100">
-            <span class="text-gray-500">核心状态</span>
-            <span class="text-green-500 flex items-center">
-              <i class="fa fa-check-circle mr-1"></i> 正常
-            </span>
-          </div>
-          <div class="flex justify-between pb-3 border-b border-gray-100">
-            <span class="text-gray-500">已安装插件</span>
-            <span class="font-medium">12 个</span>
-          </div>
-        </div>
-
-        <button
-          class="mt-6 w-full py-2.5 gradient-bg text-white rounded-lg hover:opacity-90 transition-opacity flex items-center justify-center"
-        >
-          <i class="fa fa-info-circle mr-2"></i> 查看详细信息
-        </button>
-      </div>
-    </div> -->
-
-      <!-- 助手配置 -->
-      <!-- <div class="bg-white rounded-xl shadow-soft p-6">
-      <div class="flex items-center justify-between mb-6">
-        <h3 class="font-semibold text-lg">助手配置</h3>
-        <button class="text-secondary text-sm hover:underline transition-colors">
-          高级设置 <i class="fa fa-angle-right ml-1"></i>
-        </button>
-      </div>
-
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div>
-          <label class="block text-sm font-medium text-gray-700 mb-2">唤醒词</label>
-          <input
-            type="text"
-            value="澪"
-            class="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition-colors"
-          />
-        </div>
-
-        <div>
-          <label class="block text-sm font-medium text-gray-700 mb-2">唤醒设置</label>
-          <select
-            class="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition-colors"
-          >
-            <option>不使用语音唤醒</option>
-            <option>使用唤醒词唤醒</option>
-            <option>自定识别</option>
-          </select>
-        </div>
-
-        <div>
-          <label class="block text-sm font-medium text-gray-700 mb-2">调用对话框快捷键</label>
-          <input
-            type="text"
-            value="alt+a"
-            class="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition-colors"
-          />
-        </div>
-
-        <div>
-          <label class="block text-sm font-medium text-gray-700 mb-2">响应速度</label>
-          <select
-            class="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition-colors"
-          >
-            <option>快速</option>
-            <option>平衡</option>
-            <option>详细</option>
-          </select>
         </div>
       </div>
-
-      <div class="mt-6 space-y-4">
-        <div class="flex items-center justify-between">
-          <div>
-            <h4 class="font-medium">启动时自动运行</h4>
-            <p class="text-xs text-gray-500">系统启动时自动启动助手</p>
-          </div>
-          <label class="relative inline-flex items-center cursor-pointer">
-            <input type="checkbox" checked class="sr-only peer" />
-            <div
-              class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-primary rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"
-            ></div>
-          </label>
+      <BlurModal v-model="isVisibleAddAssistantDialog">
+        <div class="add-assistant-dialog">
+          <div class="add-assistant-title">添加助手</div>
         </div>
-
-        <div class="flex items-center justify-between">
-          <div>
-            <h4 class="font-medium">自动更新</h4>
-            <p class="text-xs text-gray-500">自动下载并安装更新</p>
-          </div>
-          <label class="relative inline-flex items-center cursor-pointer">
-            <input type="checkbox" checked class="sr-only peer" />
-            <div
-              class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-primary rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"
-            ></div>
-          </label>
-        </div>
-      </div>
-
-      <div class="mt-6 flex justify-end">
-        <button
-          class="px-6 py-2.5 bg-gray-100 hover:bg-gray-200 text-dark rounded-lg transition-colors mr-3"
-        >
-          取消
-        </button>
-        <button
-          class="px-6 py-2.5 gradient-bg text-white rounded-lg hover:opacity-90 transition-opacity"
-        >
-          保存设置
-        </button>
-      </div>
-    </div> -->
+      </BlurModal>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
+import BlurModal from '../components/BlurModal.vue'
 
 const assistantWorkTime = ref(100)
 
@@ -292,6 +135,8 @@ const assistantWorkTime = ref(100)
 const isAssistantOpen = ref(false)
 
 const currentLove = ref(100) // 当前好感度值
+
+const isVisibleAddAssistantDialog = ref(false)
 
 // 计算进度百分比
 const lovePercentage = computed(() => {
@@ -317,6 +162,10 @@ function closeAssistant() {
   isAssistantOpen.value = false
 }
 
+function openAddAssistantDialog() {
+  isVisibleAddAssistantDialog.value = true
+}
+
 // 当组件挂载时，获取助手状态
 onMounted(() => {
   window.api.getAssistantStatus().then((status: boolean) => {
@@ -325,7 +174,7 @@ onMounted(() => {
 })
 </script>
 
-<style>
+<style scoped>
 #assistant-container-background {
   width: 100%;
   height: 500px;
@@ -661,6 +510,7 @@ onMounted(() => {
   justify-content: start;
   align-items: center;
   padding: 5px;
+  border: none;
 }
 
 #assistant-button-icon {
@@ -678,5 +528,75 @@ onMounted(() => {
   font-size: 20px;
   font-weight: bold;
   margin-left: 20px;
+}
+
+.assistant-select-container {
+  padding: 10px 20px;
+  width: 100%;
+  background-color: white;
+  border-radius: 20px;
+  margin-bottom: 100px;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+}
+
+.assistant-select-container .title {
+  color: #fb7299;
+  font-size: 20px;
+  font-weight: bold;
+}
+
+.assistant-list {
+  width: 100%;
+  display: flex;
+  flex-direction: row;
+  justify-content: flex-start;
+  align-items: center;
+  gap: 20px;
+  overflow-x: auto;
+  box-sizing: border-box;
+  scrollbar-width: thin;
+  scrollbar-color: #ffb3cd #f1f1f1;
+}
+
+.assistant-item {
+  width: 100px;
+  height: 100px;
+  border-radius: 100%;
+  margin-top: 10px;
+  margin-bottom: 10px;
+  border: 8px solid #ffb3cd;
+  background-image: url('/src/assets/images/assistant_avatar_small.png');
+  background-size: cover;
+  background-position: center;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.assistant-item.active {
+  background-color: #ffc2d7;
+}
+
+.add-assistant {
+  display: flex;
+  background-image: none;
+  justify-content: center;
+  align-items: center;
+  font-size: 40px;
+  color: #fb7299;
+  font-weight: bold;
+}
+
+.add-assistant-dialog {
+  width: 80vw;
+  height: 80vh;
+  padding: 30px;
+}
+
+.add-assistant-title {
+  display: flex;
+  font-size: 30px;
+  font-weight: bold;
+  margin-top: 20px;
+  margin-left: 5px;
 }
 </style>

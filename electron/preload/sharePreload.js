@@ -25,6 +25,8 @@ const globalAPI = {
   // 关闭聊天窗口
   closeChatBox: () => ipcRenderer.send('chat-box:close'),
 
+  openExternal: (url) => ipcRenderer.send('open-external', url),
+
   config: {
     get: (key) => ipcRenderer.invoke('config:get', key),
     set: (key, value) => ipcRenderer.invoke('config:set', key, value),
