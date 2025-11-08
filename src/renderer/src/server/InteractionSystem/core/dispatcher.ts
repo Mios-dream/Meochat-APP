@@ -35,7 +35,7 @@ export class ActionDispatcher {
    * 发送动作
    * @param action - 要发送的动作
    */
-  send(action: OutputAction) {
+  send(action: OutputAction): void {
     // 添加元数据
     const actionWithMetadata: OutputAction = {
       ...action,
@@ -58,7 +58,7 @@ export class ActionDispatcher {
    * 执行实际的发送逻辑
    * @param action
    */
-  private async executeSend(action: OutputAction) {
+  private async executeSend(action: OutputAction): Promise<void> {
     // 这里可以集成实际的发送逻辑，比如：
     // - 发送到聊天窗口
     // - 调用语音合成
@@ -86,15 +86,49 @@ export class ActionDispatcher {
 
     const reader = response.body!.getReader()
     const decoder = new TextDecoder()
+
+    // 添加文本缓冲区来处理不完整的数据行
+    let textBuffer = ''
+
     while (true) {
       const { done, value } = await reader.read()
-      if (done) break
+      if (done) {
+        // 处理缓冲区中剩余的数据
+        if (textBuffer.trim()) {
+          this.processStreamData(textBuffer)
+        }
+        break
+      }
+
       const chunk = decoder.decode(value, { stream: true })
-      if (!chunk.startsWith('data: ')) return
+      textBuffer += chunk
+
+      // 按行分割处理数据
+      const lines = textBuffer.split('\n')
+      textBuffer = lines.pop() || '' // 保留最后一个不完整的行
+
+      for (const line of lines) {
+        if (line.trim()) {
+          this.processStreamData(line.trim())
+        }
+      }
+    }
+  }
+
+  /**
+   * 处理流数据
+   * @param chunk 流数据块
+   */
+  private processStreamData(chunk: string): void {
+    if (!chunk.startsWith('data: ')) return
+
+    try {
       const jsonStr = chunk.substring(6)
-      console.log('[Dispatcher] 接收到数据:', jsonStr)
+      // console.log(`[Dispatcher] 接收消息: ${jsonStr}`)
       const data: TextAndAudioData = JSON.parse(jsonStr)
       this.chatService.handleTextAndAudio(data)
+    } catch (error) {
+      console.error('[Dispatcher] 解析JSON数据失败:', error, '原始数据:', chunk)
     }
   }
 
@@ -102,7 +136,7 @@ export class ActionDispatcher {
    * 添加监听器
    * @param listener
    */
-  addListener(listener: (action: OutputAction) => void) {
+  addListener(listener: (action: OutputAction) => void): void {
     this.listeners.push(listener)
   }
 
@@ -110,7 +144,7 @@ export class ActionDispatcher {
    * 移除监听器
    * @param listener
    */
-  removeListener(listener: (action: OutputAction) => void) {
+  removeListener(listener: (action: OutputAction) => void): void {
     const index = this.listeners.indexOf(listener)
     if (index > -1) {
       this.listeners.splice(index, 1)
@@ -121,7 +155,7 @@ export class ActionDispatcher {
    * 通知所有监听器
    * @param action
    */
-  private notifyListeners(action: OutputAction) {
+  private notifyListeners(action: OutputAction): void {
     this.listeners.forEach((listener) => {
       try {
         listener(action)

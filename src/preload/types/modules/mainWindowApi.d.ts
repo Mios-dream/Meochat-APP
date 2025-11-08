@@ -18,13 +18,15 @@ export interface MainWindowApi {
   // 打开外部链接
   openExternal: (url: string) => void
 
+  // 获取当前版本信息
+  getCurrentVersion: () => Promise<string>
+  // 获取更新信息
   checkForUpdate: () => Promise<{
     updateAvailable: boolean
     version?: string
     releaseNotes?: string
     error?: string
   }>
-
   confirmUpdate: () => Promise<void>
   onStatus: (callback: (msg: string) => void) => void
   onProgress: (callback: (percent: number) => void) => void

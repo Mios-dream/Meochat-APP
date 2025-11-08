@@ -1,6 +1,5 @@
 import { ContextManager } from '../server/InteractionSystem/core/context'
 import { ActionDispatcher } from '../server/InteractionSystem/core/dispatcher'
-// import { InteractionEngine } from '@/server/InteractionSystem/core/engine'
 import { IEventHandler } from '../server/InteractionSystem/types/IEventHandler'
 import { EventModule } from '../server/InteractionSystem/types/eventModules'
 
@@ -8,24 +7,24 @@ import { EventModule } from '../server/InteractionSystem/types/eventModules'
 export class TimeEventModule extends EventModule {
   private timeEventsTimer: NodeJS.Timeout | null = null
 
-  start() {
+  start(): void {
     this.scheduleTimeEvents()
   }
 
-  stop() {
+  stop(): void {
     if (this.timeEventsTimer) {
       clearTimeout(this.timeEventsTimer)
       this.timeEventsTimer = null
     }
   }
 
-  private scheduleTimeEvents() {
-    const check = () => {
+  private scheduleTimeEvents(): void {
+    const check = (): void => {
       const h = new Date().getHours()
       if (h === 7) this.eventCenter.emit('time.morning')
       if (h === 12) this.eventCenter.emit('time.noon')
-      if (h === 22) this.eventCenter.emit('time.night')
-      this.timeEventsTimer = setTimeout(check, 60 * 1000)
+      if (h === 23) this.eventCenter.emit('time.night')
+      this.timeEventsTimer = setTimeout(check, 60 * 50 * 1000)
     }
     check()
   }
@@ -37,11 +36,18 @@ export class TimeEventHandler implements IEventHandler {
 
   responseHandlers = {
     'time.morning': () => '早安~ 今天也要元气满满哦！',
-    'time.noon': () => '中午好，记得补充能量！',
-    'time.night': () => '晚安，好梦，阁下！'
+    'time.noon': () => '阁下，中午好，记得补充能量！',
+    'time.night': () => {
+      const messages = [
+        '晚安，好梦，阁下！',
+        '阁下，这么晚了，还不睡吗？连我都有些困了呢。',
+        '阁下，现在是睡觉时间，明天再努力工作吧！'
+      ]
+      return messages[Math.floor(Math.random() * messages.length)]
+    }
   }
 
-  handle(event: string, _contextManager: ContextManager, dispatcher: ActionDispatcher) {
-    dispatcher.send({ text: this.responseHandlers[event] })
+  handle(event: string, _contextManager: ContextManager, dispatcher: ActionDispatcher): void {
+    dispatcher.send({ text: this.responseHandlers[event]() })
   }
 }

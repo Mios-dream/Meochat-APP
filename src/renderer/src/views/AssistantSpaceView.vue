@@ -42,16 +42,16 @@
     <div id="chatBox" :class="{ 'slide-up': isVisible }">
       <input
         id="chatBoxInput"
-        type="text"
-        v-model="inputValue"
-        @keyup.enter="handleSubmit"
         ref="inputRef"
-        :disabled="loading"
+        v-model="inputValue"
+        type="text"
         placeholder="输入消息..."
+        :disabled="loading"
+        @keyup.enter="handleSubmit"
       />
       <div id="role-image"></div>
 
-      <button id="message-icon" @click="handleSubmit" :disabled="loading">
+      <button id="message-icon" :disabled="loading" @click="handleSubmit">
         <font-awesome-icon :icon="loading ? 'spinner' : 'paper-plane'" :spin="loading" />
       </button>
     </div>
@@ -217,7 +217,7 @@ onMounted(async () => {
     chatService.showTempMessage(data.text, data.timeout, data.priority)
   })
 
-  window.api.ipcRenderer.on('chat-box:send-message', async (data) => {
+  window.api.ipcRenderer.on('chat-box:send-message', async (_event, data) => {
     console.log('收到请求:', data)
     await chatService.chat(data.text).then(() => {
       window.api.ipcRenderer.send('loading-state-changed', false)
@@ -272,7 +272,7 @@ onUnmounted(() => {
   live2DManager.destroy()
 })
 
-async function handleSubmit() {
+async function handleSubmit(): Promise<void> {
   // 1️⃣ 验证：检查输入是否为空或正在加载
   if (!inputValue.value.trim() || loading.value) {
     console.log('输入为空或正在加载中')
@@ -310,7 +310,7 @@ async function handleSubmit() {
   }
 }
 
-function switchChatBox() {
+function switchChatBox(): void {
   const tabs = document.getElementById('tabs-container')
 
   if (isVisible.value) {
@@ -322,7 +322,7 @@ function switchChatBox() {
   }
 }
 
-function toggleLock() {
+function toggleLock(): void {
   isLocked.value = !isLocked.value
 }
 
@@ -338,12 +338,15 @@ watch(volume, (newVolume) => {
   configStore.updateConfig('volume', normalizedVolume)
 })
 
-function change<K extends keyof typeof config.value>(key: K, value: any) {
+function change<K extends keyof typeof config.value>(
+  key: K,
+  value: (typeof config.value)[K]
+): void {
   configStore.updateConfig(key, value)
 }
 
 // 在现有函数基础上添加新函数
-function showChatHistory() {
+function showChatHistory(): void {
   // 显示聊天历史弹窗
   showHistoryModal.value = true
 
@@ -351,12 +354,12 @@ function showChatHistory() {
   loadChatHistory()
 }
 
-function closeHistoryModal() {
+function closeHistoryModal(): void {
   // 关闭聊天历史弹窗
   showHistoryModal.value = false
 }
 
-function loadChatHistory() {
+function loadChatHistory(): void {
   // 模拟加载聊天历史
   chatHistory.value = []
 }
@@ -366,12 +369,12 @@ function formatTime(timestamp: Date): string {
   return timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 
-function toggleAssistantSettings() {
+function toggleAssistantSettings(): void {
   // 显示助手设置弹窗
   isVisibleSetting.value = !isVisibleSetting.value
 }
 
-function resetModelPosition() {
+function resetModelPosition(): void {
   // 重置模型位置
   live2DManager.resetModelTransform()
 }
@@ -383,17 +386,6 @@ function resetModelPosition() {
   /* background-color: #fff9f9; */
   background-color: #ffeef0;
   background-image: url('../assets/images/background_circle.png');
-  /* background: linear-gradient(
-    to bottom,
-    #fff3f6 0%,
-    #fff3f6 20%,
-    #fff9f9 25%,
-    #fff9f9 30%,
-    #ffffff 30%,
-    #ffffff 80%,
-    #ffeef0 80%,
-    #ffeef0 100%
-  ); */
 }
 
 .divider {

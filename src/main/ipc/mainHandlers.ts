@@ -4,7 +4,7 @@ import { getAutoUpdater } from '../utils/appUpdater'
 
 const autoUpdater = getAutoUpdater()
 
-function setupMainIPC() {
+function setupMainIPC(): void {
   ipcMain.on('app:show', () => {
     const win = getMainWindow()
     if (win) win.show()
@@ -46,14 +46,18 @@ function setupMainIPC() {
       new Notification({
         title: data.title,
         body: data.body,
-        subtitle: data.subtitle || null,
-        icon: data.icon || '/asset/icon/app_small.ico',
+        subtitle: data.subtitle || 'MoeChat',
+        icon: data.icon || null,
         silent: data.silent || false, // 是否静音
         sound: data.sound || null // 自定义音效
       }).show()
     } else {
       console.log('Notification not supported')
     }
+  })
+
+  ipcMain.handle('get-current-version', () => {
+    return app.getVersion()
   })
 
   // 检测更新
@@ -68,7 +72,7 @@ function setupMainIPC() {
       const result = await autoUpdater.checkForUpdates()
 
       if (!result) {
-        win.webContents.send('update-status', '未找到更新。')
+        win.webContents.send('update-status', '更新程序不可用。')
         return { updateAvailable: false }
       }
 
@@ -93,8 +97,13 @@ function setupMainIPC() {
         releaseNotes: result.updateInfo.releaseNotes
       }
     } catch (error) {
-      win.webContents.send('update-status', '检查更新失败。')
-      return { error: error }
+      const errorObj = error as Error
+      win.webContents.send(
+        'update-status',
+        `检查更新失败,请到项目仓库查看更新或者使用代理重试。${errorObj.message}`
+      )
+      console.error(error)
+      return { error: errorObj.message }
     }
   })
 

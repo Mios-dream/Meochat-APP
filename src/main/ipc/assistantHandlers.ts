@@ -11,7 +11,7 @@ let isMousePressed = false // 追踪鼠标按下状态
 let isUiohookStarted = false // 追踪 uiohook 是否已启动
 
 // 清理鼠标追踪的辅助函数
-function cleanupMouseTracking() {
+function cleanupMouseTracking(): void {
   if (mouseTrackingInterval) {
     clearInterval(mouseTrackingInterval)
     mouseTrackingInterval = null
@@ -19,7 +19,7 @@ function cleanupMouseTracking() {
 }
 
 // 初始化 uiohook 监听器
-function initUiohook() {
+function initUiohook(): void {
   if (isUiohookStarted) return
 
   // 监听鼠标按下事件
@@ -35,7 +35,7 @@ function initUiohook() {
   isUiohookStarted = true
 }
 
-function setupChatBoxIPC() {
+function setupChatBoxIPC(): void {
   ipcMain.on('chat-box:create', () => {
     createChatBoxWindow()
   })
@@ -85,7 +85,6 @@ function setupChatBoxIPC() {
   })
 
   ipcMain.on('loading-state-changed', (_event, data) => {
-    console.log('loading-state-changed', data)
     // let chatBoxWindow = getChatBoxWindow()
     // if (chatBoxWindow && !chatBoxWindow.isDestroyed()) {
     //   chatBoxWindow.webContents.send('loading-state-changed', data)
@@ -100,7 +99,7 @@ function setupChatBoxIPC() {
   })
 }
 
-function setupAssistantIPC() {
+function setupAssistantIPC(): void {
   // 初始化 uiohook
   initUiohook()
 
@@ -195,7 +194,7 @@ function setupAssistantIPC() {
   })
 }
 
-function setupAssistantTogetherIPC() {
+function setupAssistantTogetherIPC(): void {
   setupAssistantIPC()
   setupChatBoxIPC()
 }

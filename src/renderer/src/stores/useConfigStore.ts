@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import type { AppConfig } from '../types/modules/appConfig'
+import type { AppConfig } from '../types/appConfig'
 
 export const useConfigStore = defineStore('config', () => {
   const config = ref<AppConfig>({
@@ -12,20 +12,24 @@ export const useConfigStore = defineStore('config', () => {
     debugMode: false,
     silentMode: false,
     idleEvent: true,
-    idleTime: 2
+    idleTime: 2,
+    assistantEnabled: false
   })
 
-  async function loadConfig() {
+  async function loadConfig(): Promise<void> {
     const data = (await window.api.config.get()) as AppConfig
     config.value = data
   }
 
-  async function updateConfig<K extends keyof AppConfig>(key: K, value: AppConfig[K]) {
+  async function updateConfig<K extends keyof AppConfig>(
+    key: K,
+    value: AppConfig[K]
+  ): Promise<void> {
     await window.api.config.set(key, value)
     config.value[key] = value
   }
 
-  function listenForChanges() {
+  function listenForChanges(): void {
     window.api.config.onChange((newConfig) => {
       console.log('[Config updated]', newConfig)
       config.value = newConfig

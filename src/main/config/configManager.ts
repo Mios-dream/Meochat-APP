@@ -15,12 +15,14 @@ const schema = {
   autoChat: { type: 'boolean', default: false },
 
   idleEvent: { type: 'boolean', default: true },
-  idleTime: { type: 'number', default: 2 }
+  idleTime: { type: 'number', default: 2 },
+  // 助手是否开启
+  assistantEnabled: { type: 'boolean', default: false }
 }
 
 const store = new Store({ schema })
 
-function setupConfigIPC() {
+function setupConfigIPC(): void {
   // 监听配置更新并广播给所有渲染进程
   store.onDidAnyChange(() => {
     BrowserWindow.getAllWindows().forEach((win) => {

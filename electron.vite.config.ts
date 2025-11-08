@@ -22,7 +22,8 @@ export default defineConfig({
     resolve: {
       alias: {
         '@': resolve('src/renderer/src'),
-        '@renderer': resolve('src/renderer/src')
+        '@renderer': resolve('src/renderer/src'),
+        '@preload': resolve('src/preload/src')
       }
     },
     plugins: [vue()]

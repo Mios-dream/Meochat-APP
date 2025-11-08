@@ -30,17 +30,17 @@ const props = withDefaults(defineProps<Props>(), {
   modelValue: false,
   modalClass: '',
   closeOnClickOutside: true,
-  showCloseButton: true,
+  showCloseButton: true
 })
 
 const emit = defineEmits<Emits>()
 
-const closeModal = () => {
+const closeModal = (): void => {
   emit('update:modelValue', false)
   emit('close')
 }
 
-const handleOverlayClick = () => {
+const handleOverlayClick = (): void => {
   if (props.closeOnClickOutside) {
     closeModal()
   }
@@ -70,7 +70,7 @@ const handleOverlayClick = () => {
   backdrop-filter: blur(20px);
   border-radius: 15px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.18);
+  /* border: 1px solid rgba(255, 255, 255, 0.18); */
   position: relative;
   animation: slideIn 0.3s ease;
 }

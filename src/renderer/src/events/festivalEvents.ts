@@ -12,26 +12,26 @@ class FestivalEventHandler implements IEventHandler {
     'festival.christmas': () => '圣诞节快到了，愿你在这特殊的日子里，有更多的快乐和惊喜！'
   }
 
-  handle(event: string, _contextManager: ContextManager, dispatcher: ActionDispatcher) {
-    dispatcher.send({ text: this.responseHandlers[event] })
+  handle(event: string, _contextManager: ContextManager, dispatcher: ActionDispatcher): void {
+    dispatcher.send({ text: this.responseHandlers[event]() })
   }
 }
 // 节日事件模块
 class FestivalEventModule extends EventModule {
   private festivalCheckTimer: NodeJS.Timeout | null = null
 
-  start() {
+  start(): void {
     this.checkFestival()
   }
 
-  stop() {
+  stop(): void {
     if (this.festivalCheckTimer) {
       clearTimeout(this.festivalCheckTimer)
       this.festivalCheckTimer = null
     }
   }
 
-  private checkFestival = () => {
+  private checkFestival = (): void => {
     const now = new Date()
     const date = `${now.getMonth() + 1}-${now.getDate()}`
 

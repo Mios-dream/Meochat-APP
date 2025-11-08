@@ -12,12 +12,22 @@ files:
 asarUnpack:
   - resources/**
 win:
+  icon: build/icon/app.ico
+  publish:
+    # an object provider for github with additional options
+    - provider: github
+      protocol: https
+
   executableName: moechat
 nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
   artifactName: ${name}-${version}-setup.${ext}
   shortcutName: ${productName}
   uninstallDisplayName: ${productName}
   createDesktopShortcut: always
+  createStartMenuShortcut: true
+  installerIcon: build/icon/app.ico
 mac:
   entitlementsInherit: build/entitlements.mac.plist
   extendInfo:

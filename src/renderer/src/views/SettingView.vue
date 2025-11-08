@@ -61,11 +61,11 @@
             <div style="width: 300px; height: 40px">
               <SimpleInput
                 :model-value="config.baseUrl"
-                @update:model-value="(v) => change('baseUrl', v as string)"
-                @validated="handleValidation"
                 :validator="validateServerAddress"
                 validation-error-message="无法连接到服务器"
                 placeholder="127.0.0.1:8001"
+                @update:model-value="(v) => change('baseUrl', v as string)"
+                @validated="handleValidation"
               />
             </div>
           </form>
@@ -89,11 +89,11 @@
               <div class="description">当前版本和更新信息</div>
             </div>
             <div class="version-info">
-              <span class="version-text">v0.0.1</span>
+              <span class="version-text">v{{ currentVersion }}</span>
               <button
                 class="update-button"
-                @click="checkForUpdatesAndConfirm"
                 :disabled="isCheckingUpdate"
+                @click="checkForUpdatesAndConfirm"
               >
                 {{ isCheckingUpdate ? '检查中...' : '检查更新' }}
               </button>
@@ -102,69 +102,110 @@
         </div>
       </div>
     </div>
+
+    <!-- 更新弹窗 -->
+    <UpdateModal
+      v-model="showUpdateModal"
+      :current-version="currentVersion"
+      :new-version="newVersion"
+      :release-notes="releaseNotes"
+      @close="showUpdateModal = false"
+      @confirm="confirmUpdate"
+    />
+
+    <!-- 下载进度悬浮窗 -->
+    <!-- <div v-if="showDownloadProgress" class="download-progress-float">
+      <div class="progress-header">
+        <span>正在下载更新</span>
+        <button class="close-btn" @click="showDownloadProgress = false">×</button>
+      </div>
+      <div class="progress-content">
+        <div class="progress-bar-container">
+          <div class="progress-bar" :style="{ width: downloadProgress + '%' }"></div>
+        </div>
+        <div class="progress-text">{{ Math.round(downloadProgress) }}%</div>
+      </div>
+    </div> -->
   </div>
 </template>
 
 <script setup lang="ts">
 import ToggleSwitch from '../components/ToggleSwitch.vue'
 import SimpleInput from '../components/SimpleInput.vue'
+import UpdateModal from '../components/UpdateDialog.vue'
 import { useConfigStore } from '../stores/useConfigStore'
 import { storeToRefs } from 'pinia'
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 
 const configStore = useConfigStore()
 const { config } = storeToRefs(configStore)
 const isCheckingUpdate = ref(false)
 
+// 更新弹窗相关状态
+const showUpdateModal = ref(false)
+const currentVersion = ref('')
+const newVersion = ref('')
+const releaseNotes = ref('')
+const showDownloadProgress = ref(false)
+const downloadProgress = ref(0)
+
+onMounted(async () => {
+  currentVersion.value = await window.api.getCurrentVersion()
+})
 // 打开项目
-const openProjectHomepage = () => {
+const openProjectHomepage = (): void => {
   window.api.openExternal('https://github.com/Mios-dream/MoeChat')
 }
 
 // 打开App页
-const openSupportPage = () => {
+const openSupportPage = (): void => {
   window.api.openExternal('https://github.com/Mios-dream/Meochat-APP')
 }
 
-// 检查更新
-// const checkForUpdates = async () => {
-//   try {
-//     isCheckingUpdate.value = true
-//     await window.api.checkUpdate()
-//   } catch (error) {
-//     console.error('检查更新失败:', error)
-//   } finally {
-//     isCheckingUpdate.value = false
-//   }
-// }
-
+// 监听更新状态
 window.api.onStatus((msg) => {
-  // 更新状态
-  // statusEl.textContent = msg
   console.log('状态更新:', msg)
+  window.api.notify({
+    title: '更新提示',
+    body: msg
+  })
 })
 
+// 监听下载进度
 window.api.onProgress((percent) => {
-  // 更新进度
-  // progressEl.textContent = `下载进度：${percent}%`
+  downloadProgress.value = percent
   console.log('下载进度:', percent)
 })
 
-async function checkForUpdatesAndConfirm() {
-  const result = await window.api.checkForUpdate()
+async function checkForUpdatesAndConfirm(): Promise<void> {
+  isCheckingUpdate.value = true
+  try {
+    const result = await window.api.checkForUpdate()
 
-  if (result.updateAvailable) {
-    const confirmed = confirm(
-      `检测到新版本 v${result.version}。\n${result.releaseNotes || ''}\n是否下载更新？`
-    )
-    if (confirmed) {
-      window.api.confirmUpdate()
+    console.log('检查结果:', result)
+
+    if (result.updateAvailable) {
+      newVersion.value = result.version || ''
+      releaseNotes.value = result.releaseNotes || ''
+      showUpdateModal.value = true
     }
+  } finally {
+    isCheckingUpdate.value = false
+  }
+}
+
+// 确认更新
+async function confirmUpdate(): Promise<void> {
+  showDownloadProgress.value = true
+  try {
+    await window.api.confirmUpdate()
+  } catch (error) {
+    console.error('更新失败:', error)
   }
 }
 
 // 开机启动需要特殊处理（调用 Electron API）
-const handleAutoStartChange = async (value: boolean) => {
+const handleAutoStartChange = async (value: boolean): Promise<void> => {
   try {
     await window.api.setAutoStartOnBoot(value)
     configStore.updateConfig('autoStartOnBoot', value)
@@ -208,13 +249,16 @@ const validateServerAddress = async (address: string): Promise<boolean> => {
 }
 
 // 处理校验结果
-const handleValidation = (isValid: boolean) => {
+const handleValidation = (isValid: boolean): void => {
   if (!isValid) {
     console.log('服务器地址校验失败')
     // 可以在这里添加额外的错误处理逻辑
   }
 }
-function change<K extends keyof typeof config.value>(key: K, value: (typeof config.value)[K]) {
+function change<K extends keyof typeof config.value>(
+  key: K,
+  value: (typeof config.value)[K]
+): void {
   if (key === 'autoStartOnBoot') {
     handleAutoStartChange(value as boolean)
     return
@@ -314,11 +358,8 @@ function change<K extends keyof typeof config.value>(key: K, value: (typeof conf
 /* 更新按钮样式 */
 .update-button {
   padding: 8px 16px;
-  /* background-color: #fca9c2; */
   background-color: transparent;
-  /* color: white; */
   color: #fca9c2;
-  /* border: none; */
   border: 2px solid #fca9c2;
   border-radius: 50px;
   cursor: pointer;
@@ -333,7 +374,76 @@ function change<K extends keyof typeof config.value>(key: K, value: (typeof conf
 }
 
 .update-button:disabled {
-  background-color: #cccccc;
+  color: white;
+  background-color: #fb7299;
+  border: 2px solid #fb7299;
   cursor: not-allowed;
 }
+
+/* 下载进度悬浮窗样式 */
+/* .download-progress-float {
+  position: fixed;
+  top: 50px;
+  right: 40px;
+  width: 300px;
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(10px);
+  border-radius: 10px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  z-index: 2000;
+  overflow: hidden;
+}
+
+.progress-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 15px;
+  background: #fca9c2;
+  color: white;
+  font-weight: 500;
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  color: white;
+  font-size: 20px;
+  cursor: pointer;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+}
+
+.close-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.progress-content {
+  padding: 15px;
+}
+
+.progress-bar-container {
+  height: 8px;
+  background: #e0e0e0;
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 10px;
+}
+
+.progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #fca9c2, #fb7299);
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.progress-text {
+  text-align: center;
+  font-weight: 600;
+  color: #fb7299;
+} */
 </style>

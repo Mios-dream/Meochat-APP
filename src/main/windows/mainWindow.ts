@@ -1,5 +1,5 @@
 import { powerMonitor, app } from 'electron'
-import { MicaBrowserWindow, IS_WINDOWS_11, WIN10 } from 'mica-electron'
+import { MicaBrowserWindow, IS_WINDOWS_11 } from 'mica-electron'
 import path from 'path'
 import { getAppUrl, getPreloadPath, isDevelopment } from '../utils/pathResolve'
 import Store from 'electron-store'
@@ -12,7 +12,7 @@ const isAutoStarted = process.argv.includes('--auto-start')
 /*
  * 根据当前电源配置和系统更新窗口效果
  */
-function updateWindowEffect() {
+function updateWindowEffect(): void {
   if (!mainWindow) return
   // 省电模式下使用纯色背景
   if (powerMonitor.isOnBatteryPower()) {
@@ -22,11 +22,8 @@ function updateWindowEffect() {
   // 否则使用Acrylic
   if (IS_WINDOWS_11) {
     mainWindow.setMicaAcrylicEffect()
-    return
-  }
-  if (WIN10) {
+  } else {
     mainWindow.setAcrylic()
-    return
   }
 }
 
@@ -36,7 +33,7 @@ let mainWindow: MicaBrowserWindow | null = null
 /*
  * 创建主窗口
  */
-function createMainWindow() {
+function createMainWindow(): MicaBrowserWindow {
   if (mainWindow) {
     mainWindow.show()
     return mainWindow
@@ -84,10 +81,10 @@ function createMainWindow() {
     mainWindow.loadFile(getAppUrl())
   }
 
-  // if (store.get('debugMode')) {
-  //   mainWindow.webContents.openDevTools({ mode: 'detach' })
-  // }
-  mainWindow.webContents.openDevTools({ mode: 'detach' })
+  if (store.get('debugMode')) {
+    mainWindow.webContents.openDevTools({ mode: 'detach' })
+  }
+  // mainWindow.webContents.openDevTools({ mode: 'detach' })
 
   mainWindow.webContents.once('dom-ready', () => {
     if (store.get('silentMode') && isAutoStarted) {
@@ -106,7 +103,7 @@ function createMainWindow() {
 /*
  * 获取主窗口
  */
-function getMainWindow() {
+function getMainWindow(): MicaBrowserWindow | null {
   return mainWindow && !mainWindow.isDestroyed() ? mainWindow : null
 }
 

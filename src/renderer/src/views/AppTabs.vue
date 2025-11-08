@@ -64,7 +64,7 @@ const titlebarIcons = [
     action: () => {
       console.log('minimize')
       window.api.minimizeApp()
-    },
+    }
   },
   {
     color: '#64c857',
@@ -72,7 +72,7 @@ const titlebarIcons = [
     action: () => {
       console.log('maximize')
       window.api.maximizeApp()
-    },
+    }
   },
   {
     color: '#e97168',
@@ -80,8 +80,8 @@ const titlebarIcons = [
     action: () => {
       console.log('close')
       window.api.hideApp()
-    },
-  },
+    }
+  }
 ]
 
 // 计算属性
@@ -91,35 +91,35 @@ const tabsItems = computed(() => [
     text: '主页',
     action: () => {
       switchTab(0)
-    },
+    }
   },
   {
     icon: 'fa-solid fa-user-circle',
     text: '助手管理',
     action: () => {
       switchTab(1)
-    },
+    }
   },
   {
     special: true,
     action: () => {
       switchTab(2)
-    },
+    }
   },
   {
     icon: 'fa-solid fa-puzzle-piece',
     text: '插件',
     action: () => {
       switchTab(3)
-    },
+    }
   },
   {
     icon: 'fa-solid fa-gear',
     text: '设置',
     action: () => {
       switchTab(4)
-    },
-  },
+    }
+  }
 ])
 
 // 标签页映射表
@@ -128,16 +128,16 @@ const tabComponents = [HomeView, AssistantManagerView, AssistantSpaceView, Plugi
 const currentComponent = computed(() => {
   return tabComponents[activeTab.value]
 })
-function switchTab(index: number) {
+function switchTab(index: number): void {
   activeTab.value = index
 }
 
 // 窗口聚焦事件处理
-function handleFocus() {
+function handleFocus(): void {
   isWindowFocused.value = false
 }
 
-function handleBlur() {
+function handleBlur(): void {
   isWindowFocused.value = true
 }
 
@@ -315,7 +315,7 @@ main {
   bottom: 0;
   height: 120px;
   width: 100%;
-  background-image: url('../assets/images/assistant_avatar_small.png');
+  background-image: url('../assets/images/assistant_avatar_medium.png');
   overflow: hidden;
   border-radius: 0 0 100px 100px;
   background-size: 120px;

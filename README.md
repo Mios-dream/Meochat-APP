@@ -51,7 +51,7 @@ npm install
 ### 开发模式启动
 
 ```shell
-npm run dev:electron
+npm run dev
 ```
 
 ### 构建项目
@@ -61,5 +61,5 @@ npm run build
 ```
 
 ```shell
-npm run make
+npm run build:win
 ```

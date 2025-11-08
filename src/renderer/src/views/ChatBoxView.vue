@@ -3,21 +3,130 @@
     <div id="chatBox" :class="{ 'slide-up': isVisible }">
       <input
         id="chatBoxInput"
-        type="text"
+        ref="inputRef"
         v-model="inputValue"
+        type="text"
+        placeholder="输入消息..."
+        :disabled="loading"
         @blur="hideChatBox"
         @keyup.enter="handleSubmit"
-        ref="inputRef"
-        :disabled="loading"
-        placeholder="输入消息..."
       />
       <div id="role-image"></div>
-      <button id="message-icon" @click="handleSubmit" :disabled="loading">
+      <button id="message-icon" :disabled="loading" @click="handleSubmit">
         <font-awesome-icon :icon="loading ? 'spinner' : 'paper-plane'" :spin="loading" />
       </button>
     </div>
   </div>
 </template>
+
+<script setup lang="ts">
+import { ref, onMounted, onUnmounted } from 'vue'
+
+const isVisible = ref(false)
+const inputRef = ref()
+const inputValue = ref('') // 👈 绑定输入框的值
+const loading = ref(false) // 👈 加载状态
+let isFirst = true
+
+// 监听窗口可见性变化
+function handleVisibilityChange(): void {
+  if (document.visibilityState === 'visible') {
+    isVisible.value = true
+    setTimeout(() => {
+      if (inputRef.value) {
+        inputRef.value.focus()
+      }
+    }, 100)
+  } else {
+    isVisible.value = false
+  }
+}
+
+function setupLoadingListener(): void {
+  window.api.ipcRenderer.on('loading-state-changed', () => {
+    loading.value = false
+
+    // 重新聚焦输入框，方便继续输入
+    setTimeout(() => {
+      if (inputRef.value) {
+        inputRef.value.focus()
+      }
+    }, 100)
+  })
+}
+
+// 👇 【核心函数】提交消息的完整流程
+async function handleSubmit(): Promise<void> {
+  // 1️⃣ 验证：检查输入是否为空或正在加载
+  if (!inputValue.value.trim() || loading.value) {
+    console.log('输入为空或正在加载中')
+    return
+  }
+
+  // 2️⃣ 获取输入内容并清空输入框
+  const message = inputValue.value.trim()
+  console.log('📤 发送消息:', message)
+
+  inputValue.value = '' // 立即清空输入框
+  loading.value = true // 设置加载状态
+
+  try {
+    window.api.ipcRenderer.send('chat-box:send-message', { text: message })
+    // 设置超时定时器，超过20秒后强制取消加载状态
+    setTimeout(() => {
+      loading.value = false
+    }, 20000)
+
+    console.log('✅ 消息发送成功')
+  } catch (error) {
+    // 5️⃣ 错误处理
+    console.error('❌ 发送消息失败:', error)
+
+    // 如果失败，可以恢复输入内容让用户重试
+    inputValue.value = message
+
+    // 显示错误提示（使用 ipcRenderer 跨窗口发送给 assistant window）
+    window.api.ipcRenderer.send('chat-box:send-temp-message', {
+      text: '发送失败，请重试',
+      timeout: 3000,
+      priority: 1
+    })
+  }
+}
+
+function hideChatBox(): void {
+  if (isFirst) {
+    isFirst = false
+    return
+  }
+
+  // 先播放消失动画
+  isVisible.value = false
+
+  // 等待动画完成后再隐藏窗口
+  setTimeout(() => {
+    window.api.hideChatBox()
+  }, 500)
+}
+
+onMounted(() => {
+  // 监听页面可见性变化
+  document.addEventListener('visibilitychange', handleVisibilityChange)
+  setupLoadingListener()
+
+  // 初始显示动画
+  setTimeout(() => {
+    isVisible.value = true
+    if (inputRef.value) {
+      inputRef.value.focus()
+    }
+  }, 100)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
+})
+</script>
 
 <style>
 #chatBoxContainer {
@@ -107,112 +216,3 @@
   opacity: 0.6;
 }
 </style>
-
-<script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
-
-const isVisible = ref(false)
-const inputRef = ref()
-const inputValue = ref('') // 👈 绑定输入框的值
-const loading = ref(false) // 👈 加载状态
-let isFirst = true
-
-// 监听窗口可见性变化
-function handleVisibilityChange() {
-  if (document.visibilityState === 'visible') {
-    isVisible.value = true
-    setTimeout(() => {
-      if (inputRef.value) {
-        inputRef.value.focus()
-      }
-    }, 100)
-  } else {
-    isVisible.value = false
-  }
-}
-
-function setupLoadingListener() {
-  window.api.ipcRenderer.on('loading-state-changed', () => {
-    loading.value = false
-
-    // 重新聚焦输入框，方便继续输入
-    setTimeout(() => {
-      if (inputRef.value) {
-        inputRef.value.focus()
-      }
-    }, 100)
-  })
-}
-
-// 👇 【核心函数】提交消息的完整流程
-async function handleSubmit() {
-  // 1️⃣ 验证：检查输入是否为空或正在加载
-  if (!inputValue.value.trim() || loading.value) {
-    console.log('输入为空或正在加载中')
-    return
-  }
-
-  // 2️⃣ 获取输入内容并清空输入框
-  const message = inputValue.value.trim()
-  console.log('📤 发送消息:', message)
-
-  inputValue.value = '' // 立即清空输入框
-  loading.value = true // 设置加载状态
-
-  try {
-    window.api.ipcRenderer.send('chat-box:send-message', { text: message })
-    // 设置超时定时器，超过20秒后强制取消加载状态
-    setTimeout(() => {
-      loading.value = false
-    }, 20000)
-
-    console.log('✅ 消息发送成功')
-  } catch (error) {
-    // 5️⃣ 错误处理
-    console.error('❌ 发送消息失败:', error)
-
-    // 如果失败，可以恢复输入内容让用户重试
-    inputValue.value = message
-
-    // 显示错误提示（使用 ipcRenderer 跨窗口发送给 assistant window）
-    window.api.ipcRenderer.send('chat-box:send-temp-message', {
-      text: '发送失败，请重试',
-      timeout: 3000,
-      priority: 1
-    })
-  }
-}
-
-function hideChatBox() {
-  if (isFirst) {
-    isFirst = false
-    return
-  }
-
-  // 先播放消失动画
-  isVisible.value = false
-
-  // 等待动画完成后再隐藏窗口
-  setTimeout(() => {
-    window.api.hideChatBox()
-  }, 500)
-}
-
-onMounted(() => {
-  // 监听页面可见性变化
-  document.addEventListener('visibilitychange', handleVisibilityChange)
-  setupLoadingListener()
-
-  // 初始显示动画
-  setTimeout(() => {
-    isVisible.value = true
-    if (inputRef.value) {
-      inputRef.value.focus()
-    }
-  }, 100)
-})
-
-onUnmounted(() => {
-  document.removeEventListener('visibilitychange', handleVisibilityChange)
-})
-</script>

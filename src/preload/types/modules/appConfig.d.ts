@@ -17,6 +17,8 @@ export interface AppConfig {
   idleEvent: boolean
   // 空闲时间阈值，单位毫秒
   idleTime: number
+  // 助手是否开启
+  assistantEnabled: boolean
 }
 
 export interface ConfigApi {

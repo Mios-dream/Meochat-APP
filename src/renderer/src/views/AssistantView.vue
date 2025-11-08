@@ -2,9 +2,9 @@
 <template>
   <div
     id="live2d-container"
+    :class="{ locked: isLocked }"
     @contextmenu.prevent="showContextMenu"
     @mousedown="handleMouseDown"
-    :class="{ locked: isLocked }"
   >
     <AssistantTips :is-active="isTipsActive">
       {{ currentTip }}
@@ -94,29 +94,29 @@ const contextMenuItems = computed(() => [
 ])
 
 // 方法定义
-function toggleLock() {
+function toggleLock(): void {
   isLocked.value = !isLocked.value
   const message = isLocked.value ? '位置已锁定' : '位置已解锁'
   chatService.showTempMessage(message, 2000, 10)
   hideContextMenu()
 }
 
-function openSettings() {
+function openSettings(): void {
   window.api.ipcRenderer.send('app:maximize', null)
   hideContextMenu()
 }
 
-function closeApp() {
+function closeApp(): void {
   window.api.ipcRenderer.send('app:quite', null)
   hideContextMenu()
 }
 
-function handleMouseDown(event: MouseEvent) {
+function handleMouseDown(event: MouseEvent): void {
   if (event.button !== 0 || contextMenuVisible.value || isLocked.value) return
   window.api.startDrag()
 }
 
-function showContextMenu(event: MouseEvent) {
+function showContextMenu(event: MouseEvent): void {
   const menuWidth = 150
   const menuHeight = 110
   const { innerWidth, innerHeight } = window
@@ -142,7 +142,7 @@ function showContextMenu(event: MouseEvent) {
 
   contextMenuVisible.value = true
 
-  const hideMenu = (e: MouseEvent) => {
+  const hideMenu = (e: MouseEvent): void => {
     if (!(e.target as HTMLElement).closest('#live2d-context-menu')) {
       hideContextMenu()
       document.removeEventListener('click', hideMenu)
@@ -157,7 +157,7 @@ function showContextMenu(event: MouseEvent) {
 /**
  * 隐藏菜单
  */
-function hideContextMenu() {
+function hideContextMenu(): void {
   contextMenuVisible.value = false
 }
 
@@ -182,7 +182,7 @@ onMounted(async () => {
     chatService.showTempMessage(data.text, data.timeout, data.priority)
   })
 
-  window.api.ipcRenderer.on('chat-box:send-message', async (data) => {
+  window.api.ipcRenderer.on('chat-box:send-message', async (_event, data) => {
     console.log('收到请求:', data)
     await chatService.chat(data.text).then(() => {
       window.api.ipcRenderer.send('loading-state-changed', false)
