@@ -1,13 +1,10 @@
 import { BrowserWindow, screen } from 'electron'
 import { getAppUrl, getPreloadPath, isDevelopment } from '../utils/pathResolve'
-import Store from 'electron-store'
-
-// 创建配置存储实例
-const store = new Store()
+import { getConfig } from '../config/configManager'
 
 let chatBoxWindow: BrowserWindow | null
 
-export function createChatBoxWindow() {
+export function createChatBoxWindow(): BrowserWindow | null {
   if (chatBoxWindow) {
     chatBoxWindow.show()
     return chatBoxWindow
@@ -49,7 +46,7 @@ export function createChatBoxWindow() {
     })
   }
 
-  if (store.get('debugMode')) {
+  if (getConfig('debugMode')) {
     chatBoxWindow.webContents.openDevTools({ mode: 'detach' })
   }
 
@@ -60,6 +57,6 @@ export function createChatBoxWindow() {
   return chatBoxWindow
 }
 
-export function getChatBoxWindow() {
+export function getChatBoxWindow(): BrowserWindow | null {
   return chatBoxWindow
 }

@@ -22,6 +22,17 @@ const schema = {
 
 const store = new Store({ schema })
 
+function getConfig(key: keyof typeof schema): (typeof schema)[keyof typeof schema]['default'] {
+  return store.get(key) as (typeof schema)[keyof typeof schema]['default']
+}
+
+function setConfig(
+  key: keyof typeof schema,
+  value: (typeof schema)[keyof typeof schema]['default']
+): void {
+  store.set(key, value)
+}
+
 function setupConfigIPC(): void {
   // 监听配置更新并广播给所有渲染进程
   store.onDidAnyChange(() => {
@@ -51,4 +62,4 @@ function setupConfigIPC(): void {
   })
 }
 
-export { setupConfigIPC }
+export { setupConfigIPC, getConfig, setConfig }

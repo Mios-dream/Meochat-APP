@@ -8,10 +8,10 @@ const store = new Store()
 
 let assistantWindow: BrowserWindow | null
 
-function createAssistantWindow() {
+function createAssistantWindow(): void | BrowserWindow {
   if (assistantWindow && !assistantWindow.isDestroyed()) {
     assistantWindow.focus()
-    return
+    return assistantWindow
   }
 
   // 从存储中读取窗口配置，如果不存在则使用默认值
@@ -83,7 +83,6 @@ function createAssistantWindow() {
   assistantWindow.on('close', () => {
     if (assistantWindow) {
       store.set('assistantWindowBounds', assistantWindow.getBounds())
-      console.log('保存窗口位置：', assistantWindow.getBounds())
     } else {
       console.log('assistantWindow is null')
     }
@@ -98,7 +97,7 @@ function createAssistantWindow() {
 }
 
 // 提供外部访问当前助手窗口的方法
-function getAssistantWindow() {
+function getAssistantWindow(): BrowserWindow | null {
   return assistantWindow && !assistantWindow.isDestroyed() ? assistantWindow : null
 }
 

@@ -2,10 +2,8 @@ import { powerMonitor, app } from 'electron'
 import { MicaBrowserWindow, IS_WINDOWS_11 } from 'mica-electron'
 import path from 'path'
 import { getAppUrl, getPreloadPath, isDevelopment } from '../utils/pathResolve'
-import Store from 'electron-store'
+import { getConfig } from '../config/configManager'
 
-// 创建配置存储实例
-const store = new Store()
 // 检查是否是开机自启
 const isAutoStarted = process.argv.includes('--auto-start')
 
@@ -81,13 +79,13 @@ function createMainWindow(): MicaBrowserWindow {
     mainWindow.loadFile(getAppUrl())
   }
 
-  if (store.get('debugMode')) {
+  if (getConfig('debugMode')) {
     mainWindow.webContents.openDevTools({ mode: 'detach' })
   }
   // mainWindow.webContents.openDevTools({ mode: 'detach' })
 
   mainWindow.webContents.once('dom-ready', () => {
-    if (store.get('silentMode') && isAutoStarted) {
+    if (getConfig('silentMode') && isAutoStarted) {
       return
     }
     mainWindow?.show()

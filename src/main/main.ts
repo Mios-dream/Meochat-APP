@@ -10,6 +10,8 @@ import { getPermission } from './permission/permission'
 
 import { createTray } from './tray/appTray'
 
+import { startAutoServer } from './utils/autoServer'
+
 // 初始化 IPC
 setupMainIPC()
 setupConfigIPC()
@@ -24,6 +26,8 @@ app.whenReady().then(() => {
 
   // 创建系统托盘
   createTray()
+  // 启动自启服务
+  startAutoServer()
 })
 
 app.on('window-all-closed', () => {
