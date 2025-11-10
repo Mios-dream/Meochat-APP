@@ -8,14 +8,15 @@ interface ChatMessage {
   content: string
 }
 
-interface StreamData {
-  type: 'text' | 'audio' | 'complete'
-  data: string
-}
-
 interface TextAndAudioData {
   text: string
   audio: string
+  done?: boolean
+}
+
+interface TextAudioPair {
+  text: string
+  audioBlob: Blob
 }
 
 class ChatService {
@@ -24,10 +25,8 @@ class ChatService {
   private messageTips: MessageTips
   // 聊天记录
   private chatHistory: ChatMessage[] = []
-  // 音频队列
-  private audioQueue: Blob[] = []
-  // 累积文本
-  private accumulatedText: string = ''
+  // 文本和音频的组合队列
+  private textAudioQueue: TextAudioPair[] = []
   // 文本缓冲区
   private textBuffer: string = ''
   // 隐藏消息定时器
@@ -38,7 +37,7 @@ class ChatService {
   private apiUrl = computed(() => {
     // 延迟获取 configStore
     const configStore = useConfigStore()
-    return `http://${configStore.config.baseUrl}/api/chat_v2`
+    return `http://${configStore.config.baseUrl}`
   })
   // Live2D管理器
   private live2DManager: Live2DManager | null = null
@@ -46,6 +45,11 @@ class ChatService {
   private abortController: AbortController | null = null
   // 音量属性
   private volume: number = 1.0
+  // 当前显示的文本
+  private currentDisplayText: string = ''
+
+  // 文本显示定时器
+  private textDisplayTimer: NodeJS.Timeout | null = null
 
   private constructor() {
     // 初始化消息提示对象
@@ -119,8 +123,8 @@ class ChatService {
     this.interruptCurrentPlayback()
 
     // 重置
-    this.accumulatedText = ''
-    this.audioQueue = []
+    this.currentDisplayText = ''
+    this.textAudioQueue = []
     this.textBuffer = ''
 
     try {
@@ -129,70 +133,7 @@ class ChatService {
       // 创建 AbortController 用于可能的中断
       this.abortController = new AbortController()
 
-      const response = await fetch(this.apiUrl.value, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          msg: this.chatHistory
-        }),
-        signal: this.abortController.signal // 添加信号用于中断
-      })
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
-      }
-
-      const reader = response.body!.getReader()
-      const decoder = new TextDecoder()
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) {
-          if (this.textBuffer.trim()) {
-            this.parseStreamChunk(this.textBuffer)
-          }
-          break
-        }
-
-        const chunk = decoder.decode(value, { stream: true })
-        this.processStreamData(chunk)
-      }
-      return true
-    } catch (error) {
-      // 检查是否是因为中断导致的错误
-      if ((error as Error).name === 'AbortError') {
-        console.log('请求被中断')
-        return false
-      }
-
-      console.error('请求失败:', error)
-      this.messageTips.showMessage('发送消息失败，请稍后重试', 3000, 1)
-      this.chatHistory.pop()
-      return false
-    }
-  }
-
-  public async sendMessage(message: string): Promise<boolean> {
-    if (!message || !message.trim()) {
-      return false
-    }
-    // 停止正在播放的对话和消息
-    this.interruptCurrentPlayback()
-
-    // 重置
-    this.accumulatedText = ''
-    this.audioQueue = []
-    this.textBuffer = ''
-
-    try {
-      this.chatHistory.push({ role: 'user', content: message })
-
-      // 创建 AbortController 用于可能的中断
-      this.abortController = new AbortController()
-
-      const response = await fetch(this.apiUrl.value, {
+      const response = await fetch(this.apiUrl.value + '/api/chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -238,6 +179,64 @@ class ChatService {
   }
 
   /**
+   * 发送消息，合成语音但不调用模型回复（通常是助手消息）
+   * @param message 消息内容
+   */
+  public async sendMessage(message: string): Promise<void> {
+    // 重置文本缓冲区和累积文本
+    this.textBuffer = ''
+    this.currentDisplayText = ''
+
+    // 创建 AbortController 用于可能的中断
+    this.abortController = new AbortController()
+
+    const response = await fetch(this.apiUrl.value + '/api/gptsovits', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        msg: message
+      }),
+      signal: this.abortController.signal // 添加信号用于中断
+    })
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+
+    const reader = response.body!.getReader()
+    const decoder = new TextDecoder()
+
+    // 添加文本缓冲区来处理不完整的数据行
+    let textBuffer = ''
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) {
+        // 处理缓冲区中剩余的数据
+        if (textBuffer.trim()) {
+          this.processStreamData(textBuffer)
+        }
+        break
+      }
+
+      const chunk = decoder.decode(value, { stream: true })
+      textBuffer += chunk
+
+      // 按行分割处理数据
+      const lines = textBuffer.split('\n')
+      textBuffer = lines.pop() || '' // 保留最后一个不完整的行
+
+      for (const line of lines) {
+        if (line.trim()) {
+          this.processStreamData(line.trim())
+        }
+      }
+    }
+  }
+
+  /**
    * 打断当前的播放对话和消息
    */
   public interruptCurrentPlayback(): void {
@@ -249,7 +248,7 @@ class ChatService {
 
     // 3. 重置文本缓冲区和累积文本
     this.textBuffer = ''
-    this.accumulatedText = ''
+    this.currentDisplayText = ''
 
     // 4. 清除隐藏消息定时器
     this.clearHideMessageTimer()
@@ -270,8 +269,13 @@ class ChatService {
    * @param timeout 消息显示时间
    * @param priority 消息优先级
    */
-  public showTempMessage(text: string, timeout: number = 5000, priority: number = 1): void {
-    this.messageTips.showMessage(text, timeout, priority)
+  public showTempMessage(
+    text: string,
+    timeout: number = 5000,
+    priority: number = 1,
+    transitionDuration: number = 0
+  ): void {
+    this.messageTips.showMessage(text, timeout, priority, transitionDuration)
   }
 
   /**
@@ -285,7 +289,7 @@ class ChatService {
    * 停止播放音频
    */
   public stopAudio(): void {
-    this.audioQueue = []
+    this.textAudioQueue = []
     this.clearHideMessageTimer()
   }
 
@@ -314,14 +318,11 @@ class ChatService {
 
     try {
       const jsonStr = chunk.substring(6)
-      const data: StreamData = JSON.parse(jsonStr)
-
-      if (data.type === 'text') {
-        this.handleTextData(data.data)
-      } else if (data.type === 'audio') {
-        this.handleAudioData(data.data)
-      } else if (data.type === 'complete') {
+      const data: TextAndAudioData = JSON.parse(jsonStr)
+      if (data.done === true) {
         this.handleComplete()
+      } else {
+        this.handleTextAndAudio(data)
       }
     } catch (error) {
       console.error('解析数据失败:', error, chunk)
@@ -329,29 +330,14 @@ class ChatService {
   }
 
   public handleTextAndAudio(data: TextAndAudioData): void {
-    this.handleTextData(data.text)
-    this.handleAudioData(data.audio)
-    this.accumulatedText = ''
-  }
-
-  /**
-   * 处理文本数据
-   * @param text 文本数据
-   */
-  private handleTextData(text: string): void {
-    this.accumulatedText += text
-    this.showTempMessage(this.accumulatedText.trim(), -1, 999)
-    this.clearHideMessageTimer()
-  }
-
-  /**
-   * 处理音频数据
-   * @param audioData 音频数据
-   */
-  private handleAudioData(audioData: string): void {
-    const audioBlob = this.base64ToBlob(audioData, 'audio/wav')
+    // 处理音频数据
+    const audioBlob = this.base64ToBlob(data.audio, 'audio/wav')
     if (audioBlob.size > 0) {
-      this.audioQueue.push(audioBlob)
+      // 将文本和音频作为一个对存储到音频队列中
+      this.textAudioQueue.push({
+        text: data.text,
+        audioBlob: audioBlob
+      })
       // 立即尝试播放（使用 Live2D 同步口型）
       this.playAudioQueueWithLive2D()
     }
@@ -362,10 +348,10 @@ class ChatService {
    * 处理完成事件
    */
   private handleComplete(): void {
-    if (this.accumulatedText.trim()) {
+    if (this.currentDisplayText.trim()) {
       this.chatHistory.push({
         role: 'assistant',
-        content: this.accumulatedText.trim()
+        content: this.currentDisplayText.trim()
       })
     }
   }
@@ -388,18 +374,6 @@ class ChatService {
    */
   private base64ToBlob(base64: string, mimeType: string): Blob {
     try {
-      // 取消url安全的替换
-      // const cleanBase64 = base64.replace(/\s/g, '')
-      // const standardBase64 = cleanBase64
-      //   .replace(/-/g, '+')
-      //   .replace(/_/g, '/')
-      //   .padEnd(cleanBase64.length + ((4 - (cleanBase64.length % 4)) % 4), '=')
-
-      // if (!/^[A-Za-z0-9+/]*={0,2}$/.test(standardBase64)) {
-      //   throw new Error('Invalid base64 format')
-      // }
-
-      // const byteCharacters = atob(standardBase64)
       const byteCharacters = atob(base64)
       const byteNumbers = new Array(byteCharacters.length)
 
@@ -436,23 +410,71 @@ class ChatService {
   }
 
   /**
+   * 逐渐显示文本
+   * @param text 要显示的文本
+   * @param audioBlob 音频Blob用于计算显示速度
+   */
+  private displayTextGradually(text: string, audioBlob: Blob): void {
+    // 清除之前的定时器
+    if (this.textDisplayTimer) {
+      clearTimeout(this.textDisplayTimer)
+      this.textDisplayTimer = null
+    }
+
+    // 估算音频时长（假设是WAV格式，我们可以通过Blob大小估算时长）
+    // WAV文件头是44字节，剩下的就是音频数据
+    // 假设是16位立体声44.1kHz音频：每秒约176400字节
+    const estimatedDuration = ((audioBlob.size - 44) / 176400) * 1000 // 转换为毫秒
+
+    // 确保最小持续时间为100ms，最大为文本长度*100ms
+    const duration = Math.max(100, estimatedDuration, text.length * 100)
+    const textLength = text.length
+    const interval = duration / textLength // 每个字符的显示间隔
+
+    // 显示当前文本段的字符
+    let currentIndex = 0
+    const displayNextChar = (): void => {
+      if (currentIndex < textLength) {
+        this.showTempMessage(
+          this.currentDisplayText
+            .substring(0, this.currentDisplayText.length - textLength + currentIndex + 1)
+            .trim(),
+          -1,
+          999,
+          0
+        )
+        currentIndex++
+        this.textDisplayTimer = setTimeout(displayNextChar, interval)
+      }
+    }
+
+    displayNextChar()
+  }
+
+  /**
    * 使用 Live2D 模型播放音频队列（带口型同步）
    */
   private async playAudioQueueWithLive2D(): Promise<void> {
     // 如果正在播放或队列为空，则返回
-    if (this.isPlaying || this.audioQueue.length === 0) return
+    if (this.isPlaying || this.textAudioQueue.length === 0) return
 
     this.isPlaying = true
 
     try {
-      while (this.audioQueue.length > 0) {
-        const audioBlob = this.audioQueue.shift()
-        const audioUrl = URL.createObjectURL(audioBlob!)
+      while (this.textAudioQueue.length > 0) {
+        const pair = this.textAudioQueue.shift()!
+        const audioUrl = URL.createObjectURL(pair.audioBlob)
+        // 显示对应文本
+        this.currentDisplayText += pair.text
+
+        this.displayTextGradually(pair.text, pair.audioBlob)
 
         try {
           // 使用 Live2DManager 的 speak 方法播放音频并同步口型
           if (this.live2DManager) {
-            await this.live2DManager.speak(audioUrl, this.volume)
+            // 将Blob转换为AudioBuffer
+            const audioArrayBuffer = await pair.audioBlob.arrayBuffer()
+            await this.live2DManager.speak(audioArrayBuffer, this.volume)
           } else {
             // 如果 Live2DManager 不可用，降级到普通播放
             await this.playAudioSimple(audioUrl)

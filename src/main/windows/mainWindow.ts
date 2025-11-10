@@ -1,6 +1,5 @@
-import { powerMonitor, app } from 'electron'
+import { powerMonitor } from 'electron'
 import { MicaBrowserWindow, IS_WINDOWS_11 } from 'mica-electron'
-import path from 'path'
 import { getAppUrl, getPreloadPath, isDevelopment } from '../utils/pathResolve'
 import { getConfig } from '../config/configManager'
 
@@ -20,6 +19,8 @@ function updateWindowEffect(): void {
   // 否则使用Acrylic
   if (IS_WINDOWS_11) {
     mainWindow.setMicaAcrylicEffect()
+    // 设置窗口圆角
+    mainWindow.setRoundedCorner()
   } else {
     mainWindow.setAcrylic()
   }
@@ -42,7 +43,6 @@ function createMainWindow(): MicaBrowserWindow {
     height: 800,
     minWidth: 1200, // 添加最小宽度
     minHeight: 800,
-    icon: path.join(app.getAppPath(), 'asset', 'icon', 'app_small.ico'),
     resizable: true,
     autoHideMenuBar: true,
     frame: false,
@@ -67,9 +67,6 @@ function createMainWindow(): MicaBrowserWindow {
   powerMonitor.on('on-battery', () => {
     updateWindowEffect()
   })
-
-  // 设置窗口圆角
-  mainWindow.setRoundedCorner()
 
   console.log('isDevelopment:', isDevelopment())
   // 加载页面

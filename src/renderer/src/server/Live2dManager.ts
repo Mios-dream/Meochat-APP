@@ -1,4 +1,4 @@
-import { Live2DModel, config } from 'pixi-live2d-display-lipsyncpatch'
+import { Live2DModel, MotionPriority, config } from 'pixi-live2d-display-lipsyncpatch'
 import * as PIXI from 'pixi.js'
 // import { ChatService } from '../utils/ChatService'
 import throttle from '../utils/Throttle'
@@ -455,7 +455,7 @@ export class Live2DManager {
       const startTime = performance.now()
 
       // 创建动画循环
-      const animate = (currentTime: number) => {
+      const animate = (currentTime: number): void => {
         // 计算经过的时间
         const elapsed = currentTime - startTime
         const progress = Math.min(elapsed / duration, 1)
@@ -505,7 +505,7 @@ export class Live2DManager {
   /**
    * 开始鼠标跟踪（模型注视鼠标）
    */
-  public startMouseTracking() {
+  public startMouseTracking(): void {
     if (!this.isMouseTracking) {
       window.api.ipcRenderer.send('assistant:start-mouse-tracking', null)
       this.isMouseTracking = true
@@ -515,7 +515,7 @@ export class Live2DManager {
   /**
    * 停止鼠标跟踪（模型恢复初始状态）
    */
-  public stopMouseTracking() {
+  public stopMouseTracking(): void {
     if (this.isMouseTracking) {
       window.api.ipcRenderer.send('assistant:stop-mouse-tracking', null)
       this.isMouseTracking = false
@@ -545,58 +545,80 @@ export class Live2DManager {
   public getVolume(): number {
     return this.volume
   }
+
   /**
-   * 播放音频,并同步口型
-   * @param audioFile 音频文件路径
+   * 播放音频,并同步口型 (使用二进制音频数据)
+   * @param audioData 音频二进制数据
+   * @param volume 音量值 (0.0 to 1.0)
    */
-  public async speak(audioFile: string, volume: number = this.volume): Promise<void> {
-    return new Promise(async (resolve, reject) => {
+  public async speak(audioData: ArrayBuffer, volume: number = this.volume): Promise<void> {
+    return new Promise((resolve, reject) => {
       try {
-        this.model!.internalModel.motionManager.state.shouldRequestIdleMotion = () => false // 取消idle 动作
-        const response = await fetch(audioFile)
-        const audioData = await response.arrayBuffer()
-        const audioBuffer = await this.audioContext!.decodeAudioData(audioData)
-        const source = this.audioContext!.createBufferSource()
-        const analyser = this.audioContext!.createAnalyser()
-        const gainNode = this.audioContext!.createGain()
-        // 设置音量
-        gainNode.gain.value = Math.max(0, Math.min(1, volume))
+        this.model!.motion('Speak', 0, MotionPriority.NORMAL)
+        // this.model!.internalModel.motionManager.state.shouldRequestIdleMotion = () => false // 取消idle 动作
 
-        source.buffer = audioBuffer
-        analyser.connect(this.audioContext!.destination)
-        source.connect(analyser)
-        gainNode.connect(this.audioContext!.destination)
+        this.audioContext!.decodeAudioData(audioData).then((audioBuffer) => {
+          const source = this.audioContext!.createBufferSource()
+          const analyser = this.audioContext!.createAnalyser()
+          const gainNode = this.audioContext!.createGain()
+          // 设置音量
+          gainNode.gain.value = Math.max(0, Math.min(1, volume))
 
-        let requestId: number | null = null
+          source.buffer = audioBuffer
+          analyser.connect(this.audioContext!.destination)
+          source.connect(analyser)
+          gainNode.connect(this.audioContext!.destination)
 
-        // 监听音频播放完毕
-        source.onended = () => {
-          if (requestId !== null) {
-            cancelAnimationFrame(requestId)
-          }
-          if (this.model) {
+          let requestId: number | null = null
+          let originalUpdate: ((coreModel: object, now: number) => boolean) | null = null
+
+          // 监听音频播放完毕
+          source.onended = () => {
+            if (requestId !== null) {
+              cancelAnimationFrame(requestId)
+            }
+            // 恢复原始的 update 方法
+            if (originalUpdate) {
+              this.model!.internalModel.motionManager.update = originalUpdate
+            }
+
             // @ts-expect-error 无法找到模型参数
-            this.model.internalModel.coreModel.setParameterValueById('ParamMouthOpenY', 0)
+            this.model.internalModel.coreModel.setParameterValueById('ParamMouthOpenY', 0, 1)
+
+            resolve()
           }
-          this.model!.internalModel.motionManager.state.shouldRequestIdleMotion = () => true // 恢复idle 动作
-          resolve()
-        }
 
-        source.start(0)
+          source.start(0)
 
-        const updateMouth = () => {
-          const dataArray = new Uint8Array(analyser.frequencyBinCount)
-          analyser.getByteFrequencyData(dataArray)
-          const volume = dataArray.reduce((a, b) => a + b) / dataArray.length
-          const mouthOpen = Math.min(1, volume / 40)
-          // @ts-expect-error 无法找到模型参数
-          this.model.internalModel.coreModel.setParameterValueById('ParamMouthOpenY', mouthOpen)
+          const updateMouth = (): void => {
+            const dataArray = new Uint8Array(analyser.frequencyBinCount)
+            analyser.getByteFrequencyData(dataArray)
+            const volume = dataArray.reduce((a, b) => a + b) / dataArray.length
+            const mouthOpenCoefficient = 1.2
+            const mouthOpen = Math.min(1, (volume / 40) * mouthOpenCoefficient)
+            // 只有在没有保存原始更新方法时才保存一次
+            if (!originalUpdate) {
+              originalUpdate = this.model!.internalModel.motionManager.update
+            }
+            // @ts-expect-error 无法找到模型参数
+            this.model!.internalModel.motionManager.update = (coreModel, time) => {
+              // 调用原始更新方法
+              originalUpdate!.call(this.model!.internalModel.motionManager, coreModel, time)
+
+              // 更新嘴巴参数
+              // @ts-expect-error 无法找到模型参数
+              this.model!.internalModel.coreModel.setParameterValueById(
+                'ParamMouthOpenY',
+                mouthOpen
+              )
+            }
+
+            requestId = requestAnimationFrame(updateMouth)
+          }
+
           requestId = requestAnimationFrame(updateMouth)
-        }
-
-        requestId = requestAnimationFrame(updateMouth)
+        })
       } catch (error) {
-        this.model!.internalModel.motionManager.state.shouldRequestIdleMotion = () => true // 恢复idle 动作
         reject(error)
       }
     })
@@ -607,7 +629,7 @@ export class Live2DManager {
    * 从点击的位置判断像素是否透明
    * @param event 鼠标点击事件对象
    */
-  private isPixelTransparentFromEvent(event: MouseEvent) {
+  private isPixelTransparentFromEvent(event: MouseEvent): boolean {
     if (!this.app || !this.app.renderer) return false
 
     const gl = (this.app.renderer as PIXI.Renderer).gl

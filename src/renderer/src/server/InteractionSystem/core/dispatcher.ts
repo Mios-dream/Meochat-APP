@@ -1,6 +1,4 @@
-import { ChatService, TextAndAudioData } from '@renderer/server/ChatService'
-import { useConfigStore } from '@renderer/stores/useConfigStore'
-import { computed } from 'vue'
+import { ChatService } from '@renderer/server/ChatService'
 
 export interface OutputAction {
   // 文本数据
@@ -18,14 +16,6 @@ export interface OutputAction {
 export class ActionDispatcher {
   private listeners: Array<(action: OutputAction) => void> = []
   private chatService: ChatService
-  // AbortController 用于取消请求
-  private abortController: AbortController | null = null
-
-  private apiUrl = computed(() => {
-    // 延迟获取 configStore
-    const configStore = useConfigStore()
-    return `http://${configStore.config.baseUrl}/api/gptsovits`
-  })
 
   constructor() {
     this.chatService = ChatService.getInstance()
@@ -59,77 +49,7 @@ export class ActionDispatcher {
    * @param action
    */
   private async executeSend(action: OutputAction): Promise<void> {
-    // 这里可以集成实际的发送逻辑，比如：
-    // - 发送到聊天窗口
-    // - 调用语音合成
-    // - 显示通知
-
-    console.log(`[Dispatcher] 发送消息: ${action.text}`)
-
-    // 创建 AbortController 用于可能的中断
-    this.abortController = new AbortController()
-
-    const response = await fetch(this.apiUrl.value, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        msg: action.text
-      }),
-      signal: this.abortController.signal // 添加信号用于中断
-    })
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`)
-    }
-
-    const reader = response.body!.getReader()
-    const decoder = new TextDecoder()
-
-    // 添加文本缓冲区来处理不完整的数据行
-    let textBuffer = ''
-
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) {
-        // 处理缓冲区中剩余的数据
-        if (textBuffer.trim()) {
-          this.processStreamData(textBuffer)
-        }
-        break
-      }
-
-      const chunk = decoder.decode(value, { stream: true })
-      textBuffer += chunk
-
-      // 按行分割处理数据
-      const lines = textBuffer.split('\n')
-      textBuffer = lines.pop() || '' // 保留最后一个不完整的行
-
-      for (const line of lines) {
-        if (line.trim()) {
-          this.processStreamData(line.trim())
-        }
-      }
-    }
-  }
-
-  /**
-   * 处理流数据
-   * @param chunk 流数据块
-   */
-  private processStreamData(chunk: string): void {
-    if (!chunk.startsWith('data: ')) return
-
-    try {
-      const jsonStr = chunk.substring(6)
-      // console.log(`[Dispatcher] 接收消息: ${jsonStr}`)
-      const data: TextAndAudioData = JSON.parse(jsonStr)
-      this.chatService.handleTextAndAudio(data)
-    } catch (error) {
-      console.error('[Dispatcher] 解析JSON数据失败:', error, '原始数据:', chunk)
-    }
+    this.chatService.sendMessage(action.text)
   }
 
   /**

@@ -224,7 +224,7 @@ onMounted(async () => {
     })
   })
   // 当前窗口显示时隐藏助手窗口
-  window.api.hideAssistant()
+  window.api.closeAssistant()
   // 模拟加载进度
   const progressInterval = setInterval(() => {
     if (loadingProgress.value < 90) {
@@ -268,7 +268,7 @@ onUnmounted(() => {
 
   const tabs = document.getElementById('tabs-container')
   tabs!.style.opacity = '1'
-  window.api.showAssistant()
+  window.api.openAssistant()
   live2DManager.destroy()
 })
 
