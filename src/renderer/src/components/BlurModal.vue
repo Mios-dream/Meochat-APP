@@ -15,7 +15,7 @@
 
 <script setup lang="ts">
 interface Props {
-  modelValue: boolean
+  modelValue?: boolean
   modalClass?: string
   closeOnClickOutside?: boolean
   showCloseButton?: boolean

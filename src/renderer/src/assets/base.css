@@ -1,3 +1,11 @@
+:root {
+  --theme-color: #fb7299;
+  --theme-color-light: #fca5b9;
+  --theme-color-dark: #f95a8a;
+  --theme-color-shadow: #ffc0d6;
+  --theme-text-color-dark: #4f4f4f;
+}
+
 .dashboard-content {
   padding: 15px;
 }

@@ -13,7 +13,10 @@ export const useConfigStore = defineStore('config', () => {
     silentMode: false,
     idleEvent: true,
     idleTime: 2,
-    assistantEnabled: false
+    assistantEnabled: false,
+    currentAssistant: '',
+    // 主题色
+    themeColor: '#fb7299'
   })
 
   async function loadConfig(): Promise<void> {
@@ -31,7 +34,6 @@ export const useConfigStore = defineStore('config', () => {
 
   function listenForChanges(): void {
     window.api.config.onChange((newConfig) => {
-      console.log('[Config updated]', newConfig)
       config.value = newConfig
     })
   }

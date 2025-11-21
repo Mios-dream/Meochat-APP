@@ -14,8 +14,6 @@
       :visible="contextMenuVisible"
       :style="contextMenuStyle"
       :items="contextMenuItems"
-      :locked="isLocked"
-      @update:locked="isLocked = $event"
     />
 
     <canvas id="l2d-canvas"></canvas>
@@ -30,7 +28,7 @@ import { ChatService } from '../server/ChatService'
 import { Live2DManager } from '../server/Live2dManager'
 import { MicrophoneManager } from '../server/MicrophoneManager'
 import AssistantTips from '../components/AssistantTips.vue'
-import ContextMenu from '../components/Live2dToolbar.vue'
+import ContextMenu from '../components/Toolbar.vue'
 import LoadingProgress from '../components/LoadingProgress.vue'
 import { useConfigStore } from '../stores/useConfigStore'
 import { storeToRefs } from 'pinia'

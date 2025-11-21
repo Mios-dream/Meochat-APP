@@ -24,5 +24,5 @@ const configStore = useConfigStore()
 await configStore.loadConfig()
 configStore.listenForChanges()
 // 注册全局组件
-app.component('font-awesome-icon', FontAwesomeIcon)
+app.component('FontAwesomeIcon', FontAwesomeIcon)
 app.mount('#app')

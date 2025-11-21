@@ -18,6 +18,12 @@ export interface MainWindowApi {
   // 打开外部链接
   openExternal: (url: string) => void
 
+  saveAssistantImageFile: (
+    fileData: ArrayBuffer,
+    assistantName: string,
+    fileName: string
+  ) => Promise<string>
+
   // 获取当前版本信息
   getCurrentVersion: () => Promise<string>
   // 获取更新信息
@@ -30,4 +36,23 @@ export interface MainWindowApi {
   confirmUpdate: () => Promise<void>
   onStatus: (callback: (msg: string) => void) => void
   onProgress: (callback: (percent: number) => void) => void
+
+  // 助手相关 API
+  downloadAssistantAsset: (params: {
+    assistantName: string
+    onProgress?: (progress: number) => void
+  }) => Promise<string>
+
+  // 加载助手数据
+  loadAssistantData: () => Promise<AssistantInfo[]>
+  addAssistant: (
+    assistant: AssistantInfo,
+    onProgress?: (progress: number) => void
+  ) => Promise<boolean>
+  updateAssistantInfo: (assistant: AssistantInfo) => Promise<boolean>
+  deleteAssistant: (name: string) => Promise<boolean>
+
+  onUploadProgress: (callback: (data: { assistantName: string; progress: number }) => void) => void
+
+  isNeedUpdate: (assistant: AssistantInfo) => Promise<boolean>
 }

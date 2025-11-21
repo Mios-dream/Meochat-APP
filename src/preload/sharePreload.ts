@@ -7,7 +7,7 @@ const globalAPI = {
   hideApp: () => ipcRenderer.send('app:hide'),
   quitApp: () => ipcRenderer.send('app:quit'),
   // 通知API
-  notify: (data) => ipcRenderer.send('app:notify', data),
+  notify: (data) => ipcRenderer.send('tool:notify', data),
 
   // 助手页面的preload
   // 开启助手窗口
@@ -27,7 +27,7 @@ const globalAPI = {
   // 关闭聊天窗口
   closeChatBox: () => ipcRenderer.send('chat-box:close'),
 
-  openExternal: (url) => ipcRenderer.send('open-external', url),
+  openExternal: (url) => ipcRenderer.send('tool:open-external', url),
 
   config: {
     get: (key) => ipcRenderer.invoke('config:get', key),

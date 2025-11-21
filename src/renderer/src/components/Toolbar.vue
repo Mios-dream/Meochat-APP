@@ -1,7 +1,7 @@
 <template>
   <div
-    id="live2d-context-menu"
     v-show="visible"
+    id="live2d-context-menu"
     :style="style"
     @mouseleave="collapsed = true"
     @mouseenter="collapsed = false"
@@ -28,16 +28,12 @@ defineProps<{
   visible: boolean
   style: { top: string; left: string }
   items: MenuItem[]
-  locked: boolean
+  // locked: boolean
 }>()
 
 const collapsed = ref(true)
 
-const emit = defineEmits(['update:locked'])
-
-// const toggleLock = () => {
-//   emit('update:locked', !props.locked)
-// }
+// defineEmits(['update:locked'])
 </script>
 
 <style scoped>
@@ -78,7 +74,7 @@ const emit = defineEmits(['update:locked'])
   flex-direction: row;
   align-items: center;
   justify-content: start;
-  color: #4f4f4f;
+  color: var(--theme-text-color-dark);
 }
 
 .menu-item .icon {
@@ -92,8 +88,9 @@ const emit = defineEmits(['update:locked'])
 
 .menu-item:hover {
   /* background-color: #ffc0d6; */
-  background-color: #ffa0c1;
-  box-shadow: 0px 0px 10px #ffc0d6;
+  /* background-color: #ffa0c1; */
+  background-color: var(--theme-color-light);
+  box-shadow: 0px 0px 10px var(--theme-color-shadow);
   color: white !important;
   width: 100%;
 }

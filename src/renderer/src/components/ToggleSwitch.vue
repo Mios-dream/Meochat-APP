@@ -1,4 +1,3 @@
-<!-- src/components/ToggleSwitch.vue -->
 <template>
   <div class="toggle-switch" :class="{ checked: modelValue, disabled: disabled }" @click="toggle">
     <div class="toggle-slider">
@@ -6,17 +5,17 @@
     </div>
     <input
       type="checkbox"
+      class="toggle-input"
       :checked="modelValue"
       :disabled="disabled"
       @change="toggle"
-      class="toggle-input"
     />
   </div>
 </template>
 
 <script setup lang="ts">
 interface Props {
-  modelValue: boolean
+  modelValue?: boolean
   disabled?: boolean
 }
 
@@ -26,12 +25,12 @@ interface Emits {
 
 const props = withDefaults(defineProps<Props>(), {
   modelValue: false,
-  disabled: false,
+  disabled: false
 })
 
 const emit = defineEmits<Emits>()
 
-const toggle = () => {
+const toggle = (): void => {
   if (!props.disabled) {
     emit('update:modelValue', !props.modelValue)
   }
@@ -52,8 +51,8 @@ const toggle = () => {
 }
 
 .toggle-switch.checked {
-  background-color: #fca9c2;
-  border: 1px solid #fb7299;
+  background-color: var(--theme-color-light);
+  border: 1px solid var(--theme-color);
 }
 
 .toggle-switch.disabled {
@@ -101,7 +100,7 @@ const toggle = () => {
   transform: scale(1.1);
 } */
 .toggle-switch.checked:hover {
-  box-shadow: 0 0 8px #fb7299;
+  box-shadow: 0 0 8px var(--theme-color);
 }
 
 .toggle-switch:hover .toggle-thumb {

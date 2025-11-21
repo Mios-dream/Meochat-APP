@@ -17,7 +17,11 @@ const schema = {
   idleEvent: { type: 'boolean', default: true },
   idleTime: { type: 'number', default: 2 },
   // 助手是否开启
-  assistantEnabled: { type: 'boolean', default: false }
+  assistantEnabled: { type: 'boolean', default: false },
+  // 当前助手
+  currentAssistant: { type: 'string', default: '' },
+  // 主题色
+  themeColor: { type: 'string', default: '#fb7299' }
 }
 
 const store = new Store({ schema })

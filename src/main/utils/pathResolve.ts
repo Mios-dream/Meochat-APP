@@ -5,7 +5,7 @@ import { fileURLToPath } from 'url'
 /**
  * 获取渲染进程页面地址（开发 / 生产 统一）
  */
-function getAppUrl() {
+function getAppUrl(): string {
   if (!app.isPackaged) {
     // 开发环境 → 加载 Vite 本地服务
     return 'http://localhost:5173/'
@@ -18,7 +18,7 @@ function getAppUrl() {
 /**
  * 获取 preload.js 路径（兼容开发 / 打包）
  */
-function getPreloadPath(preloadName) {
+function getPreloadPath(preloadName: string): string {
   // return path.join(app.getAppPath(), 'preload', preloadName)
   return fileURLToPath(new URL(`../preload/${preloadName}.mjs`, import.meta.url))
 }
@@ -26,7 +26,7 @@ function getPreloadPath(preloadName) {
 /**
  * 是否是开发环境
  */
-function isDevelopment() {
+function isDevelopment(): boolean {
   if ((process.env.NODE_ENV || '').trim() === 'development') {
     return true
   } else {

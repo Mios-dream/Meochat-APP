@@ -10,12 +10,16 @@ import { getPermission } from './permission/permission'
 
 import { createTray } from './tray/appTray'
 
-import { startAutoServer } from './utils/autoServer'
+import { startAutoService } from './utils/autoService'
+
+import { registerFileProtocol, handleFileProtocol } from './protocol/fileProtocol'
 
 // 初始化 IPC
 setupMainIPC()
 setupConfigIPC()
 setupAssistantTogetherIPC()
+// 注册文件协议
+registerFileProtocol()
 
 app.whenReady().then(() => {
   // 获取权限
@@ -26,8 +30,10 @@ app.whenReady().then(() => {
 
   // 创建系统托盘
   createTray()
+  // 处理文件协议
+  handleFileProtocol()
   // 启动自启服务
-  startAutoServer()
+  startAutoService()
 })
 
 app.on('window-all-closed', () => {

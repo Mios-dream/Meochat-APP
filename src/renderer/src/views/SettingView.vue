@@ -50,7 +50,31 @@
               @update:model-value="(v) => change('debugMode', v)"
             />
           </form>
+          <div class="divider"></div>
+          <form class="setting-from">
+            <div class="title">
+              <label for="themeColor">主题色</label>
+              <div class="description">设置应用的主题颜色</div>
+            </div>
+            <div class="color-picker-container">
+              <span class="color-value">{{ config.themeColor || '#fb7299' }}</span>
+              <div class="color-picker-wrapper" @click="triggerColorPicker">
+                <div
+                  class="color-preview"
+                  :style="{ backgroundColor: config.themeColor || '#fb7299' }"
+                ></div>
+              </div>
+              <input
+                ref="colorInputRef"
+                type="color"
+                class="color-input"
+                :value="config.themeColor || '#fb7299'"
+                @input="handleColorChange"
+              />
+            </div>
+          </form>
         </div>
+
         <div class="setting-title">服务设置</div>
         <div class="setting-item">
           <form class="setting-from">
@@ -71,7 +95,7 @@
           </form>
         </div>
         <div class="setting-title">关于项目</div>
-        <div class="setting-item">
+        <div class="setting-item" style="margin-bottom: 50px">
           <form class="setting-from">
             <div class="title">
               <label for="project-info">项目信息</label>
@@ -112,20 +136,6 @@
       @close="showUpdateModal = false"
       @confirm="confirmUpdate"
     />
-
-    <!-- 下载进度悬浮窗 -->
-    <!-- <div v-if="showDownloadProgress" class="download-progress-float">
-      <div class="progress-header">
-        <span>正在下载更新</span>
-        <button class="close-btn" @click="showDownloadProgress = false">×</button>
-      </div>
-      <div class="progress-content">
-        <div class="progress-bar-container">
-          <div class="progress-bar" :style="{ width: downloadProgress + '%' }"></div>
-        </div>
-        <div class="progress-text">{{ Math.round(downloadProgress) }}%</div>
-      </div>
-    </div> -->
   </div>
 </template>
 
@@ -139,8 +149,8 @@ import { ref, onMounted } from 'vue'
 
 const configStore = useConfigStore()
 const { config } = storeToRefs(configStore)
-const isCheckingUpdate = ref(false)
 
+const isCheckingUpdate = ref(false)
 // 更新弹窗相关状态
 const showUpdateModal = ref(false)
 const currentVersion = ref('')
@@ -148,6 +158,18 @@ const newVersion = ref('')
 const releaseNotes = ref('')
 const showDownloadProgress = ref(false)
 const downloadProgress = ref(0)
+
+const colorInputRef = ref<HTMLInputElement | null>(null)
+
+function triggerColorPicker(): void {
+  if (colorInputRef.value) {
+    colorInputRef.value.click()
+  }
+}
+function handleColorChange(event: Event): void {
+  const target = event.target as HTMLInputElement
+  change('themeColor', target.value)
+}
 
 onMounted(async () => {
   currentVersion.value = await window.api.getCurrentVersion()
@@ -279,7 +301,6 @@ function change<K extends keyof typeof config.value>(
 .setting-container {
   width: 100%;
   height: 100%;
-  overflow-y: auto;
   scrollbar-width: none;
 }
 
@@ -329,7 +350,7 @@ function change<K extends keyof typeof config.value>(
 
 .support-button {
   padding: 8px 16px;
-  background-color: #fca9c2;
+  background-color: var(--theme-color-light);
   color: white;
   border: none;
   border-radius: 50px;
@@ -339,7 +360,7 @@ function change<K extends keyof typeof config.value>(
 }
 
 .support-button:hover {
-  background-color: #fb7299;
+  background-color: var(--theme-color);
 }
 
 /* 版本信息样式 */
@@ -359,8 +380,8 @@ function change<K extends keyof typeof config.value>(
 .update-button {
   padding: 8px 16px;
   background-color: transparent;
-  color: #fca9c2;
-  border: 2px solid #fca9c2;
+  color: var(--theme-color-light);
+  border: 2px solid var(--theme-color-light);
   border-radius: 50px;
   cursor: pointer;
   font-size: 14px;
@@ -369,15 +390,60 @@ function change<K extends keyof typeof config.value>(
 
 .update-button:hover:not(:disabled) {
   color: white;
-  background-color: #fb7299;
-  border: 2px solid #fb7299;
+  background-color: var(--theme-color);
+  border: 2px solid var(--theme-color);
 }
 
 .update-button:disabled {
   color: white;
-  background-color: #fb7299;
-  border: 2px solid #fb7299;
+  background-color: var(--theme-color);
+  border: 2px solid var(--theme-color);
   cursor: not-allowed;
+}
+
+.color-picker-container {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.color-picker-wrapper {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid #ddd;
+  box-sizing: border-box;
+  transition:
+    transform 0.2s,
+    border-color 0.2s;
+}
+
+.color-picker-wrapper:hover {
+  transform: scale(1.1);
+  border-color: var(--theme-color);
+}
+
+.color-preview {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.1);
+}
+
+.color-input {
+  display: flex;
+  width: 0;
+  height: 0;
+}
+
+.color-value {
+  font-family: monospace;
+  font-size: 14px;
+  color: var(--theme-color);
 }
 
 /* 下载进度悬浮窗样式 */

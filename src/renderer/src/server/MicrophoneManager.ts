@@ -13,8 +13,8 @@ class MicrophoneManager {
   /*
    *获取麦克风权限状态
    */
-  public async getPermissionStatus() {
-    let permissionStatus = await navigator.permissions.query({
+  public async getPermissionStatus(): Promise<boolean> {
+    const permissionStatus = await navigator.permissions.query({
       name: 'microphone' as PermissionName
     })
 
@@ -28,7 +28,11 @@ class MicrophoneManager {
   /*
    *开始录音
    */
-  public async startRecording() {
+  public async startRecording(): Promise<{
+    stream: MediaStream
+    source: MediaStreamAudioSourceNode
+    processor: ScriptProcessorNode
+  }> {
     try {
       // 请求麦克风权限
       this.audioStream = await navigator.mediaDevices.getUserMedia({
@@ -107,7 +111,7 @@ class MicrophoneManager {
    * 设置识别结果回调函数
    * @param callback 回调函数
    */
-  public setRecognitionCallback(callback: (text: string) => void) {
+  public setRecognitionCallback(callback: (text: string) => void): void {
     this.onRecognitionResult = callback
   }
 
@@ -115,7 +119,7 @@ class MicrophoneManager {
    * 连接到 WebSocket 服务器
    * @param wsUrl WebSocket 服务器地址
    */
-  public connectToServer(wsUrl: string) {
+  public connectToServer(wsUrl: string): void {
     // 清除之前的重连定时器
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer)
@@ -156,7 +160,7 @@ class MicrophoneManager {
   /**
    * 断开 WebSocket 连接
    */
-  public disconnect() {
+  public disconnect(): void {
     this.isManuallyClosed = true
 
     if (this.reconnectTimer) {
@@ -174,7 +178,7 @@ class MicrophoneManager {
    * 发送音频数据到服务器
    * @param audioData 音频数据
    */
-  private sendAudioData(audioData: Float32Array) {
+  private sendAudioData(audioData: Float32Array): void {
     if (!this.websocket || this.websocket.readyState !== WebSocket.OPEN) {
       return
     }
@@ -224,7 +228,7 @@ class MicrophoneManager {
   /**
    * 停止录音
    */
-  public stopRecording() {
+  public stopRecording(): void {
     if (this.audioStream) {
       this.audioStream.getTracks().forEach((track) => track.stop())
       this.audioStream = null

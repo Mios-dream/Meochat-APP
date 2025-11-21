@@ -1,7 +1,9 @@
 // 节流
-export default function throttle(fn: Function, wait = 50) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export default function throttle(fn: (...args: any[]) => any, wait = 50) {
   let last = 0
-  let timer: any = null
+  let timer: NodeJS.Timeout
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return function (this: any, ...args: any[]) {
     const now = Date.now()
     if (now - last >= wait) {
@@ -14,7 +16,7 @@ export default function throttle(fn: Function, wait = 50) {
           last = Date.now()
           fn.apply(this, args)
         },
-        wait - (now - last),
+        wait - (now - last)
       )
     }
   }

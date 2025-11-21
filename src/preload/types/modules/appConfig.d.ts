@@ -19,6 +19,10 @@ export interface AppConfig {
   idleTime: number
   // 助手是否开启
   assistantEnabled: boolean
+  // 当前助手
+  currentAssistant: string
+  // 主题色
+  themeColor: string
 }
 
 export interface ConfigApi {

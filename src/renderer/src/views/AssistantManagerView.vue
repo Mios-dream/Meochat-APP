@@ -12,7 +12,16 @@
           <div id="assistant-component-container">
             <div id="assistant-work-time">
               <div class="content">
-                <div id="work-time">{{ assistantWorkTime }}天</div>
+                <div id="work-time">
+                  {{
+                    assistantInfo?.firstMeetTime
+                      ? Math.floor(
+                          (new Date().getTime() - assistantInfo.firstMeetTime) /
+                            (1000 * 60 * 60 * 24)
+                        )
+                      : 0
+                  }}天
+                </div>
                 <div class="title">已经陪伴阁下</div>
               </div>
             </div>
@@ -22,7 +31,7 @@
               <div class="progress-container">
                 <div id="love-icon"><font-awesome-icon icon="fa-solid fa-heart" /></div>
                 <div class="progress-bar-background">
-                  <div class="progress-bar-fill" :style="{ width: '50%' }"></div>
+                  <div class="progress-bar-fill" :style="{ width: `${lovePercentage}%` }"></div>
                 </div>
               </div>
               <div class="love-level">一级</div>
@@ -48,21 +57,21 @@
             </div>
           </div>
           <div id="assistant-info">
-            <div id="assistant-name">澪</div>
+            <div id="assistant-name">{{ assistantInfo?.name }}</div>
             <div id="assistant-organization">隶属于澪之梦工作室</div>
             <div id="assistant-basic-info">
               <span class="title">生日</span
-              ><span id="assistant-birthday" class="content">3月25日</span>
+              ><span id="assistant-birthday" class="content">{{
+                formatBirthday(assistantInfo.birthday)
+              }}</span>
               <span class="title">身高</span
-              ><span id="assistant-constellation" class="content">163cm</span>
+              ><span id="assistant-constellation" class="content"
+                >{{ assistantInfo?.height }}cm</span
+              >
             </div>
             <div id="assistant-introduction">
               <div class="introduction-text">
-                银发红瞳的可爱少女，经常穿着可爱的黑色长 裙，带着黑色的蝴蝶发饰。身份是澪之梦工作
-                室的头号看板娘，她自己好像也非常自豪这 件事（才没有）。性格天真可爱（是个笨蛋）
-                同时还是有些小腹黑？尽管澪大部分时候都是 活泼可爱的代名词，但有时候澪的眼中也会流
-                露出淡淡的悲伤。原因就连她自己也不知道， 这或许和她以前的经历有关？这位天真可爱的
-                女孩并不像看起来那么简单，她的身上还有更 多的秘密等待着阁下的探索.......
+                {{ assistantInfo?.description }}
               </div>
             </div>
           </div>
@@ -109,47 +118,223 @@
       </div>
       <div class="assistant-select-container">
         <div class="title">助手列表</div>
+        <Loader v-if="assistantListLoading" class="loading-spinner"></Loader>
+        <div class="add-assistant" @click="openAddAssistantDialog">
+          添加助手
+          <font-awesome-icon class="add-assistant-icon" icon="fa-solid fa-plus" />
+        </div>
         <div class="assistant-list">
-          <div class="assistant-item active"></div>
-          <div class="assistant-item add-assistant" @click="openAddAssistantDialog">
-            <font-awesome-icon icon="fa-solid fa-plus" />
+          <div
+            v-for="assistant in assistantList"
+            :key="assistant.name"
+            class="assistant-item"
+            :class="{ active: assistant.name === assistantInfo?.name }"
+            @click="selectAssistant(assistant)"
+            @contextmenu.prevent="showContextMenu($event, assistant)"
+          >
+            <div
+              class="assistant-avatar"
+              :class="{ active: assistant.name === assistantInfo?.name }"
+              :style="
+                assistant.avatar
+                  ? {
+                      backgroundImage: `url(${'app-resource://' + assistant.avatar})`
+                    }
+                  : {}
+              "
+            ></div>
+            <div class="assistant-content">
+              <div class="assistant-name">{{ assistant.name }}</div>
+              <div class="assistant-status">
+                {{ assistant.name === assistantInfo?.name ? '任职中' : '休息中' }}
+              </div>
+              <div class="love-progress-container">
+                <div class="love-level">好感度</div>
+                <div class="progress-container">
+                  <div id="love-icon"><font-awesome-icon icon="fa-solid fa-heart" /></div>
+                  <div class="progress-bar-background">
+                    <div class="progress-bar-fill" :style="{ width: `${50}%` }"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
-      <BlurModal v-model="isVisibleAddAssistantDialog">
-        <div class="add-assistant-dialog">
-          <div class="add-assistant-title">添加助手</div>
-        </div>
-      </BlurModal>
+      <AddAssistantDialog
+        v-model="isVisibleAddAssistantDialog"
+        :editing-assistant="null"
+        @cancel="closeAddAssistantDialog"
+        @success="handleAssistantUpdated"
+      />
+
+      <!-- 添加编辑助手对话框 -->
+      <AddAssistantDialog
+        v-model="isVisibleEditAssistantDialog"
+        :editing-assistant="editingAssistant"
+        @cancel="handleEditCancel"
+        @success="handleAssistantUpdated"
+      />
     </div>
+    <ContextMenu
+      :visible="contextMenuVisible"
+      :style="contextMenuStyle"
+      :items="contextMenuItems"
+    />
+    <ConfirmDialog
+      v-model="showConfirmDialog"
+      title="删除助手"
+      :message="confirmMessage"
+      @confirm="handleConfirmDelete"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import BlurModal from '../components/BlurModal.vue'
+import { ref, onMounted, computed, onUnmounted } from 'vue'
 import { useConfigStore } from '../stores/useConfigStore'
-import { storeToRefs } from 'pinia'
+import ContextMenu from '../components/Toolbar.vue'
+import { AssistantInfo, AssistantManager } from '../server/assistantManager'
+import AddAssistantDialog from '../components/EditAssistantDialog.vue'
+import ConfirmDialog from '../components/ConfirmDialog.vue'
+import Loader from '../components/Loader.vue'
 
+// 从配置存储中获取配置
 const configStore = useConfigStore()
-const { config } = storeToRefs(configStore)
 
-const assistantWorkTime = ref(100)
-
-// 添加状态跟踪助手窗口是否打开
+// 状态跟踪助手窗口是否打开
 const isAssistantOpen = ref(false)
-
-// const currentLove = ref(100) // 当前好感度值
-
+// 助手管理器实例
+const assistantManager = AssistantManager.getInstance()
+// 当前助手信息
+const assistantInfo = ref<AssistantInfo>(assistantManager.getCurrentAssistant())
+// 当前助手的好感度
+const currentLove = ref(assistantInfo.value?.love || 0) // 当前好感度值
+// 助手列表
+const assistantList = ref(assistantManager.getAssistants())
+// 是否可见添加助手对话框
 const isVisibleAddAssistantDialog = ref(false)
+// 是否正在加载助手列表
+const assistantListLoading = ref(true)
 
 // 计算进度百分比
-// const lovePercentage = computed(() => {
-//   return (currentLove.value / 200) * 100
-// })
+const lovePercentage = computed(() => {
+  return (currentLove.value / 200) * 100
+})
 
-if (config.value.assistantEnabled) {
-  openAssistant()
+// 右键菜单状态
+const contextMenuVisible = ref(false)
+const contextMenuStyle = ref({ top: '0px', left: '0px' })
+const contextMenuAssistant = ref<AssistantInfo | null>(null)
+
+// 编辑助手状态
+const isVisibleEditAssistantDialog = ref(false)
+const editingAssistant = ref<AssistantInfo | null>(null)
+
+// 确认对话框相关状态
+const showConfirmDialog = ref(false)
+const confirmMessage = ref('')
+const assistantToDelete = ref('')
+
+// 选择助手
+function selectAssistant(assistant: AssistantInfo): void {
+  assistantManager.setCurrentAssistant(assistant.name)
+  assistantInfo.value = assistantManager.getCurrentAssistant()
+}
+
+// 计算属性
+const contextMenuItems = computed(() => [
+  {
+    icon: 'fa-solid fa-pen',
+    text: '编辑',
+    action: () => handleEditAssistant(contextMenuAssistant.value!)
+  },
+  {
+    icon: 'fa-solid fa-trash',
+    text: '删除',
+    action: () => handleDeleteAssistant(contextMenuAssistant.value!.name)
+  }
+])
+
+// 显示右键菜单
+function showContextMenu(event: MouseEvent, assistant: AssistantInfo): void {
+  contextMenuStyle.value = {
+    top: `${event.clientY}px`,
+    left: `${event.clientX}px`
+  }
+  contextMenuAssistant.value = assistant
+  contextMenuVisible.value = true
+}
+
+// 隐藏右键菜单
+function hideContextMenu(): void {
+  contextMenuVisible.value = false
+  contextMenuAssistant.value = null
+}
+
+// 处理编辑助手
+function handleEditAssistant(assistant: AssistantInfo): void {
+  editingAssistant.value = { ...assistant }
+  isVisibleEditAssistantDialog.value = true
+  hideContextMenu() // 关闭右键菜单
+}
+
+// 处理编辑取消
+function handleEditCancel(): void {
+  isVisibleEditAssistantDialog.value = false
+  editingAssistant.value = null
+}
+
+// 处理助手更新成功
+function handleAssistantUpdated(): void {
+  // 重新加载助手列表
+  assistantManager.loadAssistants()
+  assistantList.value = assistantManager.getAssistants()
+
+  // 如果当前正在编辑的助手是当前选中的助手，更新当前助手信息
+  if (editingAssistant.value && assistantInfo.value?.name === editingAssistant.value.name) {
+    assistantInfo.value = assistantManager.getCurrentAssistant()
+  }
+
+  // 重置编辑状态
+  editingAssistant.value = null
+}
+
+// 处理删除助手
+async function handleDeleteAssistant(name: string): Promise<void> {
+  // 设置确认对话框信息
+  confirmMessage.value = `每一次的陪伴都值得珍藏，确定要与"${name}"就此告别吗？`
+  assistantToDelete.value = name
+  // 显示确认对话框
+  showConfirmDialog.value = true
+}
+
+// 处理确认删除
+async function handleConfirmDelete(): Promise<void> {
+  if (!assistantToDelete.value) return
+
+  const success = await assistantManager.deleteAssistant(assistantToDelete.value)
+  if (success) {
+    assistantList.value = assistantManager.getAssistants()
+    // 更新当前助手信息
+    if (assistantInfo.value?.name === assistantToDelete.value) {
+      assistantInfo.value = assistantManager.getCurrentAssistant()
+    }
+  } else {
+    alert('删除助手失败')
+  }
+
+  // 重置状态
+  assistantToDelete.value = ''
+}
+
+// 监听点击事件，点击其他地方关闭右键菜单
+function handleClickOutside(event: MouseEvent): void {
+  if (!contextMenuVisible.value) return
+  const target = event.target as HTMLElement
+  if (!target.closest('.context-menu') && !target.closest('.assistant-item')) {
+    hideContextMenu()
+  }
 }
 
 // 切换助手状态的函数
@@ -162,18 +347,36 @@ function toggleAssistant(): void {
   configStore.updateConfig('assistantEnabled', isAssistantOpen.value)
 }
 
+// 格式化生日为"月日"格式
+function formatBirthday(birthday?: string): string {
+  if (!birthday) {
+    return ''
+  }
+  const date = new Date(birthday)
+
+  const month = (date.getMonth() + 1).toString().padStart(2, '0')
+  const day = date.getDate().toString().padStart(2, '0')
+  return `${month}月${day}日`
+}
+// 打开助手窗口
 function openAssistant(): void {
   window.api.openAssistant()
   isAssistantOpen.value = true
 }
 
+// 关闭助手窗口
 function closeAssistant(): void {
   window.api.closeAssistant()
   isAssistantOpen.value = false
 }
 
+// 打开添加助手对话框
 function openAddAssistantDialog(): void {
   isVisibleAddAssistantDialog.value = true
+}
+// 关闭添加助手对话框
+function closeAddAssistantDialog(): void {
+  isVisibleAddAssistantDialog.value = false
 }
 
 // 当组件挂载时，获取助手状态
@@ -181,6 +384,22 @@ onMounted(() => {
   window.api.getAssistantStatus().then((status: boolean) => {
     isAssistantOpen.value = status
   })
+
+  // 加载助手数据
+  assistantManager.loadAssistants().then(() => {
+    assistantListLoading.value = false
+    assistantList.value = assistantManager.getAssistants()
+    selectAssistant(assistantManager.getCurrentAssistant())
+  })
+
+  // 添加事件监听
+  document.addEventListener('click', handleClickOutside)
+})
+
+onUnmounted(() => {
+  assistantListLoading.value = true
+  // 移除事件监听
+  document.removeEventListener('click', handleClickOutside)
 })
 </script>
 
@@ -272,10 +491,10 @@ onMounted(() => {
   border-radius: 10px;
   background-color: #ffcddec9;
   margin-bottom: 3px;
-  background-image: url('../assets/images/assistant_office.png');
-  background-size: 120% auto;
+  background-image: url('../assets/images/assistant_avatar_small.png');
+  background-size: 70% auto;
   background-repeat: no-repeat;
-  background-position: 60% 10%;
+  background-position: 50% 30%;
 }
 
 #assistant-love .name {
@@ -353,7 +572,7 @@ onMounted(() => {
 
 #assistant-info {
   padding: 50px;
-  max-width: 400px;
+  max-width: 420px;
   height: 100%;
 }
 
@@ -415,7 +634,7 @@ onMounted(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   display: -webkit-box;
-  -webkit-line-clamp: 9;
+  line-clamp: 9;
   -webkit-box-orient: vertical;
   line-height: 1.4;
   word-wrap: break-word;
@@ -541,8 +760,10 @@ onMounted(() => {
 }
 
 .assistant-select-container {
+  position: relative;
   padding: 10px 20px;
   width: 100%;
+  max-height: 310px;
   background-color: white;
   border-radius: 20px;
   margin-bottom: 100px;
@@ -553,60 +774,149 @@ onMounted(() => {
   color: #fb7299;
   font-size: 20px;
   font-weight: bold;
+  margin-left: 10px;
 }
 
 .assistant-list {
+  margin-top: 10px;
   width: 100%;
+  max-height: 260px;
   display: flex;
-  flex-direction: row;
   justify-content: flex-start;
   align-items: center;
-  gap: 20px;
-  overflow-x: auto;
-  box-sizing: border-box;
-  scrollbar-width: thin;
-  scrollbar-color: #ffb3cd #f1f1f1;
+  gap: 30px 40px;
+  padding: 10px;
+  /* 换行 */
+  flex-wrap: wrap;
+  overflow-y: auto;
+  scrollbar-width: none;
 }
 
 .assistant-item {
-  width: 100px;
-  height: 100px;
-  border-radius: 100%;
-  margin-top: 10px;
-  margin-bottom: 10px;
-  border: 8px solid #ffb3cd;
-  background-image: url('/src/assets/images/assistant_avatar_small.png');
+  position: relative;
+  display: flex;
+  justify-content: start;
+  align-items: center;
+  width: 300px;
+  height: 80px;
+  border-radius: 15px;
+  padding: 10px;
   background-size: cover;
   background-position: center;
   cursor: pointer;
   flex-shrink: 0;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.15);
+  background-color: white;
+  box-sizing: content-box;
+  transition: all 0.4s ease-in-out;
+}
+.assistant-item.active {
+  box-shadow: 0 0 10px var(--theme-color-light);
+  transition: all 0.4s ease-in-out;
 }
 
-.assistant-item.active {
-  background-color: #ffc2d7;
+.assistant-item.active::after {
+  content: '任职中';
+  position: absolute;
+  left: 0px;
+  top: 20px;
+  font-size: 12px;
+  font-weight: bold;
+  text-align: center;
+  color: white;
+  width: 50px;
+  height: 20px;
+  border-radius: 0 20px 20px 0;
+  background-color: var(--theme-color);
+}
+
+.assistant-avatar {
+  width: 80px;
+  height: 80px;
+  min-width: 80px;
+  min-height: 80px;
+  border-radius: 10px;
+  background-size: cover;
+  background-position: center;
+  border: 2px solid rgb(180, 180, 180);
+  transition: all 0.4s ease-in-out;
+}
+
+.assistant-avatar.active {
+  border: 2px solid var(--theme-color-light);
+  transition: all 0.4s ease-in-out;
+}
+
+.assistant-content {
+  position: relative;
+  height: 80px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-around;
+  align-items: start;
+  margin-left: 10px;
+}
+
+.assistant-name {
+  font-size: 17px;
+  color: #636363;
+  /* font-family: 'LoliFont'; */
+  font-weight: bold;
+}
+
+.assistant-status {
+  right: 10px;
+  top: 0;
+  position: absolute;
+  font-size: 14px;
+  color: var(--theme-color);
+  margin-top: 5px;
+}
+
+.love-progress-container {
+  width: 100%;
+  color: gray;
+  font-size: 13px;
 }
 
 .add-assistant {
+  top: 10px;
+  right: 20px;
+  position: absolute;
   display: flex;
   background-image: none;
   justify-content: center;
   align-items: center;
-  font-size: 40px;
+  font-size: 12px;
+  font-weight: bold;
+  padding: 4px 16px;
+  background-color: transparent;
+  color: var(--theme-color-light);
+  border: 2px solid var(--theme-color-light);
+  border-radius: 50px;
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+}
+
+.add-assistant:hover {
+  background-color: var(--theme-color);
+  border: 2px solid var(--theme-color);
+  color: transparent;
+  transition: all 0.2s ease-in-out;
+}
+
+.add-assistant:hover .add-assistant-icon {
+  color: white;
+  transform: translateX(-25px);
+  transition: all 0.2s ease-in-out;
+}
+
+.loading-spinner {
+  position: absolute;
+  top: 13px;
+  left: 120px;
   color: #fb7299;
-  font-weight: bold;
-}
-
-.add-assistant-dialog {
-  width: 80vw;
-  height: 80vh;
-  padding: 30px;
-}
-
-.add-assistant-title {
-  display: flex;
-  font-size: 30px;
-  font-weight: bold;
-  margin-top: 20px;
-  margin-left: 5px;
+  stroke: #fb7299;
 }
 </style>

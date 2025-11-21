@@ -7,8 +7,8 @@
           :key="index"
           class="titlebar-item"
           :style="{ backgroundColor: item.color }"
-          @click="item.action"
           :title="item.text"
+          @click="item.action"
         ></div>
       </div>
     </aside>
@@ -226,7 +226,9 @@ main {
 #tabs-container {
   position: absolute;
   bottom: 10px;
-  width: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 400px;
   height: 90px;
   display: flex;
   flex-direction: row;

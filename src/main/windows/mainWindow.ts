@@ -53,7 +53,8 @@ function createMainWindow(): MicaBrowserWindow {
       devTools: true,
       preload: getPreloadPath('mainPreload'),
       sandbox: false,
-      nodeIntegration: false
+      nodeIntegration: false,
+      contextIsolation: true
     }
   })
   updateWindowEffect()
