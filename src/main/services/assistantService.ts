@@ -6,9 +6,61 @@ import path from 'path'
 import { app } from 'electron'
 import { getConfig } from '../config/configManager'
 
+// 助手语音合成设置模型
+interface GSVSetting {
+  // 助手语音合成的语言
+  textLang: string
+  // 助手语音合成的GPT模型
+  gptModelPath: string
+  // 助手语音合成的SOVITS模型
+  sovitsModelPath: string
+  // 助手语音合成的参考音频
+  refAudioPath: string
+  // 助手语音合成的参考文字
+  promptText: string
+  // 助手语音合成的参考文字语言
+  promptLang: string
+  // 助手语音合成的随机种子
+  seed: number
+  // 助手语音合成的TopK
+  topK: number
+  // 助手语音合成的批量大小
+  batchSize: number
+  // 助手语音合成的额外参数
+  extra: Record<string, string>
+  // 助手语音合成的额外参考音频
+  extraRefAudio: Record<string, string>
+}
+
+// 助手设置模型
+interface AssistantSettings {
+  // 助手是否开启日记功能
+  enableLongMemory: boolean
+  // 助手是否开启日记功能的检索加强
+  enableLongMemorySearchEnhance: boolean
+  // 助手是否开启核心记忆功能
+  enableCoreMemory: boolean
+  // 助手日记功能的搜索阈值
+  longMemoryThreshold: number
+  // 助手是否开启世界书(知识库)功能
+  enableLoreBooks: boolean
+  // 助手世界书(知识库)功能的搜索阈值
+  loreBooksThreshold: number
+  // 助手世界书(知识库)功能的搜索深度
+  loreBooksDepth: number
+  // 助手是否开启情绪系统
+  enableEmotionSystem: boolean
+  // 助手是否开启情绪系统的持续存储
+  enableEmotionPersist: boolean
+  // 助手的上下文长度
+  contextLength: number
+}
+
 interface AssistantInfo {
-  // 名字
+  // 助手名称
   name: string
+  // 对用户的称呼
+  user: string
   // 头像
   avatar: string
   // 生日
@@ -21,18 +73,67 @@ interface AssistantInfo {
   personality: string
   // 描述
   description: string
+  // 用户的设定，用于在提示词中填充用户的信息，进行个性化对话
+  mask: string
   // 初次相遇时间，存储为时间戳
   firstMeetTime: number
   // 好感度
   love: number
   // 对话案例
-  conversationExamples: string[]
+  messageExamples: string[]
   // 额外描述
   extraDescription: string
   // 更新,存储为时间戳
   updatedAt: number
   // 资产最后修改时间,存储为时间戳
   assetsLastModified: number
+  // 自定义提示词
+  customPrompt: string
+  // 开场白，数组形式
+  startWith: string[]
+  // 助手设置
+  settings: AssistantSettings
+  // 助手GSV设置
+  gsvSetting: GSVSetting
+}
+
+/**
+ * 获取当前助手信息
+ * @returns 当前助手信息或 null
+ */
+async function getCurrentAssistant(): Promise<AssistantInfo | null> {
+  try {
+    const url = `http://${getConfig('baseUrl')}/api/assistant/current`
+    const response = await axios.get(url)
+    return response.data.data || null
+  } catch (error) {
+    console.error('获取当前助手失败:', (error as Error).message)
+    return null
+  }
+}
+
+/**
+ * 切换当前助手
+ * @param assistantName 助手名称
+ * @returns 切换结果和助手信息
+ */
+async function switchAssistant(
+  assistantName: string
+): Promise<{ success: boolean; data?: AssistantInfo; error?: string }> {
+  try {
+    const url = `http://${getConfig('baseUrl')}/api/assistant/switch`
+    const response = await axios.post(url, { name: assistantName })
+    return {
+      success: true,
+      data: response.data.data
+    }
+  } catch (error) {
+    console.error('切换助手失败:', (error as Error).message)
+    return {
+      success: false,
+      error: (error as Error).message
+    }
+  }
 }
 
 /** 工具函数，确保助手目录存在
@@ -147,15 +248,29 @@ async function isNeedsUpdate(assistant: AssistantInfo): Promise<boolean> {
  */
 async function updateAssistantInfo(assistant: AssistantInfo): Promise<boolean> {
   try {
+    // 确保必要的字段存在
+    const completeAssistant = {
+      ...assistant,
+      user: assistant.user || '阁下',
+      mask: assistant.mask || '',
+      messageExamples: assistant.messageExamples || [],
+      customPrompt: assistant.customPrompt || '',
+      startWith: assistant.startWith || [],
+      settings: assistant.settings,
+      gsvSetting: assistant.gsvSetting,
+      // 更新时间戳
+      updatedAt: Date.now()
+    }
+
     // 上传到云端
     const url = `http://${getConfig('baseUrl')}/api/assistant/info/update`
+    await axios.post(url, completeAssistant)
 
-    await axios.post(url, assistant)
-    // 保存在本地，然后上传
-    const assistantDir = ensureAssistantDirExists(assistant.name)
-    // 将数据保存为JSON文件
+    // 保存在本地
+    const assistantDir = ensureAssistantDirExists(completeAssistant.name)
     const filePath = path.join(assistantDir, 'info.json')
-    fs.writeFileSync(filePath, JSON.stringify(assistant, null, 2))
+    fs.writeFileSync(filePath, JSON.stringify(completeAssistant, null, 2))
+
     return true
   } catch (error) {
     console.error(`Error updating assistant ${assistant.name}:`, (error as Error).message)
@@ -172,24 +287,38 @@ async function addAssistant(
   onProgress?: (progress: number) => void
 ): Promise<boolean> {
   // 检查助手是否存在
-  const assistantDir = ensureAssistantDirExists(assistant.name)
-  if (fs.existsSync(assistantDir)) {
+  const assistantInfoPath = path.join(app.getAppPath(), 'assistants', assistant.name, 'info.json')
+  if (fs.existsSync(assistantInfoPath)) {
     console.warn(`Assistant ${assistant.name} already exists.`)
     return false
   }
   try {
+    // 确保必要的字段存在
+    const completeAssistant = {
+      ...assistant,
+      user: assistant.user,
+      mask: assistant.mask,
+      messageExamples: assistant.messageExamples,
+      customPrompt: assistant.customPrompt,
+      startWith: assistant.startWith,
+      settings: assistant.settings,
+      gsvSetting: assistant.gsvSetting,
+      // 更新时间戳
+      updatedAt: Date.now(),
+      assetsLastModified: Date.now()
+    }
+
     // 上传到云端
     const url = `http://${getConfig('baseUrl')}/api/assistant/info/add`
-    await axios.post(url, assistant)
-    // 保存在本地，然后上传
-    const assistantDir = ensureAssistantDirExists(assistant.name)
-    // 将数据保存为JSON文件
+    await axios.post(url, completeAssistant)
+
+    // 保存在本地
+    const assistantDir = ensureAssistantDirExists(completeAssistant.name)
     const filePath = path.join(assistantDir, 'info.json')
-    // 更新资产最后修改时间
-    assistant.assetsLastModified = Date.now()
-    fs.writeFileSync(filePath, JSON.stringify(assistant, null, 2))
+    fs.writeFileSync(filePath, JSON.stringify(completeAssistant, null, 2))
+
     // 上传助手资源
-    await uploadAssistantAssets(assistant, onProgress)
+    await uploadAssistantAssets(completeAssistant, onProgress)
 
     return true
   } catch (error) {
@@ -396,6 +525,8 @@ async function deleteAssistant(assistantName: string): Promise<boolean> {
 }
 
 export {
+  getCurrentAssistant,
+  switchAssistant,
   downloadAssistantAssets,
   loadAssistantsData,
   ensureAssistantDirExists,

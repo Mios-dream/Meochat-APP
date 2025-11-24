@@ -268,7 +268,9 @@ onUnmounted(() => {
 
   const tabs = document.getElementById('tabs-container')
   tabs!.style.opacity = '1'
-  window.api.openAssistant()
+  if (configStore.config.assistantEnabled) {
+    window.api.openAssistant()
+  }
   live2DManager.destroy()
 })
 

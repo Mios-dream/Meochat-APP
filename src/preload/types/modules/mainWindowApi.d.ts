@@ -55,4 +55,12 @@ export interface MainWindowApi {
   onUploadProgress: (callback: (data: { assistantName: string; progress: number }) => void) => void
 
   isNeedUpdate: (assistant: AssistantInfo) => Promise<boolean>
+
+  //获取助手开关状态
+  getAssistantStatus: () => Promise<boolean>
+
+  // 新增：获取当前助手信息
+  getCurrentAssistant: () => Promise<AssistantInfo | null>
+  // 新增：切换当前助手
+  switchAssistant: (name: string) => Promise<boolean>
 }

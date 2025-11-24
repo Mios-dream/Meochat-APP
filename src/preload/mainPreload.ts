@@ -53,5 +53,10 @@ contextBridge.exposeInMainWorld('api', {
   onUploadProgress: (callback) =>
     ipcRenderer.on('assistant:upload-progress', (_, percent) => callback(percent)),
 
-  isNeedsUpdate: (assistant) => ipcRenderer.invoke('assistant:need-update', assistant)
+  isNeedsUpdate: (assistant) => ipcRenderer.invoke('assistant:need-update', assistant),
+
+  // 新增：获取当前助手信息
+  getCurrentAssistant: () => ipcRenderer.invoke('assistant:get-current-assistant'),
+  // 新增：切换当前助手
+  switchAssistant: (name) => ipcRenderer.invoke('assistant:switch-assistant', name)
 })

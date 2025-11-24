@@ -10,7 +10,9 @@ import {
   addAssistant,
   updateAssistantInfo,
   deleteAssistant,
-  isNeedsUpdate
+  isNeedsUpdate,
+  getCurrentAssistant,
+  switchAssistant
 } from '../services/assistantService'
 
 const autoUpdater = getAutoUpdater()
@@ -173,6 +175,28 @@ function setupAssistantServerIPC(): void {
 
   ipcMain.handle('assistant:need-update', async (_event, assistant) => {
     return await isNeedsUpdate(assistant)
+  })
+
+  // 新增：获取当前助手信息
+  ipcMain.handle('assistant:get-current-assistant', async () => {
+    try {
+      const assistant = await getCurrentAssistant()
+      return { success: true, data: assistant }
+    } catch (error) {
+      console.error('获取当前助手信息失败:', error)
+      return { success: false, error: (error as Error).message }
+    }
+  })
+
+  // 新增：切换当前助手
+  ipcMain.handle('assistant:switch-assistant', async (_event, assistantName: string) => {
+    try {
+      const result = await switchAssistant(assistantName)
+      return result
+    } catch (error) {
+      console.error('切换助手失败:', error)
+      return { success: false, error: (error as Error).message }
+    }
   })
 }
 

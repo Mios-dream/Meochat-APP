@@ -153,7 +153,12 @@
                 <div class="progress-container">
                   <div id="love-icon"><font-awesome-icon icon="fa-solid fa-heart" /></div>
                   <div class="progress-bar-background">
-                    <div class="progress-bar-fill" :style="{ width: `${50}%` }"></div>
+                    <div
+                      class="progress-bar-fill"
+                      :style="{
+                        width: `${(assistant.love / 200) * 100}%`
+                      }"
+                    ></div>
                   </div>
                 </div>
               </div>
@@ -237,8 +242,8 @@ const confirmMessage = ref('')
 const assistantToDelete = ref('')
 
 // 选择助手
-function selectAssistant(assistant: AssistantInfo): void {
-  assistantManager.setCurrentAssistant(assistant.name)
+async function selectAssistant(assistant: AssistantInfo): Promise<void> {
+  await assistantManager.setCurrentAssistant(assistant.name)
   assistantInfo.value = assistantManager.getCurrentAssistant()
 }
 
@@ -615,8 +620,9 @@ onUnmounted(() => {
 
 #assistant-introduction {
   margin-left: -20px;
-  width: 400px;
+  width: 440px;
   height: auto;
+
   background-image: url('../assets/images/backplane.png');
   background-size: 100%;
   background-repeat: no-repeat;
@@ -629,13 +635,15 @@ onUnmounted(() => {
 .introduction-text {
   width: 100%;
   height: 100%;
+  max-height: 210px;
   color: gray;
   font-size: 15px;
   overflow: hidden;
   text-overflow: ellipsis;
   display: -webkit-box;
-  line-clamp: 9;
   -webkit-box-orient: vertical;
+  line-clamp: 10;
+  -webkit-line-clamp: 10;
   line-height: 1.4;
   word-wrap: break-word;
   word-break: break-word;
