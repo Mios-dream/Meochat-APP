@@ -5,6 +5,7 @@ import dragAddon from 'electron-click-drag-plugin'
 import robot from '@jitsi/robotjs'
 import { uIOhook } from 'uiohook-napi'
 import { MicaBrowserWindow } from 'mica-electron'
+import log from '../utils/logger'
 
 let mouseTrackingInterval: NodeJS.Timeout | null = null
 let isMousePressed = false // 追踪鼠标按下状态
@@ -70,7 +71,7 @@ function setupChatBoxIPC(): void {
   })
 
   ipcMain.on('chat-box:send-message', (_event, data) => {
-    console.log('show-assistant-message', data)
+    log.info('show-assistant-message', data)
     // let assistantWindow = getAssistantWindow()
     // if (assistantWindow && !assistantWindow.isDestroyed()) {
     //   assistantWindow.webContents.send('chat-box:send-message', data)
@@ -146,7 +147,7 @@ function setupAssistantIPC(): void {
       const windowId = process.platform === 'linux' ? hwndBuffer.readUInt32LE(0) : hwndBuffer
       dragAddon.startDrag(windowId)
     } catch (error) {
-      console.error(error)
+      log.error(error)
     }
   })
 

@@ -143,7 +143,7 @@
             <textarea
               id="mask"
               v-model="formData.mask"
-              placeholder="用于在提示词中填充用户的信息，进行个性化对话"
+              placeholder="用于在提示词中填充用户的信息，让助手更了解用户"
               rows="3"
             ></textarea>
           </div>
@@ -153,7 +153,7 @@
             <textarea
               id="customPrompt"
               v-model="formData.customPrompt"
-              placeholder="可以添加自定义的系统提示词"
+              placeholder="可以添加自定义的提示词，将不使用模板创建助手"
               rows="4"
             ></textarea>
           </div>
@@ -238,7 +238,7 @@
                   <label for="textLang">语音语言</label>
                   <div class="description">设置助手的语音输出语言</div>
                 </div>
-                <select id="textLang" v-model="formData.gsvSetting.textLang">
+                <select id="textLang" v-model="formData.gsvSetting.textLang" default-value="zh">
                   <option value="zh">中文</option>
                   <option value="en">英文</option>
                   <option value="ja">日文</option>
@@ -272,14 +272,32 @@
               <div class="divider"></div>
               <form class="setting-from">
                 <div class="title">
-                  <label for="promptText">参考音频</label>
+                  <label for="textLang">参考语音语言</label>
+                  <div class="description">设置语音合成的参考语音的语言</div>
+                </div>
+                <select
+                  id="refTextLang"
+                  v-model="formData.gsvSetting.promptLang"
+                  default-value="zh"
+                >
+                  <option value="zh">中文</option>
+                  <option value="en">英文</option>
+                  <option value="ja">日文</option>
+                </select>
+              </form>
+
+              <div class="divider"></div>
+              <form class="setting-from">
+                <div class="title">
+                  <label for="refAudioPath">参考音频</label>
                   <div class="description">用于合成语音的参考音频文件地址</div>
                 </div>
                 <input
-                  id="promptText"
+                  id="refAudioPath"
                   v-model="formData.gsvSetting.refAudioPath"
                   type="text"
                   placeholder="输入参考音频文件地址..."
+                  required
                 />
               </form>
               <div class="divider"></div>
@@ -294,6 +312,7 @@
                   v-model="formData.gsvSetting.promptText"
                   type="text"
                   placeholder="输入参考文本..."
+                  required
                 />
               </form>
             </div>
@@ -318,8 +337,8 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
 import BlurModal from './BlurModal.vue'
-import type { AssistantInfo } from '../server/assistantManager'
-import { AssistantManager, createNullAssistant } from '../server/assistantManager'
+import type { AssistantInfo } from '../services/assistantManager'
+import { AssistantManager, createNullAssistant } from '../services/assistantManager'
 import ToggleSwitch from './ToggleSwitch.vue'
 
 const assistantManager = AssistantManager.getInstance()
@@ -353,7 +372,6 @@ const activeTab = ref('basic')
 const isEditMode = computed(() => !!props.editingAssistant)
 
 // 加载状态
-const isUploading = ref(false)
 const isSubmitting = ref(false)
 
 // 文件上传相关
@@ -460,34 +478,71 @@ const removeStartWith = (index: number): void => {
   formData.value.startWith.splice(index, 1)
 }
 
+// 表单验证函数
+const validateForm = (): boolean => {
+  const missingFields: string[] = []
+
+  // 检查基本信息中的必填字段
+  if (!formData.value.name?.trim()) {
+    missingFields.push('名字')
+  }
+  if (!formData.value.height) {
+    missingFields.push('身高')
+  }
+  if (!formData.value.weight) {
+    missingFields.push('体重')
+  }
+  if (!formData.value.birthday) {
+    missingFields.push('生日')
+  }
+
+  // 检查语音设置中的必填字段
+  if (!formData.value.gsvSetting.refAudioPath?.trim()) {
+    missingFields.push('参考音频')
+  }
+  if (!formData.value.gsvSetting.promptText?.trim()) {
+    missingFields.push('参考文本')
+  }
+
+  // 如果有未填写的必填字段，显示提示
+  if (missingFields.length > 0) {
+    console.error(`请填写以下必填字段：\n${missingFields.join('、')}`)
+    return false
+  }
+
+  return true
+}
+
 // 提交表单
 const handleSubmit = async (): Promise<void> => {
   if (!formData.value.name || isSubmitting.value) {
     return
   }
 
+  // 调用表单验证函数
+  if (!validateForm()) {
+    return
+  }
+
   try {
     // 如果有选中的文件，则先保存文件
     if (selectedFile.value) {
-      try {
-        isUploading.value = true
-        const fileBuffer = await readFileAsBuffer(selectedFile.value)
+      const fileBuffer = await readFileAsBuffer(selectedFile.value)
 
-        // 调用IPC保存文件，传递助手名称作为参数
-        const savedPath = await window.api.saveAssistantImageFile(
-          fileBuffer,
-          formData.value.name,
-          'avatar'
-        )
-        formData.value.avatar = savedPath
-      } catch (error) {
-        console.error('文件保存失败:', error)
-        const errorMessage = error instanceof Error ? error.message : '文件保存失败'
-        alert(`文件保存失败: ${errorMessage}`)
+      // 调用IPC保存文件，传递助手名称作为参数
+      const saveResult = await window.api.saveAssistantImageFile(
+        fileBuffer,
+        formData.value.name,
+        'avatar'
+      )
+      if (saveResult.success) {
+        uploadedFilePath.value = saveResult.path
+      } else {
+        console.error('文件保存失败:', saveResult.error)
         return
-      } finally {
-        isUploading.value = false
       }
+      // 保存成功后，更新表单数据中的头像路径
+      formData.value.avatar = saveResult.path
     }
 
     // 设置提交状态为true，显示加载动画
@@ -518,7 +573,7 @@ const handleSubmit = async (): Promise<void> => {
         // 关闭对话框并重置表单
         emit('update:modelValue', false)
       } else {
-        throw new Error('更新助手失败')
+        console.error('更新助手失败')
       }
     } else {
       // 添加模式：创建新助手

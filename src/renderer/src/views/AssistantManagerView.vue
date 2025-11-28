@@ -199,10 +199,11 @@
 import { ref, onMounted, computed, onUnmounted } from 'vue'
 import { useConfigStore } from '../stores/useConfigStore'
 import ContextMenu from '../components/Toolbar.vue'
-import { AssistantInfo, AssistantManager } from '../server/assistantManager'
+import { AssistantInfo, AssistantManager } from '../services/assistantManager'
 import AddAssistantDialog from '../components/EditAssistantDialog.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import Loader from '../components/Loader.vue'
+import { logService } from '../services/LogService'
 
 // 从配置存储中获取配置
 const configStore = useConfigStore()
@@ -214,7 +215,7 @@ const assistantManager = AssistantManager.getInstance()
 // 当前助手信息
 const assistantInfo = ref<AssistantInfo>(assistantManager.getCurrentAssistant())
 // 当前助手的好感度
-const currentLove = ref(assistantInfo.value?.love || 0) // 当前好感度值
+const currentLove = computed(() => assistantInfo.value?.love || 0) // 当前好感度值
 // 助手列表
 const assistantList = ref(assistantManager.getAssistants())
 // 是否可见添加助手对话框
@@ -318,15 +319,15 @@ async function handleDeleteAssistant(name: string): Promise<void> {
 async function handleConfirmDelete(): Promise<void> {
   if (!assistantToDelete.value) return
 
-  const success = await assistantManager.deleteAssistant(assistantToDelete.value)
-  if (success) {
+  const status = await assistantManager.deleteAssistant(assistantToDelete.value)
+  if (status.success) {
     assistantList.value = assistantManager.getAssistants()
     // 更新当前助手信息
     if (assistantInfo.value?.name === assistantToDelete.value) {
       assistantInfo.value = assistantManager.getCurrentAssistant()
     }
   } else {
-    alert('删除助手失败')
+    console.error('删除助手失败', status.message)
   }
 
   // 重置状态
@@ -386,6 +387,8 @@ function closeAddAssistantDialog(): void {
 
 // 当组件挂载时，获取助手状态
 onMounted(() => {
+  logService.info('AssistantManagerView mounted')
+
   window.api.getAssistantStatus().then((status: boolean) => {
     isAssistantOpen.value = status
   })

@@ -2,6 +2,7 @@ import { BrowserWindow, globalShortcut, screen } from 'electron'
 import { createChatBoxWindow } from './chatBoxWindow'
 import Store from 'electron-store'
 import { getAppUrl, getPreloadPath, isDevelopment } from '../utils/pathResolve'
+import log from '../utils/logger'
 
 // 创建配置存储实例
 const store = new Store()
@@ -63,7 +64,7 @@ function createAssistantWindow(): void | BrowserWindow {
     createChatBoxWindow()
   })
 
-  console.log('getAppUrl:', getAppUrl())
+  log.info('getAppUrl:', getAppUrl())
   if (isDevelopment()) {
     assistantWindow.loadURL(getAppUrl() + '#/assistant')
   } else {
@@ -84,7 +85,7 @@ function createAssistantWindow(): void | BrowserWindow {
     if (assistantWindow) {
       store.set('assistantWindowBounds', assistantWindow.getBounds())
     } else {
-      console.log('assistantWindow is null')
+      log.info('assistantWindow is null')
     }
   })
 

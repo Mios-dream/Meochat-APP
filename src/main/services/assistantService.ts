@@ -5,6 +5,7 @@ import AdmZip from 'adm-zip'
 import path from 'path'
 import { app } from 'electron'
 import { getConfig } from '../config/configManager'
+import log from '../utils/logger'
 
 // 助手语音合成设置模型
 interface GSVSetting {
@@ -107,7 +108,7 @@ async function getCurrentAssistant(): Promise<AssistantInfo | null> {
     const response = await axios.get(url)
     return response.data.data || null
   } catch (error) {
-    console.error('获取当前助手失败:', (error as Error).message)
+    log.error('获取当前助手失败:', (error as Error).message)
     return null
   }
 }
@@ -128,7 +129,7 @@ async function switchAssistant(
       data: response.data.data
     }
   } catch (error) {
-    console.error('切换助手失败:', (error as Error).message)
+    log.error('切换助手失败:', (error as Error).message)
     return {
       success: false,
       error: (error as Error).message
@@ -142,7 +143,7 @@ async function switchAssistant(
  */
 function ensureAssistantDirExists(assistantName: string): string {
   // 获取应用安装目录
-  const appPath = app.getAppPath()
+  const appPath = app.getPath('userData')
   const assistantDir = path.join(appPath, 'assistants', assistantName)
 
   if (!fs.existsSync(assistantDir)) {
@@ -166,7 +167,7 @@ function downloadAssistantAssets(
   return new Promise((resolve, reject) => {
     try {
       // 定义下载和保存路径
-      const downloadsDir = path.join(app.getAppPath(), 'cache')
+      const downloadsDir = path.join(app.getPath('userData'), 'cache')
       const tempZipPath = path.join(downloadsDir, `${assistantName}.zip`)
       const assistantDir = ensureAssistantDirExists(assistantName)
       const assetsDir = path.join(assistantDir, 'assets')
@@ -237,7 +238,7 @@ async function isNeedsUpdate(assistant: AssistantInfo): Promise<boolean> {
     })
     return response.data.needsUpdate
   } catch (error) {
-    console.error('Error checking assistant update:', error)
+    log.error('Error checking assistant update:', error)
     return false
   }
 }
@@ -273,7 +274,7 @@ async function updateAssistantInfo(assistant: AssistantInfo): Promise<boolean> {
 
     return true
   } catch (error) {
-    console.error(`Error updating assistant ${assistant.name}:`, (error as Error).message)
+    log.error(`Error updating assistant ${assistant.name}:`, (error as Error).message)
     return false
   }
 }
@@ -287,9 +288,14 @@ async function addAssistant(
   onProgress?: (progress: number) => void
 ): Promise<boolean> {
   // 检查助手是否存在
-  const assistantInfoPath = path.join(app.getAppPath(), 'assistants', assistant.name, 'info.json')
+  const assistantInfoPath = path.join(
+    app.getPath('userData'),
+    'assistants',
+    assistant.name,
+    'info.json'
+  )
   if (fs.existsSync(assistantInfoPath)) {
-    console.warn(`Assistant ${assistant.name} already exists.`)
+    log.warn(`Assistant ${assistant.name} already exists.`)
     return false
   }
   try {
@@ -322,7 +328,7 @@ async function addAssistant(
 
     return true
   } catch (error) {
-    console.error(`Error adding assistant ${assistant.name}:`, (error as Error).message)
+    log.error(`Error adding assistant ${assistant.name}:`, (error as Error).message)
     return false
   }
 }
@@ -349,7 +355,7 @@ async function loadAssistantsData(
       })
 
       // 从本地获取当前的助手数据
-      const assistantDir = path.join(app.getAppPath(), 'assistants')
+      const assistantDir = path.join(app.getPath('userData'), 'assistants')
       const localAssistants = new Map<string, AssistantInfo>()
 
       if (fs.existsSync(assistantDir)) {
@@ -361,7 +367,7 @@ async function loadAssistantsData(
               const info = JSON.parse(fs.readFileSync(assistantInfoFile, 'utf8'))
               localAssistants.set(name, info)
             } catch (parseError) {
-              console.error(`Error parsing assistant ${name} info:`, parseError)
+              log.error(`Error parsing assistant ${name} info:`, parseError)
             }
           }
         }
@@ -407,7 +413,7 @@ async function loadAssistantsData(
             })
           }
         } catch (saveError) {
-          console.error(`Error saving assistant ${assistantName} info:`, saveError)
+          log.error(`Error saving assistant ${assistantName} info:`, saveError)
         }
       }
 
@@ -416,21 +422,21 @@ async function loadAssistantsData(
       for (const [assistantName] of localAssistants.entries()) {
         if (!cloudAssistantMap.has(assistantName)) {
           // 删除本地助手数据
-          fs.rmSync(path.join(app.getAppPath(), 'assistants', assistantName), {
+          fs.rmSync(path.join(app.getPath('userData'), 'assistants', assistantName), {
             recursive: true,
             force: true
           })
-          console.log(`Assistant ${assistantName} removed as it no longer exists in the cloud.`)
+          log.info(`Assistant ${assistantName} removed as it no longer exists in the cloud.`)
         }
       }
     }
   } catch (error) {
-    console.error('Error loading assistant data from cloud:', (error as Error).message)
+    log.error('Error loading assistant data from cloud:', (error as Error).message)
     // 云端同步失败时，仍然返回本地数据
   }
 
   // 最终从本地获取所有助手数据
-  const assistantDir = path.join(app.getAppPath(), 'assistants')
+  const assistantDir = path.join(app.getPath('userData'), 'assistants')
   if (!fs.existsSync(assistantDir)) {
     return []
   }
@@ -444,7 +450,7 @@ async function loadAssistantsData(
           const info = JSON.parse(fs.readFileSync(assistantInfoFile, 'utf8'))
           return info
         } catch (parseError) {
-          console.error(`Error parsing assistant ${name} info:`, parseError)
+          log.error(`Error parsing assistant ${name} info:`, parseError)
           return null
         }
       }
@@ -467,7 +473,7 @@ async function uploadAssistantAssets(
   const assetsDir = path.join(assistantDir, 'assets')
 
   if (!fs.existsSync(assetsDir)) {
-    console.warn('No assets directory found for assistant:', assistant.name)
+    log.warn('No assets directory found for assistant:', assistant.name)
     return false
   }
   try {
@@ -495,15 +501,17 @@ async function uploadAssistantAssets(
         }
       }
     })
-    console.log('Assistant assets uploaded successfully:', response.data)
+    log.info('Assistant assets uploaded successfully:', response.data)
     return true
   } catch (error) {
-    console.error(`Error uploading assistant ${assistant.name} assets:`, (error as Error).message)
+    log.error(`Error uploading assistant ${assistant.name} assets:`, (error as Error).message)
     return false
   }
 }
 
-async function deleteAssistant(assistantName: string): Promise<boolean> {
+async function deleteAssistant(
+  assistantName: string
+): Promise<{ success: boolean; message?: string }> {
   try {
     // 先删除云端资产
     const url = `http://${getConfig('baseUrl')}/api/assistant/info/delete`
@@ -516,11 +524,11 @@ async function deleteAssistant(assistantName: string): Promise<boolean> {
       force: true
     })
 
-    console.log(`Assistant ${assistantName} deleted successfully.`)
-    return true
+    log.info(`Assistant ${assistantName} deleted successfully.`)
+    return { success: true }
   } catch (error) {
-    console.error(`Error deleting assistant ${assistantName}:`, (error as Error).message)
-    return false
+    log.error(`Error deleting assistant ${assistantName}:`, (error as Error).message)
+    return { success: false, message: (error as Error).message }
   }
 }
 

@@ -29,6 +29,37 @@ const globalAPI = {
 
   openExternal: (url) => ipcRenderer.send('tool:open-external', url),
 
+  // 日志相关
+  // 修改日志相关，通过IPC发送到主进程
+  log: {
+    openLogDir: () => ipcRenderer.send('logger:open-log-dir'),
+
+    debug: (message: string, ...args) =>
+      ipcRenderer.send('logger:log', {
+        level: 'debug',
+        message,
+        args
+      }),
+    info: (message: string, ...args) =>
+      ipcRenderer.send('logger:log', {
+        level: 'info',
+        message,
+        args
+      }),
+    warn: (message: string, ...args) =>
+      ipcRenderer.send('logger:log', {
+        level: 'warning',
+        message,
+        args
+      }),
+    error: (message: string, ...args) =>
+      ipcRenderer.send('logger:log', {
+        level: 'error',
+        message,
+        args
+      })
+  },
+
   config: {
     get: (key) => ipcRenderer.invoke('config:get', key),
     set: (key, value) => ipcRenderer.invoke('config:set', key, value),

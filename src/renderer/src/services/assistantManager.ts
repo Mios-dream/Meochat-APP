@@ -166,7 +166,7 @@ function createNullAssistant(): AssistantInfo {
       enableLongMemory: true,
       enableLongMemorySearchEnhance: true,
       enableCoreMemory: true,
-      longMemoryThreshold: 0.5,
+      longMemoryThreshold: 0.38,
       enableLoreBooks: true,
       loreBooksThreshold: 0.5,
       loreBooksDepth: 3,
@@ -279,21 +279,21 @@ class AssistantManager {
    * @param name 助手名称
    */
   public async setCurrentAssistant(name: string): Promise<void> {
-    try {
-      // 1. 先更新本地状态
-      const assistant = this.getAssistantInfo(name)
-      if (assistant) {
+    // 1. 先更新本地状态
+    const assistant = this.getAssistantInfo(name)
+    if (assistant) {
+      // 2. 发送切换请求到服务器同步
+      const result = await window.api.switchAssistant(name)
+      if (result.success) {
         this.currentAssistant = assistant
         this.configStore.updateConfig('currentAssistant', name)
-
-        // 2. 发送切换请求到服务器同步
-        await window.api.switchAssistant(name)
+      } else {
+        this.currentAssistant = this.getAssistantInfo(name)
+        this.configStore.updateConfig('currentAssistant', name)
+        console.error('同步助手失败:', result.error)
       }
-    } catch (error) {
-      console.error('切换助手失败:', error)
-      // 即使服务器同步失败，也要保持本地状态更新
-      this.currentAssistant = this.getAssistantInfo(name)
-      this.configStore.updateConfig('currentAssistant', name)
+    } else {
+      console.error('助手不存在:', name)
     }
   }
 
@@ -353,10 +353,10 @@ class AssistantManager {
     return status
   }
 
-  public async deleteAssistant(name: string): Promise<boolean> {
+  public async deleteAssistant(name: string): Promise<{ success: boolean; message?: string }> {
     // 发送IPC消息删除助手数据
     const status = await window.api.deleteAssistant(name)
-    if (status) {
+    if (status.success) {
       this.assistants = this.assistants.filter((assistant) => assistant.name !== name)
       // 如果删除的是当前助手，切换到第一个助手
       if (this.currentAssistant && this.currentAssistant.name === name) {
@@ -401,11 +401,6 @@ class AssistantManager {
         assistantName,
         onProgress
       })
-
-      // 监控助手资源下载进度
-      // window.api.ipcRenderer.on('assistant:download-progress', (_event, data) => {
-      //   console.log(`助手资源下载进度: ${data.assistantName} - ${data.progress}%`)
-      // })
 
       console.log(`助手资源${assistantName}下载和解压完成`)
     } catch (error) {

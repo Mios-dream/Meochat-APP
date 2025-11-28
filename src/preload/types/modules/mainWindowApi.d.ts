@@ -22,7 +22,7 @@ export interface MainWindowApi {
     fileData: ArrayBuffer,
     assistantName: string,
     fileName: string
-  ) => Promise<string>
+  ) => Promise<{ success: true; path: string } | { success: false; error: string }>
 
   // 获取当前版本信息
   getCurrentVersion: () => Promise<string>
@@ -50,7 +50,7 @@ export interface MainWindowApi {
     onProgress?: (progress: number) => void
   ) => Promise<boolean>
   updateAssistantInfo: (assistant: AssistantInfo) => Promise<boolean>
-  deleteAssistant: (name: string) => Promise<boolean>
+  deleteAssistant: (name: string) => Promise<{ success: boolean; message?: string }>
 
   onUploadProgress: (callback: (data: { assistantName: string; progress: number }) => void) => void
 
@@ -62,5 +62,14 @@ export interface MainWindowApi {
   // 新增：获取当前助手信息
   getCurrentAssistant: () => Promise<AssistantInfo | null>
   // 新增：切换当前助手
-  switchAssistant: (name: string) => Promise<boolean>
+  switchAssistant: (
+    name: string
+  ) => Promise<{ success: boolean; data?: AssistantInfo; error?: string }>
+
+  log: {
+    debug: (message: string, details?: string) => void
+    info: (message: string, details?: string) => void
+    warn: (message: string, details?: string) => void
+    error: (message: string, details?: string) => void
+  }
 }

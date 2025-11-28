@@ -1,4 +1,4 @@
-import { ChatService } from '@renderer/server/ChatService'
+import { ChatService } from '@renderer/services/ChatService'
 
 export interface OutputAction {
   // 文本数据

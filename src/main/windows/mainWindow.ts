@@ -2,6 +2,7 @@ import { powerMonitor } from 'electron'
 import { MicaBrowserWindow, IS_WINDOWS_11 } from 'mica-electron'
 import { getAppUrl, getPreloadPath, isDevelopment } from '../utils/pathResolve'
 import { getConfig } from '../config/configManager'
+import log from '../utils/logger'
 
 // 检查是否是开机自启
 const isAutoStarted = process.argv.includes('--auto-start')
@@ -69,7 +70,7 @@ function createMainWindow(): MicaBrowserWindow {
     updateWindowEffect()
   })
 
-  console.log('isDevelopment:', isDevelopment())
+  log.info('isDevelopment:', isDevelopment())
   // 加载页面
   if (isDevelopment()) {
     mainWindow.loadURL(getAppUrl())

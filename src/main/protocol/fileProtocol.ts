@@ -1,6 +1,7 @@
 import { app, protocol } from 'electron'
 import fs from 'fs'
 import path from 'path'
+import log from '../utils/logger'
 
 // 一个辅助函数，用于处理不同操作系统的文件路径问题
 function convertPath(originalPath): string {
@@ -55,7 +56,7 @@ function handleFileProtocol(): void {
       const data = await fs.promises.readFile(fullPath) // 异步读取文件内容
       return new Response(data) // 将文件内容作为响应返回
     } catch (error) {
-      console.error('读取本地文件时出错:', (error as Error).message)
+      log.error('读取本地文件时出错:', (error as Error).message)
       return new Response(null, { status: 404 }) // 返回 404 错误
     }
   })
@@ -69,10 +70,10 @@ function handleFileProtocol(): void {
 
       const fullPath = process.platform === 'win32' ? convertPath(decodedUrl) : decodedUrl
 
-      const data = await fs.promises.readFile(path.join(app.getAppPath(), fullPath)) // 异步读取文件内容
+      const data = await fs.promises.readFile(path.join(app.getPath('userData'), fullPath)) // 异步读取文件内容
       return new Response(data) // 将文件内容作为响应返回
     } catch (error) {
-      console.error('读取app目录的文件时出错:', (error as Error).message)
+      log.error('读取app目录的文件时出错:', (error as Error).message)
       return new Response(null, { status: 404 }) // 返回 404 错误
     }
   })

@@ -14,6 +14,7 @@ import {
   getCurrentAssistant,
   switchAssistant
 } from '../services/assistantService'
+import log from '../utils/logger'
 
 const autoUpdater = getAutoUpdater()
 
@@ -68,7 +69,7 @@ function setupUpdaterIPC(): void {
         'updater:update-status',
         `检查更新失败,请到项目仓库查看更新或者使用代理重试。${errorObj.message}`
       )
-      console.error(error)
+      log.error(error)
       return { error: errorObj.message }
     }
   })
@@ -117,15 +118,23 @@ function setupAssistantServerIPC(): void {
     })
   })
 
+  /**
+   * 更新助手信息
+   */
   ipcMain.handle('assistant:update-assistant-info', async (_event, assistantData) => {
     return await updateAssistantInfo(assistantData)
   })
 
-  // 删除助手
+  /**
+   * 删除助手
+   */
   ipcMain.handle('assistant:delete-assistant', async (_, name) => {
     return await deleteAssistant(name)
   })
 
+  /**
+   * 保存助手图片文件
+   */
   ipcMain.handle(
     'assistant:save-image-file',
     async (
@@ -133,7 +142,7 @@ function setupAssistantServerIPC(): void {
       fileData: Buffer | ArrayBuffer,
       assistantName: string,
       fileName: string
-    ): Promise<string> => {
+    ): Promise<{ success: true; path: string } | { success: false; error: string }> => {
       try {
         const assistantDir = ensureAssistantDirExists(assistantName)
         const assetsDir = path.join(assistantDir, 'assets', 'images')
@@ -147,14 +156,17 @@ function setupAssistantServerIPC(): void {
         fs.writeFileSync(filePath, bufferData)
 
         // 返回相对路径，用于在应用中引用
-        return `assistants/${assistantName}/assets/images/${fileName}.png`
+        return { success: true, path: `assistants/${assistantName}/assets/images/${fileName}.png` }
       } catch (error) {
-        console.error('保存助手文件失败:', error)
-        throw new Error('保存文件失败')
+        log.error('保存助手文件失败:', error)
+        return { success: false, error: (error as Error).message }
       }
     }
   )
 
+  /**
+   * 下载助手资产文件
+   */
   ipcMain.handle(
     'assistant:download-assistant-asset',
     async (event, { assistantName }: { assistantName: string }) => {
@@ -164,6 +176,9 @@ function setupAssistantServerIPC(): void {
     }
   )
 
+  /**
+   * 加载助手数据
+   */
   ipcMain.handle('assistant:load-assistant-data', async (event) => {
     return await loadAssistantsData((assistantName, progress) => {
       event.sender.send('assistant:download-progress', {
@@ -173,29 +188,78 @@ function setupAssistantServerIPC(): void {
     })
   })
 
+  /**
+   * 检查助手是否需要更新
+   */
   ipcMain.handle('assistant:need-update', async (_event, assistant) => {
     return await isNeedsUpdate(assistant)
   })
 
-  // 新增：获取当前助手信息
+  /**
+   * 获取当前助手信息
+   */
   ipcMain.handle('assistant:get-current-assistant', async () => {
     try {
       const assistant = await getCurrentAssistant()
       return { success: true, data: assistant }
     } catch (error) {
-      console.error('获取当前助手信息失败:', error)
+      log.error('获取当前助手信息失败:', error)
       return { success: false, error: (error as Error).message }
     }
   })
 
-  // 新增：切换当前助手
+  /**
+   * 切换当前助手
+   */
   ipcMain.handle('assistant:switch-assistant', async (_event, assistantName: string) => {
+    const result = await switchAssistant(assistantName)
+    return result
+  })
+}
+
+// 添加日志相关 IPC 处理
+function setupLoggerIPC(): void {
+  // 处理从渲染进程和preload发来的日志消息
+  ipcMain.on(
+    'logger:log',
+    (
+      _event,
+      {
+        level,
+        message,
+        args = []
+      }: {
+        level: string
+        message: string
+        args?
+      }
+    ) => {
+      switch (level) {
+        case 'debug':
+          log.debug(message, ...args)
+          break
+        case 'info':
+          log.info(message, ...args)
+          break
+        case 'warning':
+        case 'warn':
+          log.warn(message, ...args)
+          break
+        case 'error':
+          log.error(message, ...args)
+          break
+        default:
+          log.info(`[${level}]`, message, ...args)
+      }
+    }
+  )
+
+  // 打开日志目录
+  ipcMain.on('logger:open-log-dir', () => {
     try {
-      const result = await switchAssistant(assistantName)
-      return result
+      shell.openPath(app.getPath('logs'))
     } catch (error) {
-      console.error('切换助手失败:', error)
-      return { success: false, error: (error as Error).message }
+      log.error('打开日志目录失败:', error)
     }
   })
 }
@@ -219,7 +283,7 @@ function setupUtilityIPC(): void {
         sound: data.sound || null // 自定义音效
       }).show()
     } else {
-      console.log('Notification not supported')
+      log.warn('Notification not supported')
     }
   })
 }
@@ -228,6 +292,7 @@ function setupMainIPC(): void {
   setupUpdaterIPC()
   setupUtilityIPC()
   setupAssistantServerIPC()
+  setupLoggerIPC()
 
   ipcMain.on('app:show', () => {
     const win = getMainWindow()

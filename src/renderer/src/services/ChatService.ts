@@ -1,4 +1,4 @@
-import { MessageTips } from '../server/MessageTips'
+import { MessageTips } from '../services/MessageTips'
 import { Live2DManager } from './Live2dManager'
 import { useConfigStore } from '../stores/useConfigStore'
 import { computed } from 'vue'
@@ -9,14 +9,51 @@ interface ChatMessage {
 }
 
 interface TextAndAudioData {
-  text: string
-  audio: string
+  message: string
+  file: string
   done?: boolean
 }
 
 interface TextAudioPair {
   text: string
   audioBlob: Blob
+}
+
+/**
+ * 在指定长度后的下一个标点处切分文本
+ * @param text 要切分的文本
+ * @param maxLength 最大长度阈值
+ * @returns 切分后的文本
+ */
+function truncateAtPunctuationForward(text: string, maxLength: number): string {
+  // 定义中文和英文标点符号
+  const punctuation = /[，。！？；：,.!?;:]/
+
+  // 如果文本长度不超过阈值，直接返回
+  if (text.length <= maxLength) {
+    return text
+  }
+
+  // 从阈值位置开始向前查找标点符号
+  let truncateIndex = text.length // 默认截断到文本末尾
+
+  // 向前查找标点符号
+  for (let i = maxLength; i >= 0; i--) {
+    if (punctuation.test(text[i])) {
+      truncateIndex = i + 1 // 包含标点符号本身
+      break
+    }
+  }
+
+  // 获取截断后的文本
+  const truncatedText = text.substring(truncateIndex)
+
+  // 递归检查截断后的文本是否仍然超过指定长度，如果超过则继续截断
+  if (truncatedText.length > maxLength) {
+    return truncateAtPunctuationForward(truncatedText, maxLength)
+  }
+
+  return truncatedText
 }
 
 class ChatService {
@@ -331,11 +368,11 @@ class ChatService {
 
   public handleTextAndAudio(data: TextAndAudioData): void {
     // 处理音频数据
-    const audioBlob = this.base64ToBlob(data.audio, 'audio/wav')
+    const audioBlob = this.base64ToBlob(data.file, 'audio/wav')
     if (audioBlob.size > 0) {
       // 将文本和音频作为一个对存储到音频队列中
       this.textAudioQueue.push({
-        text: data.text,
+        text: data.message,
         audioBlob: audioBlob
       })
       // 立即尝试播放（使用 Live2D 同步口型）
@@ -431,14 +468,21 @@ class ChatService {
     const textLength = text.length
     const interval = duration / textLength // 每个字符的显示间隔
 
+    let displayText: string
+    // 使用改进的字符切分算法，超过长度后向后寻找标点
+    const maxLength = 100
+    if (this.currentDisplayText.length > maxLength) {
+      displayText = truncateAtPunctuationForward(this.currentDisplayText, maxLength)
+    } else {
+      displayText = this.currentDisplayText
+    }
+
     // 显示当前文本段的字符
     let currentIndex = 0
     const displayNextChar = (): void => {
       if (currentIndex < textLength) {
         this.showTempMessage(
-          this.currentDisplayText
-            .substring(0, this.currentDisplayText.length - textLength + currentIndex + 1)
-            .trim(),
+          displayText.substring(0, displayText.length - textLength + currentIndex + 1).trim(),
           -1,
           999,
           0

@@ -1,7 +1,7 @@
-import { ContextManager } from '../server/InteractionSystem/core/context'
-import { ActionDispatcher } from '../server/InteractionSystem/core/dispatcher'
-import { IEventHandler } from '../server/InteractionSystem/types/IEventHandler'
-import { EventModule } from '../server/InteractionSystem/types/eventModules'
+import { ContextManager } from '../services/InteractionSystem/core/context'
+import { ActionDispatcher } from '../services/InteractionSystem/core/dispatcher'
+import { IEventHandler } from '../services/InteractionSystem/types/IEventHandler'
+import { EventModule } from '../services/InteractionSystem/types/eventModules'
 
 // 时间事件模块
 export class TimeEventModule extends EventModule {

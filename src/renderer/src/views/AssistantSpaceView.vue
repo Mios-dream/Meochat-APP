@@ -169,8 +169,8 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, Ref, watch } from 'vue'
-import { ChatService } from '../server/ChatService'
-import { Live2DManager } from '../server/Live2dManager'
+import { ChatService } from '../services/ChatService'
+import { Live2DManager } from '../services/Live2dManager'
 import AssistantTips from '../components/AssistantTips.vue'
 import LoadingProgress from '../components/LoadingProgress.vue'
 import BlurModal from '../components/BlurModal.vue'

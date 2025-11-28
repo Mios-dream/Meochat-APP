@@ -24,15 +24,15 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed, Ref } from 'vue'
-import { ChatService } from '../server/ChatService'
-import { Live2DManager } from '../server/Live2dManager'
-import { MicrophoneManager } from '../server/MicrophoneManager'
+import { ChatService } from '../services/ChatService'
+import { Live2DManager } from '../services/Live2dManager'
+import { MicrophoneManager } from '../services/MicrophoneManager'
 import AssistantTips from '../components/AssistantTips.vue'
 import ContextMenu from '../components/Toolbar.vue'
 import LoadingProgress from '../components/LoadingProgress.vue'
 import { useConfigStore } from '../stores/useConfigStore'
 import { storeToRefs } from 'pinia'
-import { InteractionSystem } from '../server/InteractionSystem/InteractionSystem'
+import { InteractionSystem } from '../services/InteractionSystem/InteractionSystem'
 
 const configStore = useConfigStore()
 const { config } = storeToRefs(configStore)
