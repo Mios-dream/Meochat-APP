@@ -53,6 +53,10 @@ import AssistantManagerView from './AssistantManagerView.vue'
 import PluginsView from './PluginManagerView.vue'
 import AssistantSpaceView from './AssistantSpaceView.vue'
 import SettingView from './SettingView.vue'
+import { AssistantManager } from '@renderer/services/assistantManager'
+const assistantManager = AssistantManager.getInstance()
+// 初始化助手服务
+assistantManager.initialize()
 
 const activeTab = ref(0)
 const isWindowFocused = ref(true) // 默认聚焦状态

@@ -1,5 +1,5 @@
 <template>
-  <div v-show="visible" id="loading-progress">
+  <div v-if="showContainer" id="loading-progress" :class="{ 'fade-out': isFadingOut }">
     <div class="progress-bar">
       <div class="progress-fill" :style="{ width: progress + '%' }"></div>
       <div class="progress-text">{{ Math.round(progress) }}%</div>
@@ -8,13 +8,33 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { ref, watch } from 'vue'
 
 const props = defineProps<{
   progress: number
 }>()
 
-const visible = computed(() => props.progress < 100)
+const isFadingOut = ref(false)
+const showContainer = ref(true)
+
+// 监听进度变化，实现淡出效果
+watch(
+  () => props.progress,
+  (newProgress) => {
+    if (newProgress >= 100) {
+      // 开始淡出动画
+      isFadingOut.value = true
+      // 等待淡出动画完成后隐藏容器
+      setTimeout(() => {
+        showContainer.value = false
+      }, 500) // 与CSS transition时间保持一致
+    } else {
+      // 如果进度回退，重置状态
+      isFadingOut.value = false
+      showContainer.value = true
+    }
+  }
+)
 </script>
 
 <style scoped>

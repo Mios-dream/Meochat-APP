@@ -5,6 +5,9 @@
 
 <script setup lang="ts">
 import Notification from './components/Notification.vue'
+import { logService } from './services/LogService'
+
+logService.error('应用启动')
 // import { useConfigStore } from './stores/useConfigStore'
 // import { watch } from 'vue'
 

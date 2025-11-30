@@ -80,6 +80,10 @@ export interface MainWindowApi {
   registerChatShortcut: (shortcut: string) => Promise<boolean>
 
   /**
+   * 初始化助手服务
+   */
+  initAssistant: () => Promise<{ success: boolean; error?: string }>
+  /**
    * 从服务器加载所有助手数据
    * @returns 助手信息数组
    */
@@ -97,12 +101,12 @@ export interface MainWindowApi {
    * 更新助手信息，并上传助手资产到服务器
    * @param assistant 助手信息
    */
-  updateAssistantInfo: (assistant: AssistantInfo) => Promise<boolean>
+  updateAssistantInfo: (assistant: AssistantInfo) => Promise<{ success: boolean; error?: string }>
   /**
    * 从服务器删除助手
    * @param name 助手名称
    */
-  deleteAssistant: (name: string) => Promise<{ success: boolean; message?: string }>
+  deleteAssistant: (name: string) => Promise<{ success: boolean; error?: string }>
 
   /**
    * 监听助手资产上传进度
@@ -129,7 +133,7 @@ export interface MainWindowApi {
    */
   switchAssistant: (
     name: string
-  ) => Promise<{ success: boolean; data?: AssistantInfo; error?: string }>
+  ) => Promise<{ success: true; data: AssistantInfo } | { success: false; error: string }>
 
   // 助手资产管理相关API
   /**
@@ -157,7 +161,7 @@ export interface MainWindowApi {
    */
   getAssistantAssets: (
     assistantName: string
-  ) => Promise<{ success: boolean; data?: AssistantAssets; error?: string }>
+  ) => Promise<{ success: true; data: AssistantAssets } | { success: false; error: string }>
   /**
    * 保存助手资产文件
    * @param assets 助手资产
@@ -168,10 +172,12 @@ export interface MainWindowApi {
    * @param fileData 模型文件数据
    * @param assistantName 助手名称
    */
-  uploadAndExtractLive2dModel: (
+  saveAndExtractLive2DModel: (
     fileData: Buffer | ArrayBuffer,
     assistantName: string
-  ) => Promise<{ success: boolean; path?: string; mainJsonPath?: string; error?: string }>
+  ) => Promise<
+    { success: true; path: string; mainJsonPath: string } | { success: false; error: string }
+  >
 
   // 日志相关API
   log: {

@@ -10,7 +10,13 @@ export interface AssistantApi {
   getAssistantStatus: () => Promise<boolean>
 
   // 新增API
-  getCurrentAssistant: () => Promise<AssistantInfo | null> // 这里应该使用具体的类型
-  getAssistantAssets: (assistantName: string) => Promise<AssistantAssets | null> // 这里应该使用具体的类型
+  getCurrentAssistant: () => Promise<{
+    success: boolean
+    data?: AssistantInfo | null
+    error?: string
+  }>
+  getAssistantAssets: (
+    assistantName: string
+  ) => Promise<{ success: boolean; data?: AssistantAssets | null; error?: string }>
   onAssistantSwitched: (callback: (data: AssistantInfo | null) => void) => () => void
 }

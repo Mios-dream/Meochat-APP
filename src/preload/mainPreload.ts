@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld('api', {
   onProgress: (callback) =>
     ipcRenderer.on('updater:update-progress', (_, percent) => callback(percent)),
 
+  initAssistant: () => ipcRenderer.invoke('assistant:init'),
   // 助手相关 API
   downloadAssistantAsset: async ({ assistantName, onProgress }) => {
     // 监听进度事件
@@ -67,8 +68,8 @@ contextBridge.exposeInMainWorld('api', {
   // 保存助手资产配置文件
   saveAssistantAssets: (assets) => ipcRenderer.invoke('assistant:save-assets', assets),
   // 上传并提取Live2D模型资产
-  uploadAndExtractLive2dModel: (fileData, assistantName) =>
-    ipcRenderer.invoke('assistant:upload-extract-live2d', fileData, assistantName),
+  saveAndExtractLive2DModel: (fileData, assistantName) =>
+    ipcRenderer.invoke('assistant:save-extract-live2d', fileData, assistantName),
   // 助手图片上传API
   saveAssistantImageFile: (fileData, assistantName, fileName) =>
     ipcRenderer.invoke('assistant:save-image-file', fileData, assistantName, fileName)

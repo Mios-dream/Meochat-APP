@@ -62,7 +62,7 @@
             <div id="assistant-basic-info">
               <span class="title">生日</span
               ><span id="assistant-birthday" class="content">{{
-                formatBirthday(assistantInfo.birthday)
+                formatBirthday(assistantInfo?.birthday)
               }}</span>
               <span class="title">身高</span
               ><span id="assistant-constellation" class="content"
@@ -212,7 +212,7 @@ const isAssistantOpen = ref(false)
 // 助手管理器实例
 const assistantManager = AssistantManager.getInstance()
 // 当前助手信息
-const assistantInfo = ref<AssistantInfo>(assistantManager.getCurrentAssistant())
+const assistantInfo = ref<AssistantInfo | null>(assistantManager.getCurrentAssistant())
 // 当前助手的好感度
 const currentLove = computed(() => assistantInfo.value?.love || 0) // 当前好感度值
 // 助手列表
@@ -394,7 +394,10 @@ onMounted(() => {
   assistantManager.loadAssistants().then(() => {
     assistantListLoading.value = false
     assistantList.value = assistantManager.getAssistants()
-    selectAssistant(assistantManager.getCurrentAssistant())
+    assistantInfo.value = assistantManager.getCurrentAssistant()
+    if (assistantInfo.value) {
+      selectAssistant(assistantInfo.value)
+    }
   })
 
   // 添加事件监听

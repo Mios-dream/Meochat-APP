@@ -6,7 +6,7 @@ import robot from '@jitsi/robotjs'
 import { uIOhook } from 'uiohook-napi'
 import { MicaBrowserWindow } from 'mica-electron'
 import log from '../utils/logger'
-import { getCurrentAssistant } from '../services/assistantService'
+import { AssistantService } from '../services/assistantService'
 
 let mouseTrackingInterval: NodeJS.Timeout | null = null
 let isMousePressed = false // 追踪鼠标按下状态
@@ -58,10 +58,6 @@ function setupChatBoxIPC(): void {
   })
 
   ipcMain.on('show-assistant-message', (_event, data) => {
-    // let assistantWindow = getAssistantWindow()
-    // if (assistantWindow && !assistantWindow.isDestroyed()) {
-    //   assistantWindow.webContents.send('show-assistant-message', data)
-    // }
     BrowserWindow.getAllWindows().forEach((win) => {
       win.webContents.send('show-assistant-message', data)
     })
@@ -73,10 +69,6 @@ function setupChatBoxIPC(): void {
 
   ipcMain.on('chat-box:send-message', (_event, data) => {
     log.info('show-assistant-message', data)
-    // let assistantWindow = getAssistantWindow()
-    // if (assistantWindow && !assistantWindow.isDestroyed()) {
-    //   assistantWindow.webContents.send('chat-box:send-message', data)
-    // }
     BrowserWindow.getAllWindows().forEach((win) => {
       win.webContents.send('chat-box:send-message', data)
     })
@@ -87,10 +79,6 @@ function setupChatBoxIPC(): void {
   })
 
   ipcMain.on('loading-state-changed', (_event, data) => {
-    // let chatBoxWindow = getChatBoxWindow()
-    // if (chatBoxWindow && !chatBoxWindow.isDestroyed()) {
-    //   chatBoxWindow.webContents.send('loading-state-changed', data)
-    // }
     BrowserWindow.getAllWindows().forEach((win) => {
       win.webContents.send('loading-state-changed', data)
     })
@@ -198,7 +186,8 @@ function setupAssistantIPC(): void {
   // 获取当前助手信息
   ipcMain.handle('assistant:get-current', async () => {
     try {
-      const assistant = await getCurrentAssistant()
+      const assistantService = AssistantService.getInstance()
+      const assistant = assistantService.getCurrentAssistant()
       return { success: true, data: assistant }
     } catch (error) {
       return { success: false, error: (error as Error).message }

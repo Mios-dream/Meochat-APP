@@ -238,7 +238,47 @@ const assistantManager = AssistantManager.getInstance()
 
 live2DManager.focus_timeout_ms = 500
 
+function loadingCompleted(): void {
+  loadingProgress.value = 100
+}
+function startLoading(): void {
+  loadingProgress.value = 0
+  // 模拟加载进度
+  const progressInterval = setInterval(() => {
+    if (loadingProgress.value < 90) {
+      loadingProgress.value += 10
+    } else {
+      clearInterval(progressInterval)
+    }
+  }, 50)
+}
+
+async function loadLive2DModel(): Promise<void> {
+  try {
+    const assistantAssets = await assistantManager.getAssistantAssets()
+
+    if (assistantAssets && assistantAssets.live2d.modelJsonPath) {
+      // 初始化Live2D模型
+      await live2DManager.init(
+        'l2d-canvas',
+        'app-resource://' + assistantAssets.live2d.modelJsonPath
+      )
+    } else {
+      await live2DManager.init('l2d-canvas', './turong/turong.model3.json')
+    }
+
+    live2DManager.initBaseListeners()
+
+    live2DManager.setLocked(isLocked.value)
+
+    loadingCompleted()
+  } catch (error) {
+    console.error('Failed to load Live2D model:', error)
+  }
+}
+
 onMounted(async () => {
+  startLoading()
   // 从配置加载快捷键设置
   chatShortcut.value = config.value.chatShortcut
   // 接收来自主进程的消息，是否显示消息
@@ -253,48 +293,8 @@ onMounted(async () => {
   })
   // 当前窗口显示时隐藏助手窗口
   window.api.closeAssistant()
-  // 模拟加载进度
-  const progressInterval = setInterval(() => {
-    if (loadingProgress.value < 90) {
-      loadingProgress.value += 10
-    } else {
-      clearInterval(progressInterval)
-    }
-  }, 50)
 
-  try {
-    const assistantAssets = await assistantManager.getAssistantAssets()
-
-    // 初始化Live2D模型
-    await live2DManager.init(
-      'l2d-canvas',
-      assistantAssets
-        ? 'app-resource://' + assistantAssets.live2d.modelJsonPath
-        : './turong/turong.model3.json'
-    )
-
-    live2DManager.initBaseListeners()
-
-    live2DManager.setLocked(isLocked.value)
-
-    loadingProgress.value = 100
-
-    // 隐藏加载进度
-    setTimeout(() => {
-      const progressElement = document.getElementById('loading-progress')
-
-      if (progressElement) {
-        progressElement.classList.add('fade-out')
-        setTimeout(() => {
-          if (progressElement) {
-            progressElement.style.display = 'none'
-          }
-        }, 500)
-      }
-    }, 500)
-  } catch (error) {
-    console.error('Failed to load Live2D model:', error)
-  }
+  loadLive2DModel()
 })
 
 onUnmounted(() => {

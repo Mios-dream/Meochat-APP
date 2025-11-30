@@ -174,6 +174,7 @@ async function initAssistantModel(): Promise<void> {
     // 销毁当前模型
     live2DManager.destroy()
     if (assetsResponse.success && assetsResponse.data && assetsResponse.data.live2d.modelJsonPath) {
+      console.log('Live2D模型路径:', 'app-resource://' + assetsResponse.data.live2d.modelJsonPath)
       await live2DManager.init(
         'l2d-canvas',
         'app-resource://' + assetsResponse.data.live2d.modelJsonPath
@@ -197,7 +198,7 @@ async function switchModel(assistantName: string): Promise<void> {
   try {
     startLoading()
     const assetsResponse = await window.api.getAssistantAssets(assistantName)
-    if (assetsResponse.success && assetsResponse.data) {
+    if (assetsResponse.success && assetsResponse.data && assetsResponse.data.live2d.modelJsonPath) {
       // 切换模型
       await live2DManager.switchModel('app-resource://' + assetsResponse.data.live2d.modelJsonPath)
     } else {
@@ -243,7 +244,7 @@ function startLoading(): void {
     } else {
       clearInterval(progressInterval)
     }
-  }, 100)
+  }, 50)
 }
 
 onMounted(async () => {
@@ -280,7 +281,7 @@ onMounted(async () => {
     switchModel(assistant.name)
   })
 
-  await initAssistantModel()
+  initAssistantModel()
 })
 
 onUnmounted(() => {

@@ -400,7 +400,7 @@
                       </div>
                       <span class="progress-text">{{ live2dModelInfo.progress }}%</span>
                     </div>
-                    <button type="button" class="remove-asset" @click="removeLive2dModel">x</button>
+                    <button type="button" class="remove-asset" @click="removeLive2dModel">×</button>
                   </div>
                   <!-- 添加一个类来显示文件已选择但未上传的状态 -->
                   <div v-else class="upload-placeholder" @click="triggerLive2dModelUpload">
@@ -439,8 +439,9 @@
 import { ref, watch, computed } from 'vue'
 import BlurModal from './BlurModal.vue'
 import type { AssistantAssets, AssistantInfo } from '../services/assistantManager'
-import { AssistantManager, createNullAssistant } from '../services/assistantManager'
+import { AssistantManager } from '../services/assistantManager'
 import ToggleSwitch from './ToggleSwitch.vue'
+import { NotificationService } from '../services/NotificationService'
 
 interface Props {
   modelValue: boolean
@@ -457,6 +458,7 @@ const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
 
 const assistantManager = AssistantManager.getInstance()
+const notificationService = NotificationService.getInstance()
 
 // 选项卡配置
 const tabs = [
@@ -505,6 +507,55 @@ const live2dModelInfo = ref({
   size: 0,
   progress: 0
 })
+
+function createNullAssistant(): AssistantInfo {
+  return {
+    name: '',
+    user: '',
+    avatar: '',
+    birthday: new Date().toISOString().split('T')[0],
+    height: 0,
+    weight: 0,
+    description: '',
+    firstMeetTime: 0,
+    love: 0,
+    personality: '',
+    messageExamples: [],
+    extraDescription: '',
+    updatedAt: 0,
+    assetsLastModified: 0,
+    mask: '',
+    customPrompt: '',
+    startWith: [],
+    settings: {
+      enableLongMemory: true,
+      enableLongMemorySearchEnhance: true,
+      enableCoreMemory: true,
+      longMemoryThreshold: 0.38,
+      enableLoreBooks: true,
+      loreBooksThreshold: 0.5,
+      loreBooksDepth: 3,
+      enableEmotionSystem: false,
+      enableEmotionPersist: false,
+      contextLength: 40
+    },
+    gsvSetting: {
+      textLang: '',
+      gptModelPath: '',
+      sovitsModelPath: '',
+      refAudioPath: '',
+      promptText: '',
+      promptLang: '',
+      seed: -1,
+      topK: 30,
+      batchSize: 20,
+      extra: {
+        text_split_method: 'cut0'
+      },
+      extraRefAudio: {}
+    }
+  }
+}
 
 // 重置表单
 function resetForm(): void {
@@ -566,7 +617,7 @@ watch(
 
       // 加载助手资产配置
       const assets = await assistantManager.getAssistantAssetsByName(newAssistant.name)
-      console.log('加载助手资产配置:', assets)
+
       if (assets) {
         assistantAssets.value = assets
         // 更新Live2D模型信息
@@ -827,7 +878,7 @@ const uploadLive2dModel = async (): Promise<boolean> => {
 
     try {
       // 上传并解压模型
-      const result = await window.api.uploadAndExtractLive2dModel(
+      const result = await window.api.saveAndExtractLive2DModel(
         arrayBuffer,
         formData.value.name || assistantAssets.value.assistantName
       )
@@ -899,7 +950,7 @@ const validateForm = (): boolean => {
 
   // 如果有未填写的必填字段，显示提示
   if (missingFields.length > 0) {
-    console.error(`请填写以下必填字段：\n${missingFields.join('、')}`)
+    notificationService.error(`请填写以下必填字段：\n${missingFields.join('、')}`)
     return false
   }
 
@@ -966,16 +1017,14 @@ const handleSubmit = async (): Promise<void> => {
       }
 
       // 更新助手信息
-      const success = await assistantManager.updateAssistant(updatedAssistant)
-      console.log('更新状态:', success)
-      if (success) {
-        console.log('助手信息更新成功')
+      const updateResult = await assistantManager.updateAssistant(updatedAssistant)
+      if (updateResult.success) {
+        notificationService.success('助手信息更新成功')
         emit('success')
         // 关闭对话框并重置表单
         emit('update:modelValue', false)
       } else {
-        console.error('更新助手失败')
-        alert('更新助手失败')
+        notificationService.error(`更新助手失败: ${updateResult.error}`)
       }
     } else {
       // 添加模式：创建新助手
@@ -990,7 +1039,7 @@ const handleSubmit = async (): Promise<void> => {
       // 添加新助手
       const addStatus = await assistantManager.addAssistant(assistantInfo)
       if (addStatus) {
-        console.log('助手添加成功')
+        notificationService.success('助手添加成功')
         emit('success')
         // 关闭对话框并重置表单
         emit('update:modelValue', false)
@@ -1520,6 +1569,7 @@ const handleCancel = (): void => {
 }
 
 .model-icon-container {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;

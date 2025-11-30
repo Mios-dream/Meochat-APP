@@ -11,11 +11,5 @@ contextBridge.exposeInMainWorld('api', {
   // 获取当前助手信息
   getCurrentAssistant: () => ipcRenderer.invoke('assistant:get-current'),
   // 获取助手资产配置
-  getAssistantAssets: (assistantName) => ipcRenderer.invoke('assistant:get-assets', assistantName),
-  // 监听助手切换事件
-  onAssistantSwitched: (callback) => {
-    const listener = (_event, data): void => callback(data)
-    ipcRenderer.on('assistant:switched', listener)
-    return () => ipcRenderer.removeListener('assistant:switched', listener)
-  }
+  getAssistantAssets: (assistantName) => ipcRenderer.invoke('assistant:get-assets', assistantName)
 })

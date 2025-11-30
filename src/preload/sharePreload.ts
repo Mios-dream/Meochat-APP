@@ -29,6 +29,13 @@ const globalAPI = {
 
   openExternal: (url) => ipcRenderer.send('tool:open-external', url),
 
+  // 监听助手切换事件
+  onAssistantSwitched: (callback) => {
+    const listener = (_event, data): void => callback(data)
+    ipcRenderer.on('assistant:switched', listener)
+    return () => ipcRenderer.removeListener('assistant:switched', listener)
+  },
+
   // 日志相关
   // 修改日志相关，通过IPC发送到主进程
   log: {

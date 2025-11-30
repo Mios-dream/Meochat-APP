@@ -104,7 +104,11 @@ export class Live2DManager {
    * @param modelPath 模型路径
    * @returns Promise<Live2DModel> 模型对象
    */
-  public async init(canvasId: string, modelPath: string): Promise<Live2DModel> {
+  public async init(canvasId: string, modelPath: string): Promise<void> {
+    if (!canvasId || !modelPath) {
+      console.warn('Live2D初始化参数为空')
+      return
+    }
     // 获取画布元素
     this.canvasElement = document.getElementById(canvasId) as HTMLCanvasElement
     // 创建渲染器
@@ -130,15 +134,17 @@ export class Live2DManager {
     this.app.stage.addChild(this.model)
     // 初始化 AudioContext
     this.audioContext = new AudioContext()
-
-    return this.model
   }
 
   public async switchModel(modelPath: string): Promise<void> {
+    if (!modelPath) {
+      console.warn('Live2D模型路径为空')
+      return
+    }
     // 移除旧模型
     if (this.model) {
-      this.app!.stage.removeChild(this.model)
       this.model.destroy()
+      this.app!.stage.removeChild(this.model)
     }
     // 加载新模型
     this.model = await Live2DModel.from(modelPath, {
