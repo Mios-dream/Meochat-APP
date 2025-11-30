@@ -1,12 +1,21 @@
-<!-- src/components/LoadingProgress.vue -->
 <template>
-  <div id="loading-progress" v-show="visible">
+  <div v-show="visible" id="loading-progress">
     <div class="progress-bar">
       <div class="progress-fill" :style="{ width: progress + '%' }"></div>
       <div class="progress-text">{{ Math.round(progress) }}%</div>
     </div>
   </div>
 </template>
+
+<script setup lang="ts">
+import { computed } from 'vue'
+
+const props = defineProps<{
+  progress: number
+}>()
+
+const visible = computed(() => props.progress < 100)
+</script>
 
 <style scoped>
 #loading-progress {
@@ -51,13 +60,3 @@
   text-shadow: 0 0 2px rgba(255, 255, 255, 0.8);
 }
 </style>
-
-<script setup lang="ts">
-import { computed } from 'vue'
-
-const props = defineProps<{
-  progress: number
-}>()
-
-const visible = computed(() => props.progress < 100)
-</script>

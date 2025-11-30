@@ -40,23 +40,36 @@ contextBridge.exposeInMainWorld('api', {
       ipcRenderer.removeListener('assistant:download-progress', progressListener)
     }
   },
-
+  // 注册聊天框快捷键
+  registerChatShortcut: (shortcut) =>
+    ipcRenderer.invoke('assistant:register-chat-shortcut', shortcut),
   // 加载助手数据
   loadAssistantData: () => ipcRenderer.invoke('assistant:load-assistant-data'),
+  // 添加助手
   addAssistant: (assistant) => ipcRenderer.invoke('assistant:add-assistant', assistant),
+  // 更新助手信息
   updateAssistantInfo: (assistant) =>
     ipcRenderer.invoke('assistant:update-assistant-info', assistant),
+  // 删除助手
   deleteAssistant: (name) => ipcRenderer.invoke('assistant:delete-assistant', name),
-  // 文件上传API
-  saveAssistantImageFile: (fileData, assistantName, fileName) =>
-    ipcRenderer.invoke('assistant:save-image-file', fileData, assistantName, fileName),
+  // 上传助手资产进度
   onUploadProgress: (callback) =>
     ipcRenderer.on('assistant:upload-progress', (_, percent) => callback(percent)),
-
+  // 检查助手资产是否需要更新
   isNeedsUpdate: (assistant) => ipcRenderer.invoke('assistant:need-update', assistant),
-
-  // 新增：获取当前助手信息
+  // 获取当前助手信息
   getCurrentAssistant: () => ipcRenderer.invoke('assistant:get-current-assistant'),
-  // 新增：切换当前助手
-  switchAssistant: (name) => ipcRenderer.invoke('assistant:switch-assistant', name)
+  // 切换当前助手
+  switchAssistant: (name) => ipcRenderer.invoke('assistant:switch-assistant', name),
+  // 资产管理相关API
+  // 获取助手资产配置文件
+  getAssistantAssets: (assistantName) => ipcRenderer.invoke('assistant:get-assets', assistantName),
+  // 保存助手资产配置文件
+  saveAssistantAssets: (assets) => ipcRenderer.invoke('assistant:save-assets', assets),
+  // 上传并提取Live2D模型资产
+  uploadAndExtractLive2dModel: (fileData, assistantName) =>
+    ipcRenderer.invoke('assistant:upload-extract-live2d', fileData, assistantName),
+  // 助手图片上传API
+  saveAssistantImageFile: (fileData, assistantName, fileName) =>
+    ipcRenderer.invoke('assistant:save-image-file', fileData, assistantName, fileName)
 })

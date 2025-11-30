@@ -23,4 +23,6 @@ export interface AppConfig {
   currentAssistant: string
   // 主题色
   themeColor: string
+  // 聊天快捷键
+  chatShortcut: string
 }

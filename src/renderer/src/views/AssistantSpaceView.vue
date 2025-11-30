@@ -162,6 +162,24 @@
             <ToggleSwitch v-model="isLocked" />
           </form>
         </div>
+        <div class="setting-title">其他设置</div>
+        <div class="setting-item">
+          <form class="setting-from">
+            <div class="title">
+              <label for="chat-shortcut">聊天快捷键</label>
+              <div class="description">设置桌宠模式下唤起聊天框的快捷键</div>
+            </div>
+            <input
+              id="chat-shortcut"
+              v-model="chatShortcut"
+              class="setting-input"
+              type="text"
+              placeholder="例如：Alt+A"
+              readonly
+              @click="startCaptureShortcut"
+            />
+          </form>
+        </div>
       </div>
     </BlurModal>
   </div>
@@ -179,6 +197,7 @@ import VolumeSlider from '../components/VolumeSlider.vue'
 import RoundedButton from '../components/RoundedButton.vue'
 import { useConfigStore } from '../stores/useConfigStore'
 import { storeToRefs } from 'pinia'
+import { AssistantManager } from '../services/assistantManager'
 
 const configStore = useConfigStore()
 const { config } = storeToRefs(configStore)
@@ -191,8 +210,10 @@ const isTipsActive: Ref<boolean> = ref(false)
 const currentTip: Ref<string> = ref('')
 // 对话框是否显示
 const isVisible = ref(false)
-const inputValue = ref('') // 👈 绑定输入框的值
-const loading = ref(false) // 👈 加载状态
+// 输入框的值
+const inputValue = ref('')
+// 加载状态
+const loading = ref(false)
 // 是否显示设置菜单
 const isVisibleSetting = ref(false)
 // 音量
@@ -205,20 +226,27 @@ const isLocked = ref(true)
 const showHistoryModal = ref(false)
 const chatHistory = ref<Array<{ text: string; type: string; timestamp: Date }>>([])
 
+// 聊天快捷键
+const chatShortcut = ref('')
+// 是否正在捕获快捷键
+const isCapturingShortcut = ref(false)
+
 // 组件实例
 const live2DManager = Live2DManager.getInstance()
 const chatService = ChatService.getInstance()
+const assistantManager = AssistantManager.getInstance()
 
 live2DManager.focus_timeout_ms = 500
 
 onMounted(async () => {
+  // 从配置加载快捷键设置
+  chatShortcut.value = config.value.chatShortcut
   // 接收来自主进程的消息，是否显示消息
   window.api.ipcRenderer.on('show-assistant-message', (data) => {
     chatService.showTempMessage(data.text, data.timeout, data.priority)
   })
 
   window.api.ipcRenderer.on('chat-box:send-message', async (_event, data) => {
-    console.log('收到请求:', data)
     await chatService.chat(data.text).then(() => {
       window.api.ipcRenderer.send('loading-state-changed', false)
     })
@@ -235,8 +263,15 @@ onMounted(async () => {
   }, 50)
 
   try {
+    const assistantAssets = await assistantManager.getAssistantAssets()
+
     // 初始化Live2D模型
-    await live2DManager.init('l2d-canvas', './turong/turong.model3.json')
+    await live2DManager.init(
+      'l2d-canvas',
+      assistantAssets
+        ? 'app-resource://' + assistantAssets.live2d.modelJsonPath
+        : './turong/turong.model3.json'
+    )
 
     live2DManager.initBaseListeners()
 
@@ -274,17 +309,17 @@ onUnmounted(() => {
   live2DManager.destroy()
 })
 
+/**
+ * 处理提交消息
+ */
 async function handleSubmit(): Promise<void> {
   // 1️⃣ 验证：检查输入是否为空或正在加载
   if (!inputValue.value.trim() || loading.value) {
-    console.log('输入为空或正在加载中')
     return
   }
 
   // 2️⃣ 获取输入内容并清空输入框
   const message = inputValue.value.trim()
-  console.log('📤 发送消息:', message)
-
   inputValue.value = '' // 立即清空输入框
   loading.value = true // 设置加载状态
 
@@ -294,15 +329,10 @@ async function handleSubmit(): Promise<void> {
     setTimeout(() => {
       loading.value = false
     }, 20000)
-
-    console.log('✅ 消息发送成功')
   } catch (error) {
-    // 5️⃣ 错误处理
-    console.error('❌ 发送消息失败:', error)
-
+    console.error('发送消息失败:', error)
     // 如果失败，可以恢复输入内容让用户重试
     inputValue.value = message
-
     // 显示错误提示（使用 ipcRenderer 跨窗口发送给 assistant window）
     window.api.ipcRenderer.send('chat-box:send-temp-message', {
       text: '发送失败，请重试',
@@ -340,6 +370,11 @@ watch(volume, (newVolume) => {
   configStore.updateConfig('volume', normalizedVolume)
 })
 
+/**
+ * 更新配置项
+ * @param key - 配置项键
+ * @param value - 新值
+ */
 function change<K extends keyof typeof config.value>(
   key: K,
   value: (typeof config.value)[K]
@@ -347,7 +382,9 @@ function change<K extends keyof typeof config.value>(
   configStore.updateConfig(key, value)
 }
 
-// 在现有函数基础上添加新函数
+/**
+ * 显示聊天历史弹窗
+ */
 function showChatHistory(): void {
   // 显示聊天历史弹窗
   showHistoryModal.value = true
@@ -356,29 +393,130 @@ function showChatHistory(): void {
   loadChatHistory()
 }
 
+/**
+ * 关闭聊天历史弹窗
+ */
 function closeHistoryModal(): void {
   // 关闭聊天历史弹窗
   showHistoryModal.value = false
 }
 
+/**
+ * 加载聊天历史
+ */
 function loadChatHistory(): void {
   // 模拟加载聊天历史
   chatHistory.value = []
 }
 
+/**
+ * 格式化时间显示
+ * @param timestamp - 时间戳
+ * @returns 格式化后的时间字符串
+ */
 function formatTime(timestamp: Date): string {
   // 格式化时间显示
   return timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 
+/**
+ * 切换助手设置弹窗显示状态
+ */
 function toggleAssistantSettings(): void {
   // 显示助手设置弹窗
   isVisibleSetting.value = !isVisibleSetting.value
 }
 
+/**
+ * 重置模型位置
+ */
 function resetModelPosition(): void {
   // 重置模型位置
   live2DManager.resetModelTransform()
+}
+
+/**
+ * 开始捕获快捷键
+ */
+function startCaptureShortcut(): void {
+  isCapturingShortcut.value = true
+  chatShortcut.value = '请按下快捷键...'
+
+  // 添加全局键盘事件监听器
+  document.addEventListener('keydown', handleKeyDown)
+  document.addEventListener('keyup', handleKeyUp)
+}
+
+// 处理键盘按下事件
+function handleKeyDown(event: KeyboardEvent): void {
+  // 阻止默认行为，避免触发浏览器快捷键
+  event.preventDefault()
+
+  // 只有在捕获模式下才处理
+  if (!isCapturingShortcut.value) return
+
+  // 收集按下的修饰键
+  const modifiers: string[] = []
+  if (event.ctrlKey) modifiers.push('Ctrl')
+  if (event.altKey) modifiers.push('Alt')
+  if (event.shiftKey) modifiers.push('Shift')
+  if (event.metaKey) modifiers.push('Meta')
+
+  // 获取主要按键（排除修饰键）
+  const key = event.key.length === 1 ? event.key.toUpperCase() : event.key
+
+  // 只有当有修饰键并且有主要按键时才更新显示
+  if (modifiers.length > 0 && key && !['Control', 'Alt', 'Shift', 'Meta'].includes(key)) {
+    const shortcut = [...modifiers, key].join('+')
+    chatShortcut.value = shortcut
+  } else if (modifiers.length > 0) {
+    // 只显示修饰键
+    chatShortcut.value = modifiers.join('+') + '+...'
+  }
+}
+
+// 处理键盘释放事件
+function handleKeyUp(event: KeyboardEvent): void {
+  // 只有在捕获模式下才处理
+  if (!isCapturingShortcut.value) return
+
+  // 收集按下的修饰键和主要按键
+  const modifiers: string[] = []
+  if (event.ctrlKey) modifiers.push('Ctrl')
+  if (event.altKey) modifiers.push('Alt')
+  if (event.shiftKey) modifiers.push('Shift')
+  if (event.metaKey) modifiers.push('Meta')
+
+  // 获取主要按键（排除修饰键）
+  const key = event.key.length === 1 ? event.key.toUpperCase() : event.key
+
+  // 当用户完成快捷键输入（释放最后一个键）时，保存设置
+  if (modifiers.length > 0 && key && !['Control', 'Alt', 'Shift', 'Meta'].includes(key)) {
+    const shortcut = [...modifiers, key].join('+')
+    saveShortcut(shortcut)
+  }
+}
+
+// 保存快捷键设置
+async function saveShortcut(shortcut: string): Promise<void> {
+  // 停止捕获模式
+  isCapturingShortcut.value = false
+  chatShortcut.value = shortcut
+
+  // 移除事件监听器
+  document.removeEventListener('keydown', handleKeyDown)
+  document.removeEventListener('keyup', handleKeyUp)
+
+  console.log('尝试注册快捷键:', shortcut)
+
+  const result = await window.api.registerChatShortcut(shortcut)
+  if (result) {
+    // 保存到配置
+    await configStore.updateConfig('chatShortcut', shortcut)
+    console.log('快捷键设置成功')
+  } else {
+    console.error('快捷键设置失败')
+  }
 }
 </script>
 
@@ -840,5 +978,20 @@ function resetModelPosition(): void {
   color: #fb7299;
   font-size: 12px;
   font-weight: bold;
+}
+
+.setting-input {
+  width: auto;
+  max-width: 200px;
+  padding: 10px 12px;
+  border: 2px solid #e0e0e0;
+  border-radius: 8px;
+  font-size: 14px;
+  transition: border-color 0.2s;
+}
+
+.setting-input:focus {
+  outline: none;
+  border-color: var(--theme-color-light);
 }
 </style>

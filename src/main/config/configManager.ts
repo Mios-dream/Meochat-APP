@@ -1,9 +1,10 @@
-import Store from 'electron-store'
+import Store, { Schema } from 'electron-store'
 import { ipcMain, BrowserWindow, app } from 'electron'
 import { MicaBrowserWindow } from 'mica-electron'
+import { AppConfig } from '../../renderer/src/types/appConfig'
 
 // 配置项的默认值
-const schema = {
+const schema: Schema<AppConfig> = {
   // 基础配置
   baseUrl: { type: 'string', default: '127.0.0.1:8001' },
   autoStartOnBoot: { type: 'boolean', default: false },
@@ -13,7 +14,6 @@ const schema = {
   // 助手配置
   volume: { type: 'number', default: 0.8 },
   autoChat: { type: 'boolean', default: false },
-
   idleEvent: { type: 'boolean', default: true },
   idleTime: { type: 'number', default: 2 },
   // 助手是否开启
@@ -21,19 +21,18 @@ const schema = {
   // 当前助手
   currentAssistant: { type: 'string', default: '' },
   // 主题色
-  themeColor: { type: 'string', default: '#fb7299' }
+  themeColor: { type: 'string', default: '#fb7299' },
+  // 聊天快捷键
+  chatShortcut: { type: 'string', default: 'Alt+A' }
 }
 
 const store = new Store({ schema })
 
-function getConfig(key: keyof typeof schema): (typeof schema)[keyof typeof schema]['default'] {
-  return store.get(key) as (typeof schema)[keyof typeof schema]['default']
+function getConfig<K extends keyof AppConfig>(key: K): AppConfig[K] {
+  return store.get(key) as AppConfig[K]
 }
 
-function setConfig(
-  key: keyof typeof schema,
-  value: (typeof schema)[keyof typeof schema]['default']
-): void {
+function setConfig<K extends keyof AppConfig>(key: K, value: AppConfig[K]): void {
   store.set(key, value)
 }
 

@@ -3,6 +3,7 @@ import { createChatBoxWindow } from './chatBoxWindow'
 import Store from 'electron-store'
 import { getAppUrl, getPreloadPath, isDevelopment } from '../utils/pathResolve'
 import log from '../utils/logger'
+import { getConfig } from '../config/configManager'
 
 // 创建配置存储实例
 const store = new Store()
@@ -50,7 +51,6 @@ function createAssistantWindow(): void | BrowserWindow {
     focusable: false, // 使窗口不可获得焦点
     hasShadow: false,
     webPreferences: {
-      // preload: path.join(__dirname, '../preload/assistantPreload.js'),
       preload: getPreloadPath('assistantPreload'),
       contextIsolation: true,
       sandbox: false,
@@ -60,7 +60,8 @@ function createAssistantWindow(): void | BrowserWindow {
   assistantWindow.setIgnoreMouseEvents(false) // 初始可交互
 
   // 注册快捷回复的快捷键
-  globalShortcut.register('Alt+A', () => {
+  const chatShortcut = getConfig('chatShortcut')
+  globalShortcut.register(chatShortcut, () => {
     createChatBoxWindow()
   })
 

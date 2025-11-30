@@ -15,8 +15,8 @@ export const useConfigStore = defineStore('config', () => {
     idleTime: 2,
     assistantEnabled: false,
     currentAssistant: '',
-    // 主题色
-    themeColor: '#fb7299'
+    themeColor: '#fb7299',
+    chatShortcut: 'Alt+A'
   })
 
   async function loadConfig(): Promise<void> {

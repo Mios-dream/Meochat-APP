@@ -3,103 +3,46 @@ import axios from 'axios'
 import FormData from 'form-data'
 import AdmZip from 'adm-zip'
 import path from 'path'
-import { app } from 'electron'
-import { getConfig } from '../config/configManager'
+import { app, BrowserWindow, globalShortcut } from 'electron'
+import { getConfig, setConfig } from '../config/configManager'
 import log from '../utils/logger'
+import { AssistantAssets, AssistantInfo } from '../../renderer/src/types/AssistantInfo'
+import { createChatBoxWindow } from '../windows/chatBoxWindow'
 
-// 助手语音合成设置模型
-interface GSVSetting {
-  // 助手语音合成的语言
-  textLang: string
-  // 助手语音合成的GPT模型
-  gptModelPath: string
-  // 助手语音合成的SOVITS模型
-  sovitsModelPath: string
-  // 助手语音合成的参考音频
-  refAudioPath: string
-  // 助手语音合成的参考文字
-  promptText: string
-  // 助手语音合成的参考文字语言
-  promptLang: string
-  // 助手语音合成的随机种子
-  seed: number
-  // 助手语音合成的TopK
-  topK: number
-  // 助手语音合成的批量大小
-  batchSize: number
-  // 助手语音合成的额外参数
-  extra: Record<string, string>
-  // 助手语音合成的额外参考音频
-  extraRefAudio: Record<string, string>
+/** 工具函数，确保助手目录存在
+ * @param assistantName 助手名称
+ * @returns 助手目录路径
+ */
+function ensureAssistantDirExists(assistantName: string): string {
+  // 获取应用安装目录
+  const appPath = app.getPath('userData')
+  const assistantDir = path.join(appPath, 'assistants', assistantName)
+
+  if (!fs.existsSync(assistantDir)) {
+    fs.mkdirSync(assistantDir, { recursive: true })
+  }
+
+  return assistantDir
 }
 
-// 助手设置模型
-interface AssistantSettings {
-  // 助手是否开启日记功能
-  enableLongMemory: boolean
-  // 助手是否开启日记功能的检索加强
-  enableLongMemorySearchEnhance: boolean
-  // 助手是否开启核心记忆功能
-  enableCoreMemory: boolean
-  // 助手日记功能的搜索阈值
-  longMemoryThreshold: number
-  // 助手是否开启世界书(知识库)功能
-  enableLoreBooks: boolean
-  // 助手世界书(知识库)功能的搜索阈值
-  loreBooksThreshold: number
-  // 助手世界书(知识库)功能的搜索深度
-  loreBooksDepth: number
-  // 助手是否开启情绪系统
-  enableEmotionSystem: boolean
-  // 助手是否开启情绪系统的持续存储
-  enableEmotionPersist: boolean
-  // 助手的上下文长度
-  contextLength: number
-}
-
-interface AssistantInfo {
-  // 助手名称
-  name: string
-  // 对用户的称呼
-  user: string
-  // 头像
-  avatar: string
-  // 生日
-  birthday: number | string
-  // 身高
-  height: number | string
-  // 体重
-  weight: number | string
-  // 角色性格
-  personality: string
-  // 描述
-  description: string
-  // 用户的设定，用于在提示词中填充用户的信息，进行个性化对话
-  mask: string
-  // 初次相遇时间，存储为时间戳
-  firstMeetTime: number
-  // 好感度
-  love: number
-  // 对话案例
-  messageExamples: string[]
-  // 额外描述
-  extraDescription: string
-  // 更新,存储为时间戳
-  updatedAt: number
-  // 资产最后修改时间,存储为时间戳
-  assetsLastModified: number
-  // 自定义提示词
-  customPrompt: string
-  // 开场白，数组形式
-  startWith: string[]
-  // 助手设置
-  settings: AssistantSettings
-  // 助手GSV设置
-  gsvSetting: GSVSetting
+function registerChatShortcut(shortcut: string): boolean {
+  // 注销原有快捷键
+  const currentShortcut = getConfig('chatShortcut')
+  if (currentShortcut) {
+    globalShortcut.unregister(currentShortcut)
+  }
+  // 注册聊天框快捷键
+  const success = globalShortcut.register(shortcut, () => {
+    createChatBoxWindow()
+  })
+  if (success) {
+    setConfig('chatShortcut', shortcut)
+  }
+  return success
 }
 
 /**
- * 获取当前助手信息
+ * 获取当前助手信息，从云端数据库读取
  * @returns 当前助手信息或 null
  */
 async function getCurrentAssistant(): Promise<AssistantInfo | null> {
@@ -124,6 +67,10 @@ async function switchAssistant(
   try {
     const url = `http://${getConfig('baseUrl')}/api/assistant/switch`
     const response = await axios.post(url, { name: assistantName })
+    // 切换成功后，向所有窗口广播助手切换事件
+    BrowserWindow.getAllWindows().forEach((win) => {
+      win.webContents.send('assistant:switched', response.data.data)
+    })
     return {
       success: true,
       data: response.data.data
@@ -135,22 +82,6 @@ async function switchAssistant(
       error: (error as Error).message
     }
   }
-}
-
-/** 工具函数，确保助手目录存在
- * @param assistantName 助手名称
- * @returns 助手目录路径
- */
-function ensureAssistantDirExists(assistantName: string): string {
-  // 获取应用安装目录
-  const appPath = app.getPath('userData')
-  const assistantDir = path.join(appPath, 'assistants', assistantName)
-
-  if (!fs.existsSync(assistantDir)) {
-    fs.mkdirSync(assistantDir, { recursive: true })
-  }
-
-  return assistantDir
 }
 
 /**
@@ -225,7 +156,7 @@ function downloadAssistantAssets(
   })
 }
 
-/** * 检查助手是否需要更新
+/** 检查助手资产是否需要更新
  * @param assistant 助手信息
  * @returns 是否需要更新
  */
@@ -244,7 +175,7 @@ async function isNeedsUpdate(assistant: AssistantInfo): Promise<boolean> {
 }
 
 /**
- * 更新助手信息
+ * 更新助手信息，同步云端与本地数据
  * @param assistant 助手信息
  */
 async function updateAssistantInfo(assistant: AssistantInfo): Promise<boolean> {
@@ -280,13 +211,13 @@ async function updateAssistantInfo(assistant: AssistantInfo): Promise<boolean> {
 }
 
 /**
- * 添加助手
+ * 添加助手，同步云端与本地数据，并上传助手资产
  * @param assistant 助手信息
  */
 async function addAssistant(
   assistant: AssistantInfo,
   onProgress?: (progress: number) => void
-): Promise<boolean> {
+): Promise<{ success: boolean; error?: string }> {
   // 检查助手是否存在
   const assistantInfoPath = path.join(
     app.getPath('userData'),
@@ -296,7 +227,7 @@ async function addAssistant(
   )
   if (fs.existsSync(assistantInfoPath)) {
     log.warn(`Assistant ${assistant.name} already exists.`)
-    return false
+    return { success: false, error: '助手已存在' }
   }
   try {
     // 确保必要的字段存在
@@ -326,14 +257,14 @@ async function addAssistant(
     // 上传助手资源
     await uploadAssistantAssets(completeAssistant, onProgress)
 
-    return true
+    return { success: true }
   } catch (error) {
-    log.error(`Error adding assistant ${assistant.name}:`, (error as Error).message)
-    return false
+    log.error(`Error adding assistant ${assistant.name}:`, error)
+    return { success: false, error: (error as Error).message }
   }
 }
 
-/** * 加载助手数据并同步云端与本地数据
+/** 加载助手数据并同步云端与本地数据
  * @returns 助手信息数组
  */
 async function loadAssistantsData(
@@ -462,7 +393,7 @@ async function loadAssistantsData(
 }
 
 /**
- * 上传助手资产
+ * 上传助手资产，包括图片、Live2D模型等
  * @param assistant 助手信息
  */
 async function uploadAssistantAssets(
@@ -509,6 +440,11 @@ async function uploadAssistantAssets(
   }
 }
 
+/**
+ * 删除助手，包括云端资产和本地资产
+ * @param assistantName 助手名称
+ * @returns 删除结果
+ */
 async function deleteAssistant(
   assistantName: string
 ): Promise<{ success: boolean; message?: string }> {
@@ -532,7 +468,150 @@ async function deleteAssistant(
   }
 }
 
+/**
+ * 保存助手的图片资源到助手目录
+ * @param fileData 文件数据（Buffer 或 ArrayBuffer）
+ * @param assistantName 助手名称
+ * @param fileName 文件名（不包含扩展名）
+ * @returns 保存结果
+ */
+async function saveAssistantImage(
+  fileData: Buffer | ArrayBuffer,
+  assistantName: string,
+  fileName: string
+): Promise<{ success: true; path: string } | { success: false; error: string }> {
+  try {
+    const assistantDir = ensureAssistantDirExists(assistantName)
+    const assetsDir = path.join(assistantDir, 'assets', 'images')
+    if (!fs.existsSync(assetsDir)) {
+      fs.mkdirSync(assetsDir, { recursive: true })
+    }
+    const filePath = path.join(assetsDir, fileName + '.png')
+    // 如果传入的是 ArrayBuffer，则转换为 Buffer
+    const bufferData = Buffer.isBuffer(fileData) ? fileData : Buffer.from(fileData)
+    // 写入文件
+    fs.writeFileSync(filePath, bufferData)
+
+    // 返回相对路径，用于在应用中引用
+    return { success: true, path: `assistants/${assistantName}/assets/images/${fileName}.png` }
+  } catch (error) {
+    log.error('保存助手文件失败:', error)
+    return { success: false, error: (error as Error).message }
+  }
+}
+
+/**
+ * 加载助手资产配置
+ * @param assistantName 助手名称
+ * @returns 资产配置或错误信息
+ */
+async function loadAssistantAssets(
+  assistantName: string
+): Promise<{ success: true; data: AssistantAssets } | { success: false; error: string }> {
+  try {
+    const assistantDir = ensureAssistantDirExists(assistantName)
+    const assetsFilePath = path.join(assistantDir, 'assets', 'assets.json')
+
+    if (fs.existsSync(assetsFilePath)) {
+      const assetsData = fs.readFileSync(assetsFilePath, 'utf8')
+      return { success: true, data: JSON.parse(assetsData) }
+    } else {
+      return { success: false, error: '资产配置文件不存在' }
+    }
+  } catch (error) {
+    log.error('获取助手资产配置失败:', error)
+    return { success: false, error: (error as Error).message }
+  }
+}
+
+/**
+ * 保存助手资产配置
+ * @param assets 助手资产配置
+ * @returns 保存结果
+ */
+async function saveAssistantAssets(
+  assets: AssistantAssets
+): Promise<{ success: true } | { success: false; error: string }> {
+  try {
+    const assistantDir = ensureAssistantDirExists(assets.assistantName)
+    const assetsFilePath = path.join(assistantDir, 'assets', 'assets.json')
+    fs.writeFileSync(assetsFilePath, JSON.stringify(assets, null, 2))
+    return { success: true }
+  } catch (error) {
+    log.error('保存助手资产配置失败:', error)
+    return { success: false, error: (error as Error).message }
+  }
+}
+
+/**
+ * 上传并解压Live2D模型
+ * @param fileData 文件数据（Buffer 或 ArrayBuffer）
+ * @param assistantName 助手名称
+ * @returns 上传结果
+ */
+async function uploadAndExtractLive2D(
+  fileData: Buffer | ArrayBuffer,
+  assistantName: string
+): Promise<{ success: boolean; path?: string; mainJsonPath?: string; error?: string }> {
+  try {
+    if (!assistantName || assistantName.trim() === '') {
+      return { success: false, error: '助手名称不能为空' }
+    }
+
+    const assistantDir = ensureAssistantDirExists(assistantName)
+    const live2dDir = path.join(assistantDir, 'assets', 'live2d')
+
+    // 确保目标目录存在
+    if (!fs.existsSync(live2dDir)) {
+      fs.mkdirSync(live2dDir, { recursive: true })
+    }
+
+    // 如果传入的是 ArrayBuffer，则转换为 Buffer
+    const bufferData = Buffer.isBuffer(fileData) ? fileData : Buffer.from(fileData)
+
+    // 解压文件
+    const zip = new AdmZip(bufferData)
+
+    // 如果目录已存在，先删除
+    if (fs.existsSync(live2dDir)) {
+      fs.rmSync(live2dDir, { recursive: true, force: true })
+    }
+
+    fs.mkdirSync(live2dDir, { recursive: true })
+
+    // 解压到模型目录
+    zip.extractAllTo(live2dDir, true)
+
+    // 查找主JSON文件
+    let mainJsonPath = ''
+    const files = fs.readdirSync(live2dDir, { recursive: true })
+    for (const file of files) {
+      const fileName = file.toString()
+      if (fileName.endsWith('model3.json')) {
+        mainJsonPath = path.join('assistants', assistantName, 'assets', 'live2d', fileName)
+        break
+      }
+    }
+
+    if (!mainJsonPath) {
+      // 删除空目录
+      fs.rmSync(live2dDir, { recursive: true, force: true })
+      return { success: false, error: '未找到主JSON文件' }
+    }
+
+    return {
+      success: true,
+      path: `assistants/${assistantName}/assets/live2d`,
+      mainJsonPath: mainJsonPath
+    }
+  } catch (error) {
+    log.error('上传并解压Live2D模型失败:', error)
+    return { success: false, error: (error as Error).message }
+  }
+}
+
 export {
+  registerChatShortcut,
   getCurrentAssistant,
   switchAssistant,
   downloadAssistantAssets,
@@ -542,5 +621,9 @@ export {
   addAssistant,
   updateAssistantInfo,
   uploadAssistantAssets,
-  deleteAssistant
+  deleteAssistant,
+  saveAssistantImage,
+  loadAssistantAssets,
+  saveAssistantAssets,
+  uploadAndExtractLive2D
 }

@@ -203,7 +203,6 @@ import { AssistantInfo, AssistantManager } from '../services/assistantManager'
 import AddAssistantDialog from '../components/EditAssistantDialog.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import Loader from '../components/Loader.vue'
-import { logService } from '../services/LogService'
 
 // 从配置存储中获取配置
 const configStore = useConfigStore()
@@ -387,8 +386,6 @@ function closeAddAssistantDialog(): void {
 
 // 当组件挂载时，获取助手状态
 onMounted(() => {
-  logService.info('AssistantManagerView mounted')
-
   window.api.getAssistantStatus().then((status: boolean) => {
     isAssistantOpen.value = status
   })

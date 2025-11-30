@@ -135,7 +135,6 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  margin: 20px;
 }
 
 #chatBox {

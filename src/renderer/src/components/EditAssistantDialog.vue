@@ -318,7 +318,108 @@
             </div>
           </div>
         </div>
+        <!-- 资产管理选项卡 -->
+        <div v-show="activeTab === 'assets'">
+          <div class="settings-section">
+            <h4>角色立绘管理</h4>
+            <div class="asset-upload-section">
+              <div class="asset-item">
+                <label>角色立绘</label>
+                <div class="upload-container">
+                  <div
+                    v-if="
+                      assistantAssets.characterImages && assistantAssets.characterImages.length > 0
+                    "
+                    class="asset-preview-list"
+                  >
+                    <div v-if="assistantAssets.characterImages" class="image-preview-item">
+                      <div
+                        class="image-preview"
+                        :style="{
+                          backgroundImage: `url(${assistantAssets.characterImages})`
+                        }"
+                      ></div>
 
+                      <button type="button" class="remove-asset" @click="removeCharacterImage()">
+                        ×
+                      </button>
+                    </div>
+                  </div>
+                  <div v-else class="upload-placeholder" @click="triggerCharacterImageUpload">
+                    <font-awesome-icon icon="fa-solid fa-image" />
+                    <div>点击上传角色立绘</div>
+                  </div>
+                  <input
+                    id="characterImages"
+                    ref="characterImageInput"
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    style="display: none"
+                    @change="handleCharacterImageSelect"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="settings-section">
+            <h4>Live2D模型管理</h4>
+            <div class="asset-upload-section">
+              <div class="asset-item">
+                <label>Live2D模型（ZIP压缩包）</label>
+                <div class="upload-container">
+                  <!-- 修改这里的条件判断，只要name存在就显示文件信息 -->
+                  <div v-if="live2dModelInfo.name" class="live2d-model-info">
+                    <div class="model-icon-container">
+                      <font-awesome-icon icon="fa-solid fa-box" />
+                    </div>
+                    <div class="model-info-container">
+                      <div class="model-info-item">
+                        <span class="info-label">文件名称:</span>
+                        <span class="info-value">{{ live2dModelInfo.name }}</span>
+                      </div>
+                      <div class="model-info-item">
+                        <span class="info-label">文件大小:</span>
+                        <span class="info-value">{{ formatFileSize(live2dModelInfo.size) }}</span>
+                      </div>
+                      <div v-if="assistantAssets.live2d.modelJsonPath" class="model-info-item">
+                        <span class="info-label">主JSON路径:</span>
+                        <span class="info-value">{{ assistantAssets.live2d.modelJsonPath }}</span>
+                      </div>
+                    </div>
+                    <div
+                      v-if="live2dModelInfo.progress > 0 && live2dModelInfo.progress < 100"
+                      class="upload-progress"
+                    >
+                      <div class="progress-bar">
+                        <div
+                          class="progress-fill"
+                          :style="{ width: live2dModelInfo.progress + '%' }"
+                        ></div>
+                      </div>
+                      <span class="progress-text">{{ live2dModelInfo.progress }}%</span>
+                    </div>
+                    <button type="button" class="remove-asset" @click="removeLive2dModel">x</button>
+                  </div>
+                  <!-- 添加一个类来显示文件已选择但未上传的状态 -->
+                  <div v-else class="upload-placeholder" @click="triggerLive2dModelUpload">
+                    <font-awesome-icon icon="fa-solid fa-box" />
+                    <div>点击上传Live2D模型</div>
+                  </div>
+                  <input
+                    id="live2dModel"
+                    ref="live2dModelInput"
+                    type="file"
+                    accept=".zip"
+                    style="display: none"
+                    @change="handleLive2dModelSelect"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
         <div class="form-actions">
           <button type="button" class="cancel-btn" @click="handleCancel">取消</button>
           <button type="submit" class="submit-btn">
@@ -337,13 +438,9 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
 import BlurModal from './BlurModal.vue'
-import type { AssistantInfo } from '../services/assistantManager'
+import type { AssistantAssets, AssistantInfo } from '../services/assistantManager'
 import { AssistantManager, createNullAssistant } from '../services/assistantManager'
 import ToggleSwitch from './ToggleSwitch.vue'
-
-const assistantManager = AssistantManager.getInstance()
-// 存储待处理的文件
-const selectedFile = ref<File | null>(null)
 
 interface Props {
   modelValue: boolean
@@ -359,10 +456,13 @@ interface Emits {
 const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
 
+const assistantManager = AssistantManager.getInstance()
+
 // 选项卡配置
 const tabs = [
   { label: '基本信息', value: 'basic', icon: 'fa-solid fa-user' },
-  { label: '高级选项', value: 'advanced', icon: 'fa-solid fa-sliders' }
+  { label: '高级选项', value: 'advanced', icon: 'fa-solid fa-sliders' },
+  { label: '资产管理', value: 'assets', icon: 'fa-solid fa-box-open' }
 ]
 
 // 当前活动选项卡
@@ -378,24 +478,73 @@ const isSubmitting = ref(false)
 const fileInput = ref<HTMLInputElement>()
 const previewImage = ref('')
 const uploadedFilePath = ref('')
+const selectedFile = ref<File | null>(null)
+// 助手资产配置
+const assistantAssets = ref<AssistantAssets>({
+  assistantName: '',
+  characterImages: '',
+  live2d: {
+    modelPath: '',
+    modelJsonPath: ''
+  }
+})
+
+// 文件上传相关引用
+const characterImageInput = ref<HTMLInputElement>()
+const live2dModelInput = ref<HTMLInputElement>()
+const selectedCharacterImages = ref<File[]>([])
+const selectedLive2dModel = ref<File | null>(null)
+
 // 表单数据
 const formData = ref<AssistantInfo>(createNullAssistant())
 
+// Live2D模型信息
+const live2dModelInfo = ref({
+  name: '',
+  path: '',
+  size: 0,
+  progress: 0
+})
+
 // 重置表单
-const resetForm = (): void => {
+function resetForm(): void {
   formData.value = createNullAssistant()
+  // 扩展资产管理相关字段
+  assistantAssets.value = {
+    assistantName: '',
+    characterImages: '',
+    live2d: {
+      modelPath: '',
+      modelJsonPath: ''
+    }
+  }
+
   previewImage.value = ''
   uploadedFilePath.value = ''
   selectedFile.value = null
+  selectedCharacterImages.value = []
+  selectedLive2dModel.value = null
+  live2dModelInfo.value = {
+    name: '',
+    path: '',
+    size: 0,
+    progress: 0
+  }
   if (fileInput.value) {
     fileInput.value.value = ''
+  }
+  if (characterImageInput.value) {
+    characterImageInput.value.value = ''
+  }
+  if (live2dModelInput.value) {
+    live2dModelInput.value.value = ''
   }
 }
 
 // 监听编辑助手数据变化
 watch(
   () => props.editingAssistant,
-  (newAssistant) => {
+  async (newAssistant) => {
     if (newAssistant) {
       // 设置表单数据为编辑的助手信息
       formData.value = {
@@ -414,6 +563,39 @@ watch(
       } else {
         previewImage.value = ''
       }
+
+      // 加载助手资产配置
+      const assets = await assistantManager.getAssistantAssetsByName(newAssistant.name)
+      console.log('加载助手资产配置:', assets)
+      if (assets) {
+        assistantAssets.value = assets
+        // 更新Live2D模型信息
+        if (assets.live2d) {
+          const modelName = assets.live2d.modelPath.split('/').pop() || ''
+          live2dModelInfo.value = {
+            name: modelName,
+            path: assets.live2d.modelPath,
+            size: 0,
+            progress: 100
+          }
+        }
+      } else {
+        // 设置默认值
+        assistantAssets.value = {
+          assistantName: newAssistant.name,
+          characterImages: '',
+          live2d: {
+            modelPath: '',
+            modelJsonPath: ''
+          }
+        }
+        live2dModelInfo.value = {
+          name: '',
+          path: '',
+          size: 0,
+          progress: 0
+        }
+      }
     } else {
       resetForm()
     }
@@ -421,14 +603,49 @@ watch(
   { immediate: true, deep: true }
 )
 
-// 触发文件选择
+// 工具函数
+// 添加开场白
+const addStartWith = (): void => {
+  formData.value.startWith.push('')
+}
+
+// 移除开场白
+const removeStartWith = (index: number): void => {
+  formData.value.startWith.splice(index, 1)
+}
+
+// 格式化文件大小
+const formatFileSize = (bytes: number): string => {
+  if (bytes === 0) return '0 Bytes'
+
+  const k = 1024
+  const sizes = ['Bytes', 'KB', 'MB', 'GB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+}
+
+// 读取文件为 ArrayBuffer
+function readFileAsBuffer(file: File): Promise<ArrayBuffer> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = (event) => {
+      const arrayBuffer = event.target?.result as ArrayBuffer
+      resolve(arrayBuffer)
+    }
+    reader.onerror = reject
+    reader.readAsArrayBuffer(file)
+  })
+}
+// 具体逻辑
+// 触发头像文件选择
 const triggerFileInput = (): void => {
   if (!isSubmitting.value) {
     fileInput.value?.click()
   }
 }
 
-// 处理文件选择
+// 处理头像文件选择 - 只保存文件信息
 const handleFileSelect = async (event: Event): Promise<void> => {
   const input = event.target as HTMLInputElement
   if (input.files && input.files[0]) {
@@ -446,18 +663,6 @@ const handleFileSelect = async (event: Event): Promise<void> => {
   }
 }
 
-function readFileAsBuffer(file: File): Promise<ArrayBuffer> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = (event) => {
-      const arrayBuffer = event.target?.result as ArrayBuffer
-      resolve(arrayBuffer)
-    }
-    reader.onerror = reject
-    reader.readAsArrayBuffer(file)
-  })
-}
-
 // 移除头像
 const removeAvatar = (): void => {
   previewImage.value = ''
@@ -468,14 +673,202 @@ const removeAvatar = (): void => {
   }
 }
 
-// 添加开场白
-const addStartWith = (): void => {
-  formData.value.startWith.push('')
+// 触发角色立绘上传
+const triggerCharacterImageUpload = (): void => {
+  if (!isSubmitting.value) {
+    characterImageInput.value?.click()
+  }
 }
 
-// 移除开场白
-const removeStartWith = (index: number): void => {
-  formData.value.startWith.splice(index, 1)
+// 处理角色立绘选择 - 只保存文件信息
+const handleCharacterImageSelect = async (event: Event): Promise<void> => {
+  const input = event.target as HTMLInputElement
+  if (input.files && input.files.length > 0) {
+    const files = Array.from(input.files)
+    selectedCharacterImages.value = [...files]
+
+    // 只创建预览，不立即上传
+    if (files.length > 0) {
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        // 这里可以设置预览，但不上传
+        assistantAssets.value.characterImages = e.target?.result as string
+      }
+      reader.readAsDataURL(files[0])
+    }
+  }
+}
+
+// 移除角色立绘
+const removeCharacterImage = (): void => {
+  assistantAssets.value.characterImages = ''
+}
+
+// 触发Live2D模型上传
+const triggerLive2dModelUpload = (): void => {
+  if (!isSubmitting.value) {
+    live2dModelInput.value?.click()
+  }
+}
+
+// 处理Live2D模型选择 - 只保存文件信息
+const handleLive2dModelSelect = async (event: Event): Promise<void> => {
+  const input = event.target as HTMLInputElement
+  if (input.files && input.files[0]) {
+    const file = input.files[0]
+    selectedLive2dModel.value = file
+
+    // 更新模型信息，但不立即上传
+    live2dModelInfo.value = {
+      name: file.name,
+      path: 'selected', // 设置一个临时路径值，表示已选择但未上传
+      size: file.size,
+      progress: 0
+    }
+  }
+}
+
+// 移除Live2D模型
+const removeLive2dModel = (): void => {
+  assistantAssets.value.live2d = {
+    modelPath: '',
+    modelJsonPath: ''
+  }
+
+  live2dModelInfo.value = {
+    name: '',
+    path: '',
+    size: 0,
+    progress: 0
+  }
+
+  selectedLive2dModel.value = null
+}
+
+// 上传头像
+const uploadAvatar = async (): Promise<boolean> => {
+  if (!selectedFile.value || !formData.value.name) {
+    return true // 如果没有选择文件，认为上传成功
+  }
+
+  try {
+    const fileBuffer = await readFileAsBuffer(selectedFile.value)
+
+    // 调用IPC保存文件
+    const saveResult = await window.api.saveAssistantImageFile(
+      fileBuffer,
+      formData.value.name,
+      'avatar'
+    )
+
+    if (saveResult.success) {
+      uploadedFilePath.value = saveResult.path
+      formData.value.avatar = saveResult.path
+      return true
+    } else {
+      console.error('头像上传失败:', saveResult.error)
+      return false
+    }
+  } catch (error) {
+    // 获取详细的错误信息
+    const errorMessage = error instanceof Error ? error.message : '操作失败'
+    console.error('头像上传异常:', errorMessage)
+    return false
+  }
+}
+
+// 上传角色立绘
+const uploadCharacterImages = async (): Promise<boolean> => {
+  if (!selectedCharacterImages.value.length) {
+    return true // 如果没有选择文件，认为上传成功
+  }
+
+  try {
+    for (const file of selectedCharacterImages.value) {
+      const arrayBuffer = await readFileAsBuffer(file)
+      const fileName = `illustration`
+
+      const result = await window.api.saveAssistantImageFile(
+        arrayBuffer,
+        formData.value.name,
+        fileName
+      )
+
+      if (result.success) {
+        assistantAssets.value.characterImages = 'app-resource://' + result.path
+      } else {
+        console.error('角色立绘上传失败:', result.error)
+        return false
+      }
+    }
+    return true
+  } catch (error) {
+    // 获取详细的错误信息
+    const errorMessage = error instanceof Error ? error.message : '操作失败'
+    console.error('角色立绘上传异常:', errorMessage)
+    return false
+  }
+}
+
+// 上传Live2D模型
+const uploadLive2dModel = async (): Promise<boolean> => {
+  if (!selectedLive2dModel.value) {
+    return true // 如果没有选择文件，认为上传成功
+  }
+
+  try {
+    const file = selectedLive2dModel.value
+    const arrayBuffer = await readFileAsBuffer(file)
+
+    // 设置进度监听
+    window.api.ipcRenderer.on('assistant:live2d-extract-progress', (progress: number) => {
+      live2dModelInfo.value.progress = progress
+    })
+
+    try {
+      // 上传并解压模型
+      const result = await window.api.uploadAndExtractLive2dModel(
+        arrayBuffer,
+        formData.value.name || assistantAssets.value.assistantName
+      )
+
+      if (result.success) {
+        // 更新资产配置
+        assistantAssets.value.live2d = {
+          modelPath: result.path || '',
+          modelJsonPath: result.mainJsonPath || ''
+        }
+
+        live2dModelInfo.value.path = result.path || ''
+        live2dModelInfo.value.progress = 100
+        return true
+      } else {
+        console.error('Live2D模型上传失败:', result.error)
+        live2dModelInfo.value.progress = 0
+        return false
+      }
+    } finally {
+      // 移除进度监听
+      window.api.ipcRenderer.removeAllListeners('assistant:live2d-extract-progress')
+    }
+  } catch (error) {
+    // 获取详细的错误信息
+    const errorMessage = error instanceof Error ? error.message : '操作失败'
+    console.error('Live2D模型上传异常:', errorMessage)
+    live2dModelInfo.value.progress = 0
+    return false
+  }
+}
+
+// 保存助手资产配置
+const saveAssistantAssets = async (): Promise<boolean> => {
+  if (formData.value.name) {
+    assistantAssets.value.assistantName = formData.value.name
+    const assets = JSON.parse(JSON.stringify(assistantAssets.value))
+    const saveResult = await assistantManager.saveAssistantAssets(assets)
+    return saveResult
+  }
+  return false
 }
 
 // 表单验证函数
@@ -515,6 +908,7 @@ const validateForm = (): boolean => {
 
 // 提交表单
 const handleSubmit = async (): Promise<void> => {
+  // 检查助手名称是否为空或提交状态为true
   if (!formData.value.name || isSubmitting.value) {
     return
   }
@@ -525,28 +919,35 @@ const handleSubmit = async (): Promise<void> => {
   }
 
   try {
-    // 如果有选中的文件，则先保存文件
-    if (selectedFile.value) {
-      const fileBuffer = await readFileAsBuffer(selectedFile.value)
-
-      // 调用IPC保存文件，传递助手名称作为参数
-      const saveResult = await window.api.saveAssistantImageFile(
-        fileBuffer,
-        formData.value.name,
-        'avatar'
-      )
-      if (saveResult.success) {
-        uploadedFilePath.value = saveResult.path
-      } else {
-        console.error('文件保存失败:', saveResult.error)
-        return
-      }
-      // 保存成功后，更新表单数据中的头像路径
-      formData.value.avatar = saveResult.path
-    }
-
     // 设置提交状态为true，显示加载动画
     isSubmitting.value = true
+
+    // 按顺序上传所有资源，如果任何上传失败则中断
+    console.log('开始上传资源...')
+
+    // 1. 上传头像
+    if (!(await uploadAvatar())) {
+      console.error('头像上传失败，取消提交')
+      return
+    }
+
+    // 2. 上传角色立绘
+    if (!(await uploadCharacterImages())) {
+      console.error('角色立绘上传失败，取消提交')
+      return
+    }
+
+    // 3. 上传Live2D模型
+    if (!(await uploadLive2dModel())) {
+      console.error('Live2D模型上传失败，取消提交')
+      return
+    }
+
+    // 4. 保存资产配置
+    if (!(await saveAssistantAssets())) {
+      console.error('保存资产配置失败，取消提交')
+      return
+    }
 
     // 处理日期格式
     const processedFormData = {
@@ -574,6 +975,7 @@ const handleSubmit = async (): Promise<void> => {
         emit('update:modelValue', false)
       } else {
         console.error('更新助手失败')
+        alert('更新助手失败')
       }
     } else {
       // 添加模式：创建新助手
@@ -586,18 +988,18 @@ const handleSubmit = async (): Promise<void> => {
       }
 
       // 添加新助手
-      await assistantManager.addAssistant(assistantInfo)
-      console.log('助手添加成功')
-      emit('success')
-      // 关闭对话框并重置表单
-      emit('update:modelValue', false)
+      const addStatus = await assistantManager.addAssistant(assistantInfo)
+      if (addStatus) {
+        console.log('助手添加成功')
+        emit('success')
+        // 关闭对话框并重置表单
+        emit('update:modelValue', false)
+      }
     }
   } catch (error) {
-    console.error(isEditMode.value ? '更新助手失败:' : '添加助手失败:', error)
     // 获取详细的错误信息
     const errorMessage = error instanceof Error ? error.message : '操作失败'
-    // 显示详细的失败原因
-    alert(`${isEditMode.value ? '更新助手' : '添加助手'}失败: ${errorMessage}`)
+    console.error(isEditMode.value ? '更新助手失败:' : '添加助手失败:', errorMessage)
   } finally {
     // 无论成功或失败，都将提交状态设为false
     isSubmitting.value = false
@@ -980,5 +1382,188 @@ const handleCancel = (): void => {
   100% {
     transform: rotate(360deg);
   }
+}
+
+/* 资产管理相关样式 */
+.asset-upload-section {
+  margin-bottom: 24px;
+}
+
+.asset-item {
+  margin-bottom: 16px;
+}
+
+.upload-container {
+  position: relative;
+  margin-top: 8px;
+}
+
+.upload-placeholder {
+  color: #626262;
+  border: 2px dashed #ccc;
+  border-radius: 8px;
+  padding: 32px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.upload-placeholder:hover {
+  border-color: #90caf9;
+  background-color: #f5f5f5;
+}
+
+.upload-placeholder i {
+  font-size: 32px;
+  margin-bottom: 8px;
+  color: #999;
+}
+
+.upload-placeholder p {
+  margin: 0;
+  color: #666;
+}
+
+.upload-placeholder small {
+  display: block;
+  margin-top: 8px;
+  color: #999;
+  font-size: 12px;
+}
+
+.asset-preview-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 12px;
+}
+
+.image-preview-item {
+  position: relative;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.image-preview {
+  width: 100%;
+  height: 120px;
+  background-size: cover;
+  background-position: center;
+}
+
+.image-info {
+  padding: 8px;
+  font-size: 12px;
+  text-align: center;
+  background-color: #f5f5f5;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-info-item {
+  display: flex;
+  margin-bottom: 8px;
+}
+
+.info-label {
+  font-size: 16px;
+  font-weight: bold;
+  margin-right: 8px;
+  min-width: 100px;
+}
+
+.info-value {
+  font-size: 15px;
+}
+
+.upload-progress {
+  margin: 12px 0;
+}
+
+.progress-bar {
+  height: 8px;
+  background-color: #f0f0f0;
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 4px;
+}
+
+.progress-fill {
+  height: 100%;
+  background-color: #4caf50;
+  transition: width 0.3s ease;
+}
+
+.progress-text {
+  font-size: 12px;
+  color: #666;
+  text-align: right;
+}
+
+.live2d-model-info {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: row;
+  gap: 12px;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  padding: 12px;
+  background-color: #f9f9f9;
+  transition: all 0.3s ease;
+}
+
+.live2d-model-info:hover {
+  border: 1px solid var(--theme-color-light);
+  box-shadow: 0 2px 10px var(--theme-color-shadow);
+}
+
+.model-icon-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background-color: #f0f0f0;
+  margin: 30px 20px;
+}
+
+.upload-placeholder {
+  border: 2px dashed #d9d9d9;
+  border-radius: 4px;
+  padding: 24px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  background-color: #fafafa;
+}
+
+.upload-placeholder:hover {
+  color: var(--theme-color-light);
+  border-color: var(--theme-color-light);
+  background-color: white;
+}
+
+.remove-asset {
+  flex-shrink: 0;
+  background-color: #ff4d4f;
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  font-size: 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: auto;
+  transition: background-color 0.3s ease;
+}
+
+.remove-asset:hover {
+  background-color: #ff7875;
 }
 </style>

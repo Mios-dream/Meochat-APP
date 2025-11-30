@@ -1,94 +1,5 @@
+import { AssistantAssets, AssistantInfo } from '@renderer/types/AssistantInfo'
 import { useConfigStore } from '../stores/useConfigStore'
-
-interface GSVSetting {
-  // 助手语音合成的语言
-  textLang: string
-  // 助手语音合成的GPT模型
-  gptModelPath: string
-  // 助手语音合成的SOVITS模型
-  sovitsModelPath: string
-  // 助手语音合成的参考音频
-  refAudioPath: string
-  // 助手语音合成的参考文字
-  promptText: string
-  // 助手语音合成的参考文字语言
-  promptLang: string
-  // 助手语音合成的随机种子
-  seed: number
-  // 助手语音合成的TopK
-  topK: number
-  // 助手语音合成的批量大小
-  batchSize: number
-  // 助手语音合成的额外参数
-  extra: Record<string, string>
-  // 助手语音合成的额外参考音频
-  extraRefAudio: Record<string, string>
-}
-
-// 助手设置模型
-interface AssistantSettings {
-  // 助手是否开启日记功能
-  enableLongMemory: boolean
-  // 助手是否开启日记功能的检索加强
-  enableLongMemorySearchEnhance: boolean
-  // 助手是否开启核心记忆功能
-  enableCoreMemory: boolean
-  // 助手日记功能的搜索阈值
-  longMemoryThreshold: number
-  // 助手是否开启世界书(知识库)功能
-  enableLoreBooks: boolean
-  // 助手世界书(知识库)功能的搜索阈值
-  loreBooksThreshold: number
-  // 助手世界书(知识库)功能的搜索深度
-  loreBooksDepth: number
-  // 助手是否开启情绪系统
-  enableEmotionSystem: boolean
-  // 助手是否开启情绪系统的持续存储
-  enableEmotionPersist: boolean
-  // 助手的上下文长度
-  contextLength: number
-}
-
-interface AssistantInfo {
-  // 助手名称
-  name: string
-  // 对用户的称呼
-  user: string
-  // 头像
-  avatar: string
-  // 生日
-  birthday: string
-  // 身高
-  height: number | string
-  // 体重
-  weight: number | string
-  // 角色性格
-  personality: string
-  // 描述
-  description: string
-  // 用户的设定，用于在提示词中填充用户的信息，进行个性化对话
-  mask: string
-  // 初次相遇时间，存储为时间戳
-  firstMeetTime: number
-  // 好感度
-  love: number
-  // 对话案例
-  messageExamples: string[]
-  // 额外描述
-  extraDescription: string
-  // 更新,存储为时间戳
-  updatedAt: number
-  // 资产最后修改时间,存储为时间戳
-  assetsLastModified: number
-  // 自定义提示词
-  customPrompt: string
-  // 开场白，数组形式
-  startWith: string[]
-  // 助手设置
-  settings: AssistantSettings
-  // 助手GSV设置
-  gsvSetting: GSVSetting
-}
 
 const DEFAULT_ASSISTANTS: AssistantInfo[] = [
   {
@@ -199,6 +110,8 @@ class AssistantManager {
 
   private currentAssistant: AssistantInfo | null = null
 
+  private assistantAssets: AssistantAssets | null = null
+
   private configStore = useConfigStore()
 
   constructor() {
@@ -216,48 +129,39 @@ class AssistantManager {
    * 从云端和本地加载助手数据
    */
   public async loadAssistants(): Promise<void> {
-    try {
-      // 1. 首先尝试从服务器获取当前助手
-      const currentAssistantResponse = await window.api.getCurrentAssistant()
-      let serverCurrentAssistant: AssistantInfo | null = null
+    // 1. 首先尝试从服务器获取当前助手
+    const currentAssistantResponse = await window.api.getCurrentAssistant()
+    let serverCurrentAssistant: AssistantInfo | null = null
 
-      if (currentAssistantResponse.success && currentAssistantResponse.data) {
-        serverCurrentAssistant = currentAssistantResponse.data
-      }
+    if (currentAssistantResponse.success && currentAssistantResponse.data) {
+      serverCurrentAssistant = currentAssistantResponse.data
+    }
 
-      // 2. 加载所有助手数据
-      const cloudAssistants = await window.api.loadAssistantData()
-      // 合并助手数据
-      this.assistants = [...cloudAssistants]
+    // 2. 加载所有助手数据
+    const cloudAssistants = await window.api.loadAssistantData()
+    // 合并助手数据
+    this.assistants = [...cloudAssistants]
 
-      if (this.assistants.length === 0) {
-        this.assistants = DEFAULT_ASSISTANTS
-      }
+    if (this.assistants.length === 0) {
+      this.assistants = DEFAULT_ASSISTANTS
+    }
 
-      // 3. 设置当前助手：优先使用服务器返回的当前助手，如果没有则使用配置中的，最后使用第一个助手
-      if (serverCurrentAssistant) {
-        // 如果服务器返回的助手在本地存在，则使用它
-        if (this.getAssistantInfo(serverCurrentAssistant.name)) {
-          this.setCurrentAssistant(serverCurrentAssistant.name)
-        } else {
-          // 否则使用本地配置或第一个助手
-          this.setCurrentAssistant(
-            this.configStore.config.currentAssistant || this.assistants[0]?.name
-          )
-        }
+    // 3. 设置当前助手：优先使用服务器返回的当前助手，如果没有则使用配置中的，最后使用第一个助手
+    if (serverCurrentAssistant) {
+      // 如果服务器返回的助手在本地存在，则使用它
+      if (this.getAssistantInfo(serverCurrentAssistant.name)) {
+        await this.setCurrentAssistant(serverCurrentAssistant.name)
       } else {
-        // 服务器获取失败，使用本地配置或第一个助手
-        this.setCurrentAssistant(
+        // 否则使用本地配置或第一个助手
+        await this.setCurrentAssistant(
           this.configStore.config.currentAssistant || this.assistants[0]?.name
         )
       }
-    } catch (error) {
-      console.error('加载助手数据失败:', error)
-      // 加载失败时，使用本地数据
-      if (this.assistants.length === 0) {
-        this.assistants = DEFAULT_ASSISTANTS
-      }
-      this.setCurrentAssistant(this.configStore.config.currentAssistant || this.assistants[0]?.name)
+    } else {
+      // 服务器获取失败，使用本地配置或第一个助手
+      await this.setCurrentAssistant(
+        this.configStore.config.currentAssistant || this.assistants[0]?.name
+      )
     }
   }
 
@@ -279,16 +183,19 @@ class AssistantManager {
    * @param name 助手名称
    */
   public async setCurrentAssistant(name: string): Promise<void> {
-    // 1. 先更新本地状态
     const assistant = this.getAssistantInfo(name)
     if (assistant) {
-      // 2. 发送切换请求到服务器同步
+      // 发送切换请求到服务器同步
       const result = await window.api.switchAssistant(name)
       if (result.success) {
         this.currentAssistant = assistant
+        // 加载助手资产配置
+        this.assistantAssets = await this.loadAssistantAssets(name)
         this.configStore.updateConfig('currentAssistant', name)
       } else {
         this.currentAssistant = this.getAssistantInfo(name)
+        // 加载助手资产配置
+        this.assistantAssets = await this.loadAssistantAssets(name)
         this.configStore.updateConfig('currentAssistant', name)
         console.error('同步助手失败:', result.error)
       }
@@ -302,10 +209,7 @@ class AssistantManager {
    * @returns 当前助手信息,没有则返回默认信息
    */
   public getCurrentAssistant(): AssistantInfo {
-    return (
-      this.assistants.find((assistant) => assistant.name === this.currentAssistant?.name) ||
-      this.assistants[0]
-    )
+    return this.currentAssistant || this.assistants[0]
   }
 
   /**
@@ -345,12 +249,12 @@ class AssistantManager {
 
     // 发送IPC消息保存助手数据
     const status = await window.api.addAssistant(assistant)
-    if (!status) {
-      console.error('Failed to save assistant data')
-    } else {
+    if (status.success) {
       this.assistants.push(assistant)
+    } else {
+      console.error('添加助手失败:', status.error)
     }
-    return status
+    return status.success
   }
 
   public async deleteAssistant(name: string): Promise<{ success: boolean; message?: string }> {
@@ -408,6 +312,53 @@ class AssistantManager {
       throw error
     }
   }
+
+  /**
+   * 获取当前助手的资产配置
+   * @returns 助手资产配置,没有则返回null
+   */
+  public async getAssistantAssets(): Promise<AssistantAssets | null> {
+    if (this.currentAssistant) {
+      return this.assistantAssets
+    } else {
+      console.error('当前没有选择助手')
+      return null
+    }
+  }
+
+  public async getAssistantAssetsByName(assistantName: string): Promise<AssistantAssets | null> {
+    return await this.loadAssistantAssets(assistantName)
+  }
+
+  /**
+   * 加载助手资产配置
+   * @param assistantName 助手名称
+   * @returns 助手资产配置
+   */
+  public async loadAssistantAssets(assistantName: string): Promise<AssistantAssets | null> {
+    const response = await window.api.getAssistantAssets(assistantName)
+    if (response.success) {
+      return response.data
+    } else {
+      console.error('获取助手资产配置失败:', response.error)
+      return null
+    }
+  }
+
+  /**
+   * 保存助手资产配置
+   * @param assets 助手资产配置
+   * @returns 是否保存成功
+   */
+  public async saveAssistantAssets(assets: AssistantAssets): Promise<boolean> {
+    try {
+      const response = await window.api.saveAssistantAssets(assets)
+      return response.success
+    } catch (error) {
+      console.error('保存助手资产配置失败:', error)
+      return false
+    }
+  }
 }
 
-export { AssistantManager, type AssistantInfo, createNullAssistant }
+export { AssistantManager, type AssistantAssets, type AssistantInfo, createNullAssistant }

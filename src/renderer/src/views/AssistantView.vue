@@ -1,5 +1,8 @@
 <!-- src/views/AssistantView.vue -->
 <template>
+  <div id="loading-container">
+    <LoadingProgress :progress="loadingProgress" />
+  </div>
   <div
     id="live2d-container"
     :class="{ locked: isLocked }"
@@ -17,8 +20,6 @@
     />
 
     <canvas id="l2d-canvas"></canvas>
-
-    <LoadingProgress :progress="loadingProgress" />
   </div>
 </template>
 
@@ -49,6 +50,7 @@ const isTipsActive: Ref<boolean> = ref(false)
 // 当前消息
 const currentTip: Ref<string> = ref('')
 
+let removeListener: () => void
 // 组件实例
 const live2DManager = Live2DManager.getInstance()
 const chatService = ChatService.getInstance()
@@ -87,7 +89,7 @@ const contextMenuItems = computed(() => [
   {
     icon: 'fa-solid fa-xmark',
     text: '关闭',
-    action: closeApp
+    action: closeAssistant
   }
 ])
 
@@ -100,12 +102,12 @@ function toggleLock(): void {
 }
 
 function openSettings(): void {
-  window.api.ipcRenderer.send('app:maximize', null)
+  window.api.maximizeApp()
   hideContextMenu()
 }
 
-function closeApp(): void {
-  window.api.ipcRenderer.send('app:quite', null)
+function closeAssistant(): void {
+  window.api.closeAssistant()
   hideContextMenu()
 }
 
@@ -159,7 +161,93 @@ function hideContextMenu(): void {
   contextMenuVisible.value = false
 }
 
+// 初始化助手模型
+async function initAssistantModel(): Promise<void> {
+  try {
+    let currentAssistantName = ''
+    const response = await window.api.getCurrentAssistant()
+    if (response.success && response.data) {
+      currentAssistantName = response.data.name
+    }
+
+    const assetsResponse = await window.api.getAssistantAssets(currentAssistantName)
+    // 销毁当前模型
+    live2DManager.destroy()
+    if (assetsResponse.success && assetsResponse.data && assetsResponse.data.live2d.modelJsonPath) {
+      await live2DManager.init(
+        'l2d-canvas',
+        'app-resource://' + assetsResponse.data.live2d.modelJsonPath
+      )
+    } else {
+      // 加载默认模型
+      await live2DManager.init('l2d-canvas', './turong/turong.model3.json')
+    }
+    live2DManager.initListeners()
+    loadingCompleted()
+  } catch (error) {
+    console.error('初始化Live2D模型失败:', error)
+  }
+}
+
+/**
+ * 切换助手模型
+ * @param assistantName 助手名称
+ */
+async function switchModel(assistantName: string): Promise<void> {
+  try {
+    startLoading()
+    const assetsResponse = await window.api.getAssistantAssets(assistantName)
+    if (assetsResponse.success && assetsResponse.data) {
+      // 切换模型
+      await live2DManager.switchModel('app-resource://' + assetsResponse.data.live2d.modelJsonPath)
+    } else {
+      // 加载默认模型
+      await live2DManager.switchModel('./turong/turong.model3.json')
+    }
+    loadingCompleted()
+  } catch (error) {
+    console.error('切换Live2D模型失败:', error)
+  }
+}
+
+function loadingCompleted(): void {
+  loadingProgress.value = 100
+  // 隐藏加载进度
+  setTimeout(() => {
+    const progressElement = document.getElementById('loading-container')
+
+    if (progressElement) {
+      progressElement.classList.add('fade-out')
+
+      setTimeout(() => {
+        if (progressElement) {
+          progressElement.style.display = 'none'
+        }
+      }, 500)
+    }
+  }, 500)
+}
+function startLoading(): void {
+  loadingProgress.value = 0
+  const progressElement = document.getElementById('loading-container')
+
+  if (progressElement) {
+    progressElement.classList.remove('fade-out')
+
+    progressElement.style.display = 'flex'
+  }
+  // 模拟加载进度
+  const progressInterval = setInterval(() => {
+    if (loadingProgress.value < 90) {
+      loadingProgress.value += 10
+    } else {
+      clearInterval(progressInterval)
+    }
+  }, 100)
+}
+
 onMounted(async () => {
+  startLoading()
   if (config.value.autoChat) {
     // 连接到 WebSocket 服务
     micManager.connectToServer(wsUrl.value)
@@ -181,48 +269,24 @@ onMounted(async () => {
   })
 
   window.api.ipcRenderer.on('chat-box:send-message', async (_event, data) => {
-    console.log('收到请求:', data)
     await chatService.chat(data.text).then(() => {
       window.api.ipcRenderer.send('loading-state-changed', false)
     })
   })
 
-  // 模拟加载进度
-  const progressInterval = setInterval(() => {
-    if (loadingProgress.value < 90) {
-      loadingProgress.value += 10
-    } else {
-      clearInterval(progressInterval)
-    }
-  }, 50)
+  // 监听助手切换事件
+  removeListener = window.api.onAssistantSwitched(async (assistant) => {
+    // 当助手切换时，重新初始化模型
+    switchModel(assistant.name)
+  })
 
-  try {
-    // 初始化Live2D模型
-    await live2DManager.init('l2d-canvas', './turong/turong.model3.json')
-
-    live2DManager.initListeners()
-
-    loadingProgress.value = 100
-
-    // 隐藏加载进度
-    setTimeout(() => {
-      const progressElement = document.getElementById('loading-progress')
-
-      if (progressElement) {
-        progressElement.classList.add('fade-out')
-        setTimeout(() => {
-          if (progressElement) {
-            progressElement.style.display = 'none'
-          }
-        }, 500)
-      }
-    }, 500)
-  } catch (error) {
-    console.error('Failed to load Live2D model:', error)
-  }
+  await initAssistantModel()
 })
 
 onUnmounted(() => {
+  if (removeListener) {
+    removeListener()
+  }
   interactionSystem.stop()
   window.api.ipcRenderer.removeAllListeners('show-assistant-message')
   window.api.ipcRenderer.removeAllListeners('chat-box:send-message')
@@ -251,5 +315,15 @@ onUnmounted(() => {
   position: absolute;
   top: 50%;
   z-index: 10;
+}
+
+#loading-container {
+  position: absolute;
+  height: 100%;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px dashed #a18cd1;
 }
 </style>

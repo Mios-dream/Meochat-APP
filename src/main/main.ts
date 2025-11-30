@@ -7,13 +7,18 @@ import { getPermission } from './permission/permission'
 import { createTray } from './tray/appTray'
 import { startAutoService } from './utils/autoService'
 import { registerFileProtocol, handleFileProtocol } from './protocol/fileProtocol'
-// 导入日志系统
+import setupUpdaterIPC from './ipc/updaterHandlers'
+
 import log from './utils/logger'
 
 try {
   // 初始化 IPC
   setupMainIPC()
+  // 设置更新器IPC
+  setupUpdaterIPC()
+  // 设置配置IPC
   setupConfigIPC()
+  // 设置助手Together IPC
   setupAssistantTogetherIPC()
   // 注册文件协议
   registerFileProtocol()

@@ -1,6 +1,5 @@
 import { Live2DModel, MotionPriority, config } from 'pixi-live2d-display-lipsyncpatch'
 import * as PIXI from 'pixi.js'
-// import { ChatService } from '../utils/ChatService'
 import throttle from '../utils/Throttle'
 
 // 设置模型配置
@@ -133,6 +132,24 @@ export class Live2DManager {
     this.audioContext = new AudioContext()
 
     return this.model
+  }
+
+  public async switchModel(modelPath: string): Promise<void> {
+    // 移除旧模型
+    if (this.model) {
+      this.app!.stage.removeChild(this.model)
+      this.model.destroy()
+    }
+    // 加载新模型
+    this.model = await Live2DModel.from(modelPath, {
+      ticker: PIXI.Ticker.shared,
+      autoInteract: false
+    })
+    // 添加新模型到舞台
+    this.app!.stage.addChild(this.model)
+
+    // 重置模型变换
+    this.resetModelTransform()
   }
 
   /*
