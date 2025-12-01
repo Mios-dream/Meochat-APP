@@ -1,6 +1,5 @@
 // 修改导入路径为相对路径
 import { AssistantAssets, AssistantInfo } from '../types/AssistantInfo'
-import { useConfigStore } from '../stores/useConfigStore'
 
 class AssistantManager {
   private static instance: AssistantManager
@@ -8,8 +7,6 @@ class AssistantManager {
   private assistants: AssistantInfo[] = []
 
   private currentAssistant: AssistantInfo | null = null
-
-  private configStore = useConfigStore()
 
   public static getInstance(): AssistantManager {
     if (!AssistantManager.instance) {
@@ -22,21 +19,28 @@ class AssistantManager {
    * 初始化助手服务
    */
   public async initialize(): Promise<void> {
-    // 初始化主进程的助手服务 - 使用正确的API
+    // 初始化主进程的助手服务
     await window.api.initAssistant()
-
-    // 加载助手列表 - 使用preload中暴露的方法
+    // 从主进程加载助手列表
     await this.loadAssistants()
-
     // 加载当前助手信息
     const response = await window.api.getCurrentAssistant()
     if (response.success && response.data) {
       this.currentAssistant = response.data
     }
+    // 初始化事件监听器
+    this.initListeners()
+  }
+
+  public initListeners(): void {
+    // 监听助手数据更新
+    window.api.onAssistantSwitched((assistant) => {
+      this.currentAssistant = assistant || null
+    })
   }
 
   /**
-   * 从主进程加载助手数据
+   * 从主进程加载最新助手数据
    */
   public async loadAssistants(): Promise<void> {
     // 使用preload中暴露的方法
@@ -68,8 +72,6 @@ class AssistantManager {
     if (result.success) {
       // 更新当前助手信息
       this.currentAssistant = result.data
-      // 同步配置文件中的当前助手
-      this.configStore.updateConfig('currentAssistant', name)
     } else {
       console.error('同步助手失败:', result.error)
     }
@@ -120,19 +122,29 @@ class AssistantManager {
 
     window.api.onUploadProgress(progressCallback)
 
-    try {
-      // 发送IPC消息保存助手数据 - 使用preload中暴露的方法
-      const status = await window.api.addAssistant(assistant)
-      return status.success
-    } finally {
-      // 注意：由于preload中没有提供移除监听器的方法，这里需要通过ipcRenderer移除
-      window.api.ipcRenderer.removeAllListeners('assistant:upload-progress')
+    // 发送IPC消息保存助手数据 - 使用preload中暴露的方法
+    const status = await window.api.addAssistant(assistant)
+    await this.loadAssistants()
+    window.api.ipcRenderer.removeAllListeners('assistant:upload-progress')
+
+    if (status.success) {
+      return true
+    } else {
+      console.error('添加助手失败:', status.error)
+      return false
     }
   }
 
   public async deleteAssistant(name: string): Promise<{ success: boolean; message?: string }> {
     // 使用preload中暴露的方法
-    return await window.api.deleteAssistant(name)
+    const result = await window.api.deleteAssistant(name)
+    await this.loadAssistants()
+    // 加载当前助手信息
+    const response = await window.api.getCurrentAssistant()
+    if (response.success && response.data) {
+      this.currentAssistant = response.data
+    }
+    return result
   }
 
   /**
@@ -143,7 +155,9 @@ class AssistantManager {
     assistant: AssistantInfo
   ): Promise<{ success: boolean; error?: string }> {
     // 使用preload中暴露的方法
-    return await window.api.updateAssistantInfo(assistant)
+    const result = await window.api.updateAssistant(assistant)
+    await this.loadAssistants()
+    return result
   }
 
   /**
@@ -199,12 +213,12 @@ class AssistantManager {
    * @returns 是否保存成功
    */
   public async saveAssistantAssets(assets: AssistantAssets): Promise<boolean> {
-    try {
-      // 使用preload中暴露的方法
-      const response = await window.api.saveAssistantAssets(assets)
-      return response.success
-    } catch (error) {
-      console.error('保存助手资产配置失败:', error)
+    // 使用preload中暴露的方法
+    const response = await window.api.saveAssistantAssets(assets)
+    if (response.success) {
+      return true
+    } else {
+      console.error('保存助手资产配置失败:', response.error)
       return false
     }
   }

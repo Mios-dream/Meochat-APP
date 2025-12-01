@@ -1,3 +1,5 @@
+import { AssistantInfo } from '../types/assistant'
+
 export interface MainWindowApi {
   // 主窗口
   /**
@@ -101,7 +103,7 @@ export interface MainWindowApi {
    * 更新助手信息，并上传助手资产到服务器
    * @param assistant 助手信息
    */
-  updateAssistantInfo: (assistant: AssistantInfo) => Promise<{ success: boolean; error?: string }>
+  updateAssistant: (assistant: AssistantInfo) => Promise<{ success: boolean; error?: string }>
   /**
    * 从服务器删除助手
    * @param name 助手名称
@@ -178,6 +180,11 @@ export interface MainWindowApi {
   ) => Promise<
     { success: true; path: string; mainJsonPath: string } | { success: false; error: string }
   >
+
+  /**
+   * 监听助手切换事件
+   */
+  onAssistantSwitched: (callback: (assistant: AssistantInfo) => void) => () => Electron.IpcRenderer
 
   // 日志相关API
   log: {

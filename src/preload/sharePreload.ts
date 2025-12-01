@@ -36,6 +36,13 @@ const globalAPI = {
     return () => ipcRenderer.removeListener('assistant:switched', listener)
   },
 
+  // 监听助手数据更新事件
+  onAssistantUpdate: (callback) => {
+    const listener = (_event, data): void => callback(data)
+    ipcRenderer.on('assistant:update', listener)
+    return () => ipcRenderer.removeListener('assistant:update', listener)
+  },
+
   // 日志相关
   // 修改日志相关，通过IPC发送到主进程
   log: {

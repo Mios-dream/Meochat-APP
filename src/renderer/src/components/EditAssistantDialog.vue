@@ -235,7 +235,7 @@
             <div class="setting-item">
               <form class="setting-from">
                 <div class="title">
-                  <label for="textLang">语音语言</label>
+                  <label for="textLang">输出语音语言</label>
                   <div class="description">设置助手的语音输出语言</div>
                 </div>
                 <select id="textLang" v-model="formData.gsvSetting.textLang" default-value="zh">
@@ -946,6 +946,15 @@ const validateForm = (): boolean => {
   }
   if (!formData.value.gsvSetting.promptText?.trim()) {
     missingFields.push('参考文本')
+  }
+
+  if (!formData.value.gsvSetting.textLang?.trim()) {
+    missingFields.push('输出语音语言')
+  }
+
+  // 检查文本设置中的必填字段
+  if (!formData.value.gsvSetting.textLang?.trim()) {
+    missingFields.push('参考语音语言')
   }
 
   // 如果有未填写的必填字段，显示提示

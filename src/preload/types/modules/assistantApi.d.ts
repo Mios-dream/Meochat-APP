@@ -1,3 +1,5 @@
+import { AssistantInfo } from '../types/assistant'
+
 export interface AssistantApi {
   // 助手窗口
   openAssistant: () => void
@@ -18,5 +20,7 @@ export interface AssistantApi {
   getAssistantAssets: (
     assistantName: string
   ) => Promise<{ success: boolean; data?: AssistantAssets | null; error?: string }>
-  onAssistantSwitched: (callback: (data: AssistantInfo | null) => void) => () => void
+  onAssistantSwitched: (
+    callback: (data: AssistantInfo | null) => void
+  ) => () => Electron.IpcRenderer
 }

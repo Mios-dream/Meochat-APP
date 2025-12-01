@@ -355,7 +355,7 @@ class AssistantService {
   /**
    * 更新助手信息，同步云端与本地数据
    */
-  public async updateAssistantInfo(
+  public async updateAssistant(
     assistant: AssistantInfo
   ): Promise<{ success: boolean; error?: string }> {
     try {
@@ -375,6 +375,11 @@ class AssistantService {
 
       // 保存在本地
       this.saveAssistantToLocal(completeAssistant)
+      // 上传助手资产
+      const uploadResult = await this.uploadAssistantAssets(completeAssistant.name)
+      if (!uploadResult.success) {
+        return { success: false, error: `上传助手资产失败: ${uploadResult.error}` }
+      }
 
       // 更新内存中的助手数据
       const index = this.assistants.findIndex((a) => a.name === completeAssistant.name)
@@ -461,7 +466,7 @@ class AssistantService {
 
       return { success: true }
     } catch (error) {
-      log.error(`Error adding assistant ${assistant.name}:`, error)
+      log.error(`Error adding assistant ${assistant.name}:`, (error as Error).message)
       return { success: false, error: (error as Error).message }
     }
   }
@@ -745,12 +750,6 @@ class AssistantService {
       // 更新内存缓存
       this.assistantAssetsMap.set(assets.assistantName, assets)
 
-      // 上传到云端
-      const uploadResult = await this.uploadAssistantAssets(assets.assistantName)
-      if (!uploadResult.success) {
-        return { success: false, error: `上传助手资产失败: ${uploadResult.error}` }
-      }
-
       return { success: true }
     } catch (error) {
       log.error('保存助手资产配置失败:', error)
@@ -806,7 +805,7 @@ class AssistantService {
       const files = fs.readdirSync(live2dDir, { recursive: true })
       for (const file of files) {
         const fileName = file.toString()
-        if (fileName.endsWith('model3.json') || fileName.endsWith('model.json')) {
+        if (fileName.endsWith('.model3.json') || fileName.endsWith('.model.json')) {
           mainJsonPath = path.join('assistants', assistantName, 'assets', 'live2d', fileName)
           break
         }

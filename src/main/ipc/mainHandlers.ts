@@ -44,8 +44,8 @@ function setupAssistantServerIPC(): void {
   /**
    * 更新助手信息
    */
-  ipcMain.handle('assistant:update-assistant-info', async (_event, assistantData) => {
-    return await assistantService.updateAssistantInfo(assistantData)
+  ipcMain.handle('assistant:update-assistant', async (_event, assistantData) => {
+    return await assistantService.updateAssistant(assistantData)
   })
 
   /**
