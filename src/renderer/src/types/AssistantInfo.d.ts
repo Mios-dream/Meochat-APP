@@ -1,3 +1,30 @@
+interface AssistantBaseInfo {
+  // 助手名称
+  name: string
+  // 对用户的称呼
+  user?: string
+  // 头像
+  avatar?: string
+  // 生日
+  birthday?: string
+  // 身高
+  height?: number | string
+  // 体重
+  weight?: number | string
+  // 角色性格
+  personality?: string
+  // 描述
+  description?: string
+  // 用户的设定，用于在提示词中填充用户的信息，进行个性化对话
+  mask?: string
+  // 助手的额外描述
+  extraDescription?: string
+  // 对话案例
+  messageExamples?: string[]
+  // 开场白
+  startWith?: string[]
+}
+
 interface GSVSetting {
   // 助手语音合成的语言
   textLang: string
@@ -47,7 +74,7 @@ interface AssistantSettings {
   contextLength: number
 }
 
-interface AssistantInfo {
+interface AssistantInfo extends AssistantBaseInfo {
   // 助手名称
   name: string
   // 对用户的称呼
@@ -86,6 +113,8 @@ interface AssistantInfo {
   settings: AssistantSettings
   // 助手GSV设置
   gsvSetting: GSVSetting
+  // 助手情绪系统设置
+  emotionSetting: Map
 }
 
 // 助手资产配置
@@ -103,4 +132,4 @@ interface AssistantAssets {
   }
 }
 
-export { AssistantInfo, AssistantAssets }
+export { AssistantInfo, AssistantAssets, AssistantBaseInfo }

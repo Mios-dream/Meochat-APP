@@ -14,9 +14,11 @@ contextBridge.exposeInMainWorld('api', {
   onStatus: (callback) => ipcRenderer.on('updater:update-status', (_, msg) => callback(msg)),
   onProgress: (callback) =>
     ipcRenderer.on('updater:update-progress', (_, percent) => callback(percent)),
+  checkCloudVersion: () => ipcRenderer.invoke('updater:check-cloud-version'),
 
-  initAssistant: () => ipcRenderer.invoke('assistant:init'),
   // 助手相关 API
+  initAssistant: () => ipcRenderer.invoke('assistant:init'),
+  // 下载助手资产
   downloadAssistantAsset: async ({ assistantName, onProgress }) => {
     // 监听进度事件
     const progressListener = (
@@ -71,5 +73,8 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('assistant:save-extract-live2d', fileData, assistantName),
   // 助手图片上传API
   saveAssistantImageFile: (fileData, assistantName, fileName) =>
-    ipcRenderer.invoke('assistant:save-image-file', fileData, assistantName, fileName)
+    ipcRenderer.invoke('assistant:save-image-file', fileData, assistantName, fileName),
+  // 从角色卡片导入助手信息
+  importAssistantFromCard: (imagePath) =>
+    ipcRenderer.invoke('assistant:import-from-card', imagePath)
 })

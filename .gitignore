@@ -6,3 +6,6 @@ out
 *.log*
 .env
 assistants
+!test/.gitkeep
+test/*.ts
+

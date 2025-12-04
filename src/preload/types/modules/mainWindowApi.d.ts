@@ -1,4 +1,4 @@
-import { AssistantInfo } from '../types/assistant'
+import { AssistantInfo, AssistantBaseInfo } from '../types/assistant'
 
 export interface MainWindowApi {
   // 主窗口
@@ -68,6 +68,21 @@ export interface MainWindowApi {
    * 监听更新进度
    */
   onProgress: (callback: (percent: number) => void) => void
+
+  checkCloudVersion: () => Promise<
+    | {
+        success: true
+        currentVersion: string
+        cloudVersion: string
+        isVersionMatch: boolean
+        fullVersionMatch: boolean
+      }
+    | {
+        success: false
+        error: string
+        currentVersion: string
+      }
+  >
 
   // 助手相关 API
   /**
@@ -185,6 +200,15 @@ export interface MainWindowApi {
    * 监听助手切换事件
    */
   onAssistantSwitched: (callback: (assistant: AssistantInfo) => void) => () => Electron.IpcRenderer
+
+  /**
+   * 从角色卡片图片中提取助手信息
+   * @param imagePath 角色卡片图片路径
+   * @returns 提取到的助手信息
+   */
+  importAssistantFromCard: (
+    fileData: ArrayBuffer
+  ) => Promise<{ success: true; data: AssistantBaseInfo } | { success: false; error: string }>
 
   // 日志相关API
   log: {

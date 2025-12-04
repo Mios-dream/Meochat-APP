@@ -6,8 +6,13 @@ import path from 'path'
 import { app, globalShortcut, BrowserWindow } from 'electron'
 import { getConfig, setConfig } from '../config/configManager'
 import log from '../utils/logger'
-import { AssistantAssets, AssistantInfo } from '../../renderer/src/types/AssistantInfo'
+import {
+  AssistantAssets,
+  AssistantBaseInfo,
+  AssistantInfo
+} from '../../renderer/src/types/AssistantInfo'
 import { createChatBoxWindow } from '../windows/chatBoxWindow'
+import ImageMetadataExtractor from '../utils/imageMetadataExtractor'
 
 // 默认助手数据
 const DEFAULT_ASSISTANTS: AssistantInfo[] = [
@@ -59,7 +64,8 @@ const DEFAULT_ASSISTANTS: AssistantInfo[] = [
         text_split_method: 'cut0'
       },
       extraRefAudio: {}
-    }
+    },
+    emotionSetting: {}
   }
 ]
 
@@ -836,6 +842,37 @@ class AssistantService {
     onProgress: (progress: number) => void
   ): Promise<{ success: boolean }> {
     return this.downloadAssistantAssets(assistantName, onProgress)
+  }
+
+  /**
+   * 从图片文件中提取并解码隐藏的助手信息
+   */
+  public extractHiddenInfo(
+    imageData: Buffer
+  ): { success: true; data: AssistantBaseInfo } | { success: false; error: string } {
+    try {
+      const extractor = new ImageMetadataExtractor()
+      const result = JSON.parse(extractor.extractAndDecodeHiddenInfo(imageData))
+      if (!result || !result.data) {
+        return { success: false, error: '隐藏信息中缺少角色数据' }
+      }
+      const hiddenInfo = result.data
+      const assistantInfo: AssistantBaseInfo = {
+        name: hiddenInfo.name?.trim(),
+        extraDescription: hiddenInfo?.description?.trim(),
+        messageExamples: [
+          ...(hiddenInfo?.mes_example
+            ?.split('<START>')
+            .map((item: string) => item.trim())
+            .filter((item: string) => item !== '') || [])
+        ],
+        startWith: [...(hiddenInfo?.alternate_greetings || [])]
+      }
+      return { success: true, data: assistantInfo }
+    } catch (error) {
+      log.error('提取隐藏信息失败:', error)
+      return { success: false, error: (error as Error).message }
+    }
   }
 }
 

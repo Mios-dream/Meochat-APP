@@ -1,6 +1,8 @@
 import { ipcMain, app, dialog, BrowserWindow } from 'electron'
 import { getAutoUpdater } from '../utils/appUpdater'
 import log from '../utils/logger'
+import axios from 'axios'
+import { getConfig } from '../config/configManager'
 
 const autoUpdater = getAutoUpdater()
 
@@ -88,6 +90,42 @@ function setupUpdaterIPC(): void {
     })
 
     await autoUpdater.downloadUpdate()
+  })
+
+  // 检查云端版本与客户端版本匹配
+  ipcMain.handle('updater:check-cloud-version', async () => {
+    const currentVersion = app.getVersion()
+    try {
+      const url = `http://${getConfig('baseUrl')}/api/health`
+      // 调用云端健康检查API
+      const response = await axios.get(url)
+      const cloudVersion = response.data.version
+
+      // 比较前两个版本号（主版本和次版本），忽略最后的小版本
+      const currentVersionParts = currentVersion.split('.')
+      const cloudVersionParts = cloudVersion.split('.')
+      // 提取前两个版本号并拼接
+      const currentMajorMinorVersion = `${currentVersionParts[0]}.${currentVersionParts[1] || '0'}`
+      const cloudMajorMinorVersion = `${cloudVersionParts[0]}.${cloudVersionParts[1] || '0'}`
+      // 检查主版本和次版本是否匹配
+      const isVersionMatch = currentMajorMinorVersion === cloudMajorMinorVersion
+
+      return {
+        success: true,
+        currentVersion,
+        cloudVersion,
+        isVersionMatch,
+        fullVersionMatch: currentVersion === cloudVersion
+      }
+    } catch (error) {
+      const errorObj = error as Error
+      log.error('检查云端版本失败:', errorObj.message)
+      return {
+        success: false,
+        error: errorObj.message,
+        currentVersion
+      }
+    }
   })
 }
 

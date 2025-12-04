@@ -1,7 +1,9 @@
 <template>
   <BlurModal :model-value="modelValue" @update:model-value="emit('update:modelValue', $event)">
     <div class="add-assistant-dialog">
-      <div class="add-assistant-title">{{ isEditMode ? '编辑助手' : '聘用助手' }}</div>
+      <div class="add-assistant-title">
+        {{ isEditMode ? '编辑助手' : '聘用助手' }}
+      </div>
       <div class="add-assistant-tips">和阁下的每一次相遇都是一个奇迹，因此我会无比珍惜</div>
 
       <!-- 选项卡导航 -->
@@ -41,7 +43,7 @@
                   type="file"
                   accept="image/*"
                   style="display: none"
-                  @change="handleFileSelect"
+                  @change="handleAvatarFileSelect"
                 />
               </div>
             </div>
@@ -54,6 +56,7 @@
                     v-model="formData.name"
                     type="text"
                     required
+                    :disabled="isEditMode"
                     placeholder="给助手起一个名字吧"
                   />
                 </div>
@@ -101,7 +104,6 @@
               id="assistantPersonality"
               v-model="formData.personality"
               type="text"
-              required
               placeholder="例如：活泼、内向等"
               rows="2"
             ></textarea>
@@ -112,7 +114,6 @@
             <textarea
               id="assistantDescription"
               v-model="formData.description"
-              required
               placeholder="请输入助手的详细描述"
               rows="5"
             ></textarea>
@@ -156,6 +157,29 @@
               placeholder="可以添加自定义的提示词，将不使用模板创建助手"
               rows="4"
             ></textarea>
+          </div>
+
+          <div class="form-group">
+            <label>对话案例</label>
+            <div class="message-examples">
+              <div
+                v-for="(_example, index) in formData.messageExamples"
+                :key="index"
+                class="example-item"
+              >
+                <textarea
+                  v-model="formData.messageExamples[index]"
+                  placeholder="输入对话案例..."
+                  rows="2"
+                ></textarea>
+                <button type="button" class="remove-example" @click="removeMessageExample(index)">
+                  ×
+                </button>
+              </div>
+              <button type="button" class="add-example" @click="addMessageExample">
+                <font-awesome-icon icon="fa-solid fa-plus" /> 添加对话案例
+              </button>
+            </div>
           </div>
 
           <div class="form-group">
@@ -446,6 +470,7 @@ import { NotificationService } from '../services/NotificationService'
 interface Props {
   modelValue: boolean
   editingAssistant?: AssistantInfo | null
+  isImportFromCard?: boolean
 }
 
 interface Emits {
@@ -454,7 +479,9 @@ interface Emits {
   (e: 'success'): void
 }
 
-const props = defineProps<Props>()
+const props = withDefaults(defineProps<Props>(), {
+  isImportFromCard: false
+})
 const emit = defineEmits<Emits>()
 
 const assistantManager = AssistantManager.getInstance()
@@ -508,6 +535,10 @@ const live2dModelInfo = ref({
   progress: 0
 })
 
+/**
+ * 创建一个空的助手信息对象
+ * @returns 空的助手信息对象
+ */
 function createNullAssistant(): AssistantInfo {
   return {
     name: '',
@@ -553,7 +584,8 @@ function createNullAssistant(): AssistantInfo {
         text_split_method: 'cut0'
       },
       extraRefAudio: {}
-    }
+    },
+    emotionSetting: {}
   }
 }
 
@@ -654,6 +686,20 @@ watch(
   { immediate: true, deep: true }
 )
 
+// 监听导入角色卡状态变化
+watch(
+  () => props.isImportFromCard,
+  (isImport) => {
+    if (isImport && !props.editingAssistant) {
+      // 当从角色卡导入时，自动触发文件选择
+      setTimeout(() => {
+        triggerCharacterCardImport()
+      }, 100)
+    }
+  },
+  { immediate: true }
+)
+
 // 工具函数
 // 添加开场白
 const addStartWith = (): void => {
@@ -663,6 +709,16 @@ const addStartWith = (): void => {
 // 移除开场白
 const removeStartWith = (index: number): void => {
   formData.value.startWith.splice(index, 1)
+}
+
+// 添加对话案例
+const addMessageExample = (): void => {
+  formData.value.messageExamples.push('')
+}
+
+// 移除对话案例
+const removeMessageExample = (index: number): void => {
+  formData.value.messageExamples.splice(index, 1)
 }
 
 // 格式化文件大小
@@ -697,7 +753,7 @@ const triggerFileInput = (): void => {
 }
 
 // 处理头像文件选择 - 只保存文件信息
-const handleFileSelect = async (event: Event): Promise<void> => {
+const handleAvatarFileSelect = async (event: Event): Promise<void> => {
   const input = event.target as HTMLInputElement
   if (input.files && input.files[0]) {
     const file = input.files[0]
@@ -920,6 +976,51 @@ const saveAssistantAssets = async (): Promise<boolean> => {
     return saveResult
   }
   return false
+}
+
+// 从角色卡片导入助手信息
+const handleCharacterCardFileSelected = async (event: Event): Promise<void> => {
+  try {
+    const input = event.target as HTMLInputElement
+    if (!input.files || input.files.length === 0) {
+      return
+    }
+
+    const file = input.files[0]
+
+    // 调用API从图片中提取信息
+    const importResult = await window.api.importAssistantFromCard(await file.arrayBuffer())
+
+    if (importResult.success) {
+      const importData = importResult.data.data
+      // 填充表单数据
+      formData.value.name = importData.name || formData.value.name
+      formData.value.extraDescription =
+        importData.extraDescription || formData.value.extraDescription
+
+      formData.value.messageExamples = importData.messageExamples || formData.value.messageExamples
+      formData.value.startWith = importData.startWith || formData.value.startWith
+      // 将事件传递给头像文件选择处理函数
+      handleAvatarFileSelect(event)
+
+      notificationService.success('角色信息导入成功！')
+    } else {
+      console.error(`导入失败: ${importResult.error || '未知错误'}`)
+    }
+  } catch (error) {
+    console.error('导入角色卡片失败:', error)
+  }
+}
+
+// 触发角色卡导入
+function triggerCharacterCardImport(): void {
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.accept = '.png,.jpg,.jpeg'
+  input.onchange = async (event) => {
+    await handleCharacterCardFileSelected(event)
+  }
+  input.click()
 }
 
 // 表单验证函数

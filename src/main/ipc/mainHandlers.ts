@@ -148,9 +148,22 @@ function setupAssistantServerIPC(): void {
   ipcMain.handle('assistant:switch-assistant', async (_event, assistantName: string) => {
     return await assistantService.setCurrentAssistant(assistantName)
   })
+
+  // 从角色卡片导入助手信息
+  ipcMain.handle('assistant:import-from-card', async (_event, imageData: ArrayBuffer) => {
+    try {
+      const assistantService = AssistantService.getInstance()
+      const extractedInfo = await assistantService.extractHiddenInfo(Buffer.from(imageData))
+      return { success: true, data: extractedInfo }
+    } catch (error) {
+      return { success: false, error: (error as Error).message }
+    }
+  })
 }
 
-// 添加日志相关 IPC 处理
+/**
+ * 设置日志相关IPC处理
+ */
 function setupLoggerIPC(): void {
   // 处理从渲染进程和preload发来的日志消息
   ipcMain.on(

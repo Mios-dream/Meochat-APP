@@ -166,15 +166,45 @@
           </div>
         </div>
       </div>
-      <AddAssistantDialog
+      <!-- 选择添加方式对话框 -->
+      <BlurModal v-model="isVisibleSelectMethodDialog">
+        <div class="select-method-dialog">
+          <div class="dialog-title">选择添加方式</div>
+          <div class="dialog-description">请选择您想要如何添加新助手</div>
+
+          <div class="options-container">
+            <div class="option-item" @click="handleManualAdd">
+              <div class="option-icon">
+                <font-awesome-icon icon="fa-solid fa-pen-to-square" />
+              </div>
+              <div class="option-content">
+                <div class="option-title">手动创建</div>
+                <div class="option-description">从头开始创建一个全新的助手角色</div>
+              </div>
+            </div>
+
+            <div class="option-item" @click="handleImportCharacterCard">
+              <div class="option-icon">
+                <font-awesome-icon icon="fa-solid fa-download" />
+              </div>
+              <div class="option-content">
+                <div class="option-title">导入角色卡</div>
+                <div class="option-description">通过导入角色卡快速创建助手</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </BlurModal>
+      <EditAssistantDialog
         v-model="isVisibleAddAssistantDialog"
         :editing-assistant="null"
+        :is-import-from-card="isImportFromCard"
         @cancel="closeAddAssistantDialog"
         @success="handleAssistantUpdated"
       />
 
       <!-- 添加编辑助手对话框 -->
-      <AddAssistantDialog
+      <EditAssistantDialog
         v-model="isVisibleEditAssistantDialog"
         :editing-assistant="editingAssistant"
         @cancel="handleEditCancel"
@@ -200,9 +230,10 @@ import { ref, onMounted, computed, onUnmounted } from 'vue'
 import { useConfigStore } from '../stores/useConfigStore'
 import ContextMenu from '../components/Toolbar.vue'
 import { AssistantInfo, AssistantManager } from '../services/assistantManager'
-import AddAssistantDialog from '../components/EditAssistantDialog.vue'
+import EditAssistantDialog from '../components/EditAssistantDialog.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import Loader from '../components/Loader.vue'
+import BlurModal from '../components/BlurModal.vue'
 
 // 从配置存储中获取配置
 const configStore = useConfigStore()
@@ -219,8 +250,12 @@ const currentLove = computed(() => assistantInfo.value?.love || 0) // 当前好�
 const assistantList = ref(assistantManager.getAssistants())
 // 是否可见添加助手对话框
 const isVisibleAddAssistantDialog = ref(false)
+// 是否显示选择添加方式对话框
+const isVisibleSelectMethodDialog = ref(false)
 // 是否正在加载助手列表
 const assistantListLoading = ref(true)
+// 是否从角色卡导入
+const isImportFromCard = ref(false)
 
 // 计算进度百分比
 const lovePercentage = computed(() => {
@@ -377,11 +412,26 @@ function closeAssistant(): void {
 
 // 打开添加助手对话框
 function openAddAssistantDialog(): void {
-  isVisibleAddAssistantDialog.value = true
+  // 改为显示选择方式对话框
+  isVisibleSelectMethodDialog.value = true
 }
+
 // 关闭添加助手对话框
 function closeAddAssistantDialog(): void {
   isVisibleAddAssistantDialog.value = false
+  isImportFromCard.value = false
+}
+
+// 处理手动添加
+function handleManualAdd(): void {
+  isImportFromCard.value = false
+  isVisibleAddAssistantDialog.value = true
+}
+
+// 处理导入角色卡
+function handleImportCharacterCard(): void {
+  isImportFromCard.value = true
+  isVisibleAddAssistantDialog.value = true
 }
 
 // 当组件挂载时，获取助手状态
@@ -929,5 +979,80 @@ onUnmounted(() => {
   left: 120px;
   color: #fb7299;
   stroke: #fb7299;
+}
+
+/* 选择方式对话框样式 */
+.select-method-dialog {
+  width: 400px;
+  padding: 30px;
+  text-align: center;
+}
+
+.dialog-title {
+  font-size: 24px;
+  font-weight: bold;
+  color: #fb7299;
+  margin-bottom: 10px;
+  font-family: 'LoliFont';
+}
+
+.dialog-description {
+  color: #666;
+  margin-bottom: 30px;
+  font-size: 16px;
+}
+
+.options-container {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  margin-bottom: 30px;
+}
+
+.option-item {
+  display: flex;
+  align-items: center;
+  padding: 20px;
+  background: rgba(255, 255, 255, 0.8);
+  border-radius: 15px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  border: 2px solid #f6f6f6;
+}
+
+.option-item:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+  border-color: #ffb3cd;
+}
+
+.option-icon {
+  width: 50px;
+  height: 50px;
+  background: #ffebf0;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 20px;
+  color: #fb7299;
+  font-size: 24px;
+}
+
+.option-content {
+  flex: 1;
+  text-align: left;
+}
+
+.option-title {
+  font-size: 18px;
+  font-weight: bold;
+  color: #333;
+  margin-bottom: 5px;
+}
+
+.option-description {
+  color: #666;
+  font-size: 14px;
 }
 </style>

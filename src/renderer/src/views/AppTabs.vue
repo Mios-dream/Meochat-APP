@@ -54,7 +54,10 @@ import PluginsView from './PluginManagerView.vue'
 import AssistantSpaceView from './AssistantSpaceView.vue'
 import SettingView from './SettingView.vue'
 import { AssistantManager } from '@renderer/services/assistantManager'
+import { NotificationService } from '../services/NotificationService'
+
 const assistantManager = AssistantManager.getInstance()
+const notificationService = NotificationService.getInstance()
 // 初始化助手服务
 assistantManager.initialize()
 
@@ -145,6 +148,26 @@ function handleBlur(): void {
   isWindowFocused.value = true
 }
 
+// 检查云端版本
+async function checkCloudVersion(): Promise<void> {
+  const result = await window.api.checkCloudVersion()
+  console.log(result)
+  if (result.success) {
+    if (result.fullVersionMatch) {
+      console.log(`版本完全匹配: 当前版本 ${result.currentVersion}`)
+    } else if (result.isVersionMatch) {
+      console.log(
+        `主版本和次版本匹配: 当前版本 ${result.currentVersion}, 云端版本 ${result.cloudVersion}`
+      )
+    } else {
+      console.warn(
+        `客户端版本与服务端不兼容,当前版本 ${result.currentVersion}, 云端版本 ${result.cloudVersion}`
+      )
+      notificationService.warning(`客户端版本与服务端不兼容,可能导致功能异常`, 10000)
+    }
+  }
+}
+
 onMounted(() => {
   // 添加事件监听器
   window.addEventListener('focus', handleFocus)
@@ -152,6 +175,8 @@ onMounted(() => {
 
   // 初始化聚焦状态
   isWindowFocused.value = document.hasFocus()
+
+  checkCloudVersion()
 })
 
 onUnmounted(() => {
