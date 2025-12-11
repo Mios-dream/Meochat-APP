@@ -70,10 +70,18 @@ class NotificationService {
    * @param message 通知内容
    * @param duration 显示时长（毫秒）
    */
-  public info(message: string, duration?: number): void {
+  public info({
+    title = 'Info',
+    message,
+    duration = 5000
+  }: {
+    title?: string
+    message?: string
+    duration?: number
+  }): void {
     this.notify({
       type: 'info',
-      title: 'Info',
+      title,
       message,
       duration
     })
@@ -85,10 +93,18 @@ class NotificationService {
    * @param message 通知内容
    * @param duration 显示时长（毫秒）
    */
-  public success(message: string, duration?: number): void {
+  public success({
+    title = 'Success',
+    message,
+    duration = 5000
+  }: {
+    title?: string
+    message?: string
+    duration?: number
+  }): void {
     this.notify({
       type: 'success',
-      title: 'Success',
+      title,
       message,
       duration
     })
@@ -100,10 +116,18 @@ class NotificationService {
    * @param message 通知内容
    * @param duration 显示时长（毫秒）
    */
-  public warning(message: string, duration?: number): void {
+  public warning({
+    title = 'Warning',
+    message,
+    duration = 5000
+  }: {
+    title?: string
+    message?: string
+    duration?: number
+  }): void {
     this.notify({
       type: 'warning',
-      title: 'Warning',
+      title,
       message,
       duration
     })
@@ -115,10 +139,18 @@ class NotificationService {
    * @param message 通知内容
    * @param duration 显示时长（毫秒）
    */
-  public error(message: string, duration?: number): void {
+  public error({
+    title = 'Error',
+    message,
+    duration = 5000
+  }: {
+    title?: string
+    message?: string
+    duration?: number
+  }): void {
     this.notify({
       type: 'error',
-      title: 'Error',
+      title,
       message,
       duration
     })

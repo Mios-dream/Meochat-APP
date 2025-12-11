@@ -1,6 +1,6 @@
 {
   "name": "moechat",
-  "version": "0.0.4",
+  "version": "0.1.0",
   "description": "MoeChat,一个实时陪伴您的桌面ai助手。阁下，准备好一起聊天了吗？",
   "main": "./out/main/main.js",
   "author": "Mios-dream",

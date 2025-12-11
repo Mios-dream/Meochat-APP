@@ -27,7 +27,6 @@
 import { ref, onMounted, onUnmounted, computed, Ref } from 'vue'
 import { ChatService } from '../services/ChatService'
 import { Live2DManager } from '../services/Live2dManager'
-import { MicrophoneManager } from '../services/MicrophoneManager'
 import AssistantTips from '../components/AssistantTips.vue'
 import ContextMenu from '../components/Toolbar.vue'
 import LoadingProgress from '../components/LoadingProgress.vue'
@@ -55,24 +54,6 @@ let removeListener: () => void
 const live2DManager = Live2DManager.getInstance()
 const chatService = ChatService.getInstance()
 const interactionSystem = InteractionSystem.getInstance()
-
-// 创建麦克风管理器实例
-const micManager = new MicrophoneManager()
-
-// 设置识别结果回调
-micManager.setRecognitionCallback((data) => {
-  console.log('识别结果:', data)
-  const jsonData = JSON.parse(data)
-  if (jsonData.withAssistant === true) {
-    chatService.chat(jsonData.data)
-  }
-})
-
-// 获取麦克风权限
-micManager.getPermissionStatus().then((status) => {
-  console.log('麦克风权限状态:', status)
-})
-const wsUrl = computed(() => `ws://${config.value.baseUrl}/api/asr_ws_plus`)
 
 // 计算属性
 const contextMenuItems = computed(() => [
@@ -250,28 +231,18 @@ function startLoading(): void {
 onMounted(async () => {
   startLoading()
   if (config.value.autoChat) {
-    // 连接到 WebSocket 服务
-    micManager.connectToServer(wsUrl.value)
-    // 开始录音
-    micManager
-      .startRecording()
-      .then(() => {
-        console.log('开始录音')
-      })
-      .catch((error) => {
-        console.error('录音启动失败:', error)
-      })
+    console.log('自动聊天已启用')
   }
   interactionSystem.start()
 
-  // 接收来自主进程的消息，是否显示消息
-  window.api.ipcRenderer.on('show-assistant-message', (data) => {
-    chatService.showTempMessage(data.text, data.timeout, data.priority)
-  })
-
-  window.api.ipcRenderer.on('chat-box:send-message', async (_event, data) => {
-    await chatService.chat(data.text).then(() => {
-      window.api.ipcRenderer.send('loading-state-changed', false)
+  // 监听来自ChatBox的消息
+  window.api.ipcRenderer.on('chat-box:send-message', async (_, data) => {
+    // 调用ChatService处理消息
+    chatService.chat(data.text).then(() => {
+      // 发送状态更新给ChatBox
+      window.api.ipcRenderer.send('chat-box:update-status', {
+        loading: false
+      })
     })
   })
 
@@ -289,7 +260,7 @@ onUnmounted(() => {
     removeListener()
   }
   interactionSystem.stop()
-  window.api.ipcRenderer.removeAllListeners('show-assistant-message')
+
   window.api.ipcRenderer.removeAllListeners('chat-box:send-message')
   live2DManager.destroy()
 })

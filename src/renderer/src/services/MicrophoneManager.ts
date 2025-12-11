@@ -3,35 +3,74 @@ class MicrophoneManager {
   private audioContext: AudioContext | null = null
   private websocket: WebSocket | null = null
   private onRecognitionResult: ((text: string) => void) | null = null
-  private targetSampleRate: number = 16000 // 目标采样率
+  private targetSampleRate: number = 16000
+  private workletNode: AudioWorkletNode | null = null
+  private source: MediaStreamAudioSourceNode | null = null
 
-  // 添加重连相关属性
-  private reconnectInterval: number = 3000 // 3秒
+  // 重连相关属性
+  private reconnectInterval: number = 3000
   private reconnectTimer: NodeJS.Timeout | null = null
-  private isManuallyClosed: boolean = false // 区分手动关闭和意外断开
+  private isManuallyClosed: boolean = false
 
-  /*
-   *获取麦克风权限状态
+  /**
+   * 获取麦克风权限状态
    */
   public async getPermissionStatus(): Promise<boolean> {
-    const permissionStatus = await navigator.permissions.query({
-      name: 'microphone' as PermissionName
-    })
-
-    if (permissionStatus.state === 'granted') {
-      return true
-    } else {
+    try {
+      const permissionStatus = await navigator.permissions.query({
+        name: 'microphone' as PermissionName
+      })
+      return permissionStatus.state === 'granted'
+    } catch (error) {
+      console.error('查询麦克风权限失败:', error)
       return false
     }
   }
 
-  /*
-   *开始录音
+  /**
+   * 初始化 AudioWorklet
+   */
+  private async initAudioWorklet(context: AudioContext): Promise<void> {
+    // AudioWorklet 处理器代码
+    const processorCode = `
+      class AudioCaptureProcessor extends AudioWorkletProcessor {
+        constructor() {
+          super()
+        }
+
+        process(inputs, outputs, parameters) {
+          const input = inputs[0]
+          if (input && input[0]) {
+            // 发送音频数据到主线程
+            this.port.postMessage({
+              audioData: input[0]
+            })
+          }
+          return true
+        }
+      }
+
+      registerProcessor('audio-capture-processor', AudioCaptureProcessor)
+    `
+
+    // 创建 Blob URL
+    const blob = new Blob([processorCode], { type: 'application/javascript' })
+    const processorUrl = URL.createObjectURL(blob)
+
+    try {
+      await context.audioWorklet.addModule(processorUrl)
+    } finally {
+      URL.revokeObjectURL(processorUrl)
+    }
+  }
+
+  /**
+   * 开始录音
    */
   public async startRecording(): Promise<{
     stream: MediaStream
     source: MediaStreamAudioSourceNode
-    processor: ScriptProcessorNode
+    workletNode: AudioWorkletNode
   }> {
     try {
       // 请求麦克风权限
@@ -40,35 +79,48 @@ class MicrophoneManager {
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true,
-          channelCount: 1
+          channelCount: 1,
+          sampleRate: this.targetSampleRate // 尝试直接请求目标采样率
         }
       })
 
-      // 创建 AudioContext，注意：这里会使用系统默认采样率
-      this.audioContext = new AudioContext()
+      // 创建 AudioContext
+      this.audioContext = new AudioContext({
+        sampleRate: this.targetSampleRate
+      })
+
       console.log(`AudioContext 采样率: ${this.audioContext.sampleRate}Hz`)
 
-      const source = this.audioContext.createMediaStreamSource(this.audioStream)
+      // 初始化 AudioWorklet
+      await this.initAudioWorklet(this.audioContext)
 
-      // 创建处理器用于获取音频数据
-      const processor = this.audioContext.createScriptProcessor(4096, 1, 1)
+      // 创建音频源
+      this.source = this.audioContext.createMediaStreamSource(this.audioStream)
+
+      // 创建 AudioWorkletNode
+      this.workletNode = new AudioWorkletNode(this.audioContext, 'audio-capture-processor')
+
+      // 监听来自 worklet 的消息
+      this.workletNode.port.onmessage = (event) => {
+        const audioData = event.data.audioData as Float32Array
+
+        // 如果 AudioContext 采样率不是目标采样率，则进行重采样
+        if (this.audioContext!.sampleRate !== this.targetSampleRate) {
+          const resampled = this.resampleTo16kHz(audioData, this.audioContext!.sampleRate)
+          this.sendAudioData(resampled)
+        } else {
+          this.sendAudioData(audioData)
+        }
+      }
 
       // 连接节点
-      source.connect(processor)
-      processor.connect(this.audioContext.destination)
-
-      // 处理音频数据
-      processor.onaudioprocess = (event) => {
-        const inputData = event.inputBuffer.getChannelData(0)
-        // 重采样到 16kHz
-        const resampled = this.resampleTo16kHz(inputData, this.audioContext!.sampleRate)
-        this.sendAudioData(resampled)
-      }
+      this.source.connect(this.workletNode)
+      this.workletNode.connect(this.audioContext.destination)
 
       return {
         stream: this.audioStream,
-        source: source,
-        processor: processor
+        source: this.source,
+        workletNode: this.workletNode
       }
     } catch (error) {
       console.error('获取麦克风失败:', error)
@@ -77,7 +129,7 @@ class MicrophoneManager {
   }
 
   /**
-   * 重采样音频数据
+   * 重采样音频数据到 16kHz
    * @param audioData 音频数据
    * @param sourceSampleRate 源采样率
    * @returns 重采样后的音频数据
@@ -126,6 +178,9 @@ class MicrophoneManager {
       this.reconnectTimer = null
     }
 
+    // 重置手动关闭标志
+    this.isManuallyClosed = false
+
     this.websocket = new WebSocket(wsUrl)
 
     this.websocket.onopen = () => {
@@ -148,8 +203,7 @@ class MicrophoneManager {
 
       // 如果不是手动关闭，则尝试重连
       if (!this.isManuallyClosed) {
-        console.log(`尝试重连...`)
-
+        console.log('尝试重连...')
         this.reconnectTimer = setTimeout(() => {
           this.connectToServer(wsUrl)
         }, this.reconnectInterval)
@@ -219,7 +273,8 @@ class MicrophoneManager {
   private arrayBufferToBase64(buffer: ArrayBuffer): string {
     let binary = ''
     const bytes = new Uint8Array(buffer)
-    for (let i = 0; i < bytes.byteLength; i++) {
+    const len = bytes.byteLength
+    for (let i = 0; i < len; i++) {
       binary += String.fromCharCode(bytes[i])
     }
     return btoa(binary)
@@ -228,18 +283,43 @@ class MicrophoneManager {
   /**
    * 停止录音
    */
-  public stopRecording(): void {
+  public async stopRecording(): Promise<void> {
+    // 断开节点连接
+    if (this.workletNode) {
+      this.workletNode.port.onmessage = null
+      this.workletNode.disconnect()
+      this.workletNode = null
+    }
+
+    if (this.source) {
+      this.source.disconnect()
+      this.source = null
+    }
+
+    // 停止音频流
     if (this.audioStream) {
       this.audioStream.getTracks().forEach((track) => track.stop())
       this.audioStream = null
     }
 
+    // 关闭 AudioContext
     if (this.audioContext) {
-      this.audioContext.close()
+      await this.audioContext.close()
       this.audioContext = null
     }
-    // 使用新的 disconnect 方法替代直接关闭
-    this.disconnect()
+  }
+
+  /**
+   * 获取当前连接状态
+   */
+  public getConnectionState(): {
+    isRecording: boolean
+    isConnected: boolean
+  } {
+    return {
+      isRecording: this.audioStream !== null && this.audioContext !== null,
+      isConnected: this.websocket !== null && this.websocket.readyState === WebSocket.OPEN
+    }
   }
 }
 

@@ -53,13 +53,10 @@ import AssistantManagerView from './AssistantManagerView.vue'
 import PluginsView from './PluginManagerView.vue'
 import AssistantSpaceView from './AssistantSpaceView.vue'
 import SettingView from './SettingView.vue'
-import { AssistantManager } from '@renderer/services/assistantManager'
+
 import { NotificationService } from '../services/NotificationService'
 
-const assistantManager = AssistantManager.getInstance()
 const notificationService = NotificationService.getInstance()
-// 初始化助手服务
-assistantManager.initialize()
 
 const activeTab = ref(0)
 const isWindowFocused = ref(true) // 默认聚焦状态
@@ -163,7 +160,10 @@ async function checkCloudVersion(): Promise<void> {
       console.warn(
         `客户端版本与服务端不兼容,当前版本 ${result.currentVersion}, 云端版本 ${result.cloudVersion}`
       )
-      notificationService.warning(`客户端版本与服务端不兼容,可能导致功能异常`, 10000)
+      notificationService.warning({
+        message: '客户端版本与服务端不兼容,可能导致功能异常',
+        duration: 10000
+      })
     }
   }
 }

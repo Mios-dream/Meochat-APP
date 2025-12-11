@@ -259,15 +259,32 @@
             <div class="setting-item">
               <form class="setting-from">
                 <div class="title">
-                  <label for="textLang">输出语音语言</label>
-                  <div class="description">设置助手的语音输出语言</div>
+                  <label for="gptModelPath">GPT模型</label>
+                  <div class="description">合成语音的GPT模型文件地址(模型为ckpt结尾)</div>
                 </div>
-                <select id="textLang" v-model="formData.gsvSetting.textLang" default-value="zh">
-                  <option value="zh">中文</option>
-                  <option value="en">英文</option>
-                  <option value="ja">日文</option>
-                </select>
+                <input
+                  id="gptModelPath"
+                  v-model="formData.gsvSetting.gptModelPath"
+                  type="text"
+                  placeholder="输入GPT模型文件地址..."
+                  required
+                />
               </form>
+              <div class="divider"></div>
+              <form class="setting-from">
+                <div class="title">
+                  <label for="sovitsModelPath">SOVITS模型</label>
+                  <div class="description">合成语音的SOVITS模型文件地址(模型以pth结尾)</div>
+                </div>
+                <input
+                  id="sovitsModelPath"
+                  v-model="formData.gsvSetting.sovitsModelPath"
+                  type="text"
+                  placeholder="输入SOVITS模型文件地址..."
+                  required
+                />
+              </form>
+
               <div class="divider"></div>
 
               <form class="setting-from">
@@ -292,6 +309,18 @@
                 </div>
 
                 <input id="topK" v-model.number="formData.gsvSetting.topK" type="number" min="1" />
+              </form>
+              <div class="divider"></div>
+              <form class="setting-from">
+                <div class="title">
+                  <label for="textLang">输出语音语言</label>
+                  <div class="description">设置助手的语音输出语言</div>
+                </div>
+                <select id="textLang" v-model="formData.gsvSetting.textLang" default-value="zh">
+                  <option value="zh">中文</option>
+                  <option value="en">英文</option>
+                  <option value="ja">日文</option>
+                </select>
               </form>
               <div class="divider"></div>
               <form class="setting-from">
@@ -1003,7 +1032,9 @@ const handleCharacterCardFileSelected = async (event: Event): Promise<void> => {
       // 将事件传递给头像文件选择处理函数
       handleAvatarFileSelect(event)
 
-      notificationService.success('角色信息导入成功！')
+      notificationService.success({
+        message: '角色信息导入成功！'
+      })
     } else {
       console.error(`导入失败: ${importResult.error || '未知错误'}`)
     }
@@ -1060,7 +1091,9 @@ const validateForm = (): boolean => {
 
   // 如果有未填写的必填字段，显示提示
   if (missingFields.length > 0) {
-    notificationService.error(`请填写以下必填字段：\n${missingFields.join('、')}`)
+    notificationService.error({
+      message: `请填写以下必填字段：\n${missingFields.join('、')}`
+    })
     return false
   }
 
@@ -1129,12 +1162,16 @@ const handleSubmit = async (): Promise<void> => {
       // 更新助手信息
       const updateResult = await assistantManager.updateAssistant(updatedAssistant)
       if (updateResult.success) {
-        notificationService.success('助手信息更新成功')
+        notificationService.success({
+          message: '助手信息更新成功'
+        })
         emit('success')
         // 关闭对话框并重置表单
         emit('update:modelValue', false)
       } else {
-        notificationService.error(`更新助手失败: ${updateResult.error}`)
+        notificationService.error({
+          message: `更新助手失败: ${updateResult.error}`
+        })
       }
     } else {
       // 添加模式：创建新助手
@@ -1149,7 +1186,9 @@ const handleSubmit = async (): Promise<void> => {
       // 添加新助手
       const addStatus = await assistantManager.addAssistant(assistantInfo)
       if (addStatus) {
-        notificationService.success('助手添加成功')
+        notificationService.success({
+          message: '助手添加成功'
+        })
         emit('success')
         // 关闭对话框并重置表单
         emit('update:modelValue', false)

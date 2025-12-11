@@ -8,9 +8,7 @@ import { createTray } from './tray/appTray'
 import { startAutoService } from './utils/autoService'
 import { registerFileProtocol, handleFileProtocol } from './protocol/fileProtocol'
 import setupUpdaterIPC from './ipc/updaterHandlers'
-
 import log from './utils/logger'
-import { AssistantService } from './services/assistantService'
 
 try {
   // 初始化 IPC
@@ -38,13 +36,6 @@ app.whenReady().then(() => {
     handleFileProtocol()
     // 启动自启服务
     startAutoService()
-
-    // 初始化助手服务
-    const assistantService = AssistantService.getInstance()
-    // 预加载助手数据
-    assistantService.loadAssistants().catch((error) => {
-      log.error('预加载助手数据失败:', error)
-    })
   } catch (error) {
     log.error('应用初始化失败:', error)
   }

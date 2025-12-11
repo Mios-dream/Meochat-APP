@@ -8,6 +8,8 @@ contextBridge.exposeInMainWorld('api', {
   // 设置鼠标是否忽略，用于点击穿透
   setIgnoreMouse: (ignore) => ipcRenderer.send('assistant:set-ignore-mouse', ignore),
 
+  // 加载助手数据
+  loadAssistantData: () => ipcRenderer.invoke('assistant:load-assistant-data'),
   // 获取当前助手信息
   getCurrentAssistant: () => ipcRenderer.invoke('assistant:get-current'),
   // 获取助手资产配置

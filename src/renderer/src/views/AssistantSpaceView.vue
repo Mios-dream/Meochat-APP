@@ -16,7 +16,7 @@
     <div id="toolbar-left-top">
       <div id="assistant-love">
         <div class="head-img"></div>
-        <div class="name">澪</div>
+        <div class="name">{{ currentAssistant?.name }}</div>
         <div class="progress-container">
           <div id="love-icon"><font-awesome-icon icon="fa-solid fa-heart" /></div>
           <div class="progress-bar-background">
@@ -39,22 +39,7 @@
       </div>
     </div>
 
-    <div id="chatBox" :class="{ 'slide-up': isVisible }">
-      <input
-        id="chatBoxInput"
-        ref="inputRef"
-        v-model="inputValue"
-        type="text"
-        placeholder="输入消息..."
-        :disabled="loading"
-        @keyup.enter="handleSubmit"
-      />
-      <div id="role-image"></div>
-
-      <button id="message-icon" :disabled="loading" @click="handleSubmit">
-        <font-awesome-icon :icon="loading ? 'spinner' : 'paper-plane'" :spin="loading" />
-      </button>
-    </div>
+    <ChatBox :is-visible="isVisible" />
     <transition name="modal-fade">
       <div v-if="showHistoryModal" class="modal-overlay" @click="closeHistoryModal">
         <div class="chat-history-modal" @click.stop>
@@ -65,19 +50,24 @@
             <div v-if="chatHistory.length === 0" class="no-history">暂无聊天历史</div>
             <div v-else class="history-list">
               <div v-for="(message, index) in chatHistory" :key="index">
-                <div v-if="message.type === 'assistant'" class="message-item">
-                  <div class="assistant-chat-avatar"></div>
+                <div v-if="message.role === 'assistant'" class="message-item">
+                  <div
+                    class="assistant-chat-avatar"
+                    :style="{
+                      backgroundImage: `url(${currentAssistant?.avatar ? 'app-resource://' + currentAssistant?.avatar : '../assets/images/assistant_avatar_small.png'})`
+                    }"
+                  ></div>
                   <div class="message-content">
                     <div class="message-info">
-                      <div class="assistant-name">澪</div>
+                      <div class="assistant-name">{{ currentAssistant?.name }}</div>
                       <div class="message-time">{{ formatTime(message.timestamp) }}</div>
                     </div>
-                    <div :class="['message-text', message.type]">{{ message.text }}</div>
+                    <div :class="['message-text', message.role]">{{ message.content }}</div>
                   </div>
                 </div>
                 <div v-else>
                   <div class="message-content">
-                    <div :class="['message-text', message.type]">{{ message.text }}</div>
+                    <div :class="['message-text', message.role]">{{ message.content }}</div>
                   </div>
                 </div>
               </div>
@@ -197,7 +187,8 @@ import VolumeSlider from '../components/VolumeSlider.vue'
 import RoundedButton from '../components/RoundedButton.vue'
 import { useConfigStore } from '../stores/useConfigStore'
 import { storeToRefs } from 'pinia'
-import { AssistantManager } from '../services/assistantManager'
+import { AssistantInfo, AssistantManager } from '../services/assistantManager'
+import ChatBox from '../components/ChatBox.vue'
 
 const configStore = useConfigStore()
 const { config } = storeToRefs(configStore)
@@ -210,10 +201,7 @@ const isTipsActive: Ref<boolean> = ref(false)
 const currentTip: Ref<string> = ref('')
 // 对话框是否显示
 const isVisible = ref(false)
-// 输入框的值
-const inputValue = ref('')
-// 加载状态
-const loading = ref(false)
+
 // 是否显示设置菜单
 const isVisibleSetting = ref(false)
 // 音量
@@ -224,7 +212,7 @@ const isLocked = ref(true)
 
 // 聊天历史
 const showHistoryModal = ref(false)
-const chatHistory = ref<Array<{ text: string; type: string; timestamp: Date }>>([])
+const chatHistory = ref<Array<{ role: string; content: string; timestamp: Date }>>([])
 
 // 聊天快捷键
 const chatShortcut = ref('')
@@ -236,6 +224,9 @@ const live2DManager = Live2DManager.getInstance()
 const chatService = ChatService.getInstance()
 const assistantManager = AssistantManager.getInstance()
 
+const currentAssistant: Ref<AssistantInfo | null> = ref(null)
+
+// 设置模型聚焦超时时间
 live2DManager.focus_timeout_ms = 500
 
 function loadingCompleted(): void {
@@ -279,26 +270,29 @@ async function loadLive2DModel(): Promise<void> {
 
 onMounted(async () => {
   startLoading()
+
+  currentAssistant.value = assistantManager.getCurrentAssistant()
   // 从配置加载快捷键设置
   chatShortcut.value = config.value.chatShortcut
-  // 接收来自主进程的消息，是否显示消息
-  window.api.ipcRenderer.on('show-assistant-message', (data) => {
-    chatService.showTempMessage(data.text, data.timeout, data.priority)
-  })
 
-  window.api.ipcRenderer.on('chat-box:send-message', async (_event, data) => {
-    await chatService.chat(data.text).then(() => {
-      window.api.ipcRenderer.send('loading-state-changed', false)
-    })
-  })
   // 当前窗口显示时隐藏助手窗口
   window.api.closeAssistant()
 
   loadLive2DModel()
+
+  // 监听来自ChatBox的消息
+  window.api.ipcRenderer.on('chat-box:send-message', async (_, data) => {
+    // 调用ChatService处理消息
+    chatService.chat(data.text).then(() => {
+      // 发送状态更新给ChatBox
+      window.api.ipcRenderer.send('chat-box:update-status', {
+        loading: false
+      })
+    })
+  })
 })
 
 onUnmounted(() => {
-  window.api.ipcRenderer.removeAllListeners('show-assistant-message')
   window.api.ipcRenderer.removeAllListeners('chat-box:send-message')
 
   const tabs = document.getElementById('tabs-container')
@@ -308,39 +302,6 @@ onUnmounted(() => {
   }
   live2DManager.destroy()
 })
-
-/**
- * 处理提交消息
- */
-async function handleSubmit(): Promise<void> {
-  // 1️⃣ 验证：检查输入是否为空或正在加载
-  if (!inputValue.value.trim() || loading.value) {
-    return
-  }
-
-  // 2️⃣ 获取输入内容并清空输入框
-  const message = inputValue.value.trim()
-  inputValue.value = '' // 立即清空输入框
-  loading.value = true // 设置加载状态
-
-  try {
-    window.api.ipcRenderer.send('chat-box:send-message', { text: message })
-    // 设置超时定时器，超过20秒后强制取消加载状态
-    setTimeout(() => {
-      loading.value = false
-    }, 20000)
-  } catch (error) {
-    console.error('发送消息失败:', error)
-    // 如果失败，可以恢复输入内容让用户重试
-    inputValue.value = message
-    // 显示错误提示（使用 ipcRenderer 跨窗口发送给 assistant window）
-    window.api.ipcRenderer.send('chat-box:send-temp-message', {
-      text: '发送失败，请重试',
-      timeout: 3000,
-      priority: 1
-    })
-  }
-}
 
 function switchChatBox(): void {
   const tabs = document.getElementById('tabs-container')
@@ -406,7 +367,11 @@ function closeHistoryModal(): void {
  */
 function loadChatHistory(): void {
   // 模拟加载聊天历史
-  chatHistory.value = []
+  chatHistory.value = chatService.getChatHistory().map((item) => ({
+    role: item.role,
+    content: item.content,
+    timestamp: new Date()
+  }))
 }
 
 /**
@@ -720,7 +685,8 @@ async function saveShortcut(shortcut: string): Promise<void> {
   opacity: 0.6;
 }
 
-#message-icon {
+#message-icon,
+#voice-icon {
   color: white;
   background-color: #ffc0d6;
   width: 50px;
@@ -736,14 +702,17 @@ async function saveShortcut(shortcut: string): Promise<void> {
   align-items: center;
   justify-content: center;
   transition: all 0.3s ease;
+  font-size: 16px;
 }
 
-#message-icon:hover:not(:disabled) {
+#message-icon:hover:not(:disabled),
+#voice-icon:hover:not(:disabled) {
   background-color: #ffb0c6;
   transform: translateY(-50%) scale(1.05);
 }
 
-#message-icon:disabled {
+#message-icon:disabled,
+#voice-icon:disabled {
   cursor: not-allowed;
   opacity: 0.6;
 }
@@ -817,7 +786,7 @@ async function saveShortcut(shortcut: string): Promise<void> {
 }
 
 .assistant-chat-avatar {
-  background-image: url('../assets/images/assistant_avatar_small.png');
+  /* background-image: url('../assets/images/assistant_avatar_small.png'); */
   background-size: cover;
   width: 50px;
   height: 50px;

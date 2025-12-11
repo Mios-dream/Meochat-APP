@@ -144,6 +144,7 @@ import ToggleSwitch from '../components/ToggleSwitch.vue'
 import SimpleInput from '../components/SimpleInput.vue'
 import UpdateModal from '../components/UpdateDialog.vue'
 import { useConfigStore } from '../stores/useConfigStore'
+import { NotificationService } from '../services/NotificationService'
 import { storeToRefs } from 'pinia'
 import { ref, onMounted } from 'vue'
 
@@ -158,6 +159,7 @@ const newVersion = ref('')
 const releaseNotes = ref('')
 const showDownloadProgress = ref(false)
 const downloadProgress = ref(0)
+const notificationService = NotificationService.getInstance()
 
 const colorInputRef = ref<HTMLInputElement | null>(null)
 
@@ -187,9 +189,9 @@ const openSupportPage = (): void => {
 // 监听更新状态
 window.api.onStatus((msg) => {
   console.log('状态更新:', msg)
-  window.api.notify({
-    title: '更新提示',
-    body: msg
+  notificationService.info({
+    title: '状态更新',
+    message: msg
   })
 })
 

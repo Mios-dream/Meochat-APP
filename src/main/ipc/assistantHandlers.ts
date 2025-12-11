@@ -4,7 +4,7 @@ import { getChatBoxWindow, createChatBoxWindow } from '../windows/chatBoxWindow'
 import dragAddon from 'electron-click-drag-plugin'
 import robot from '@jitsi/robotjs'
 import { uIOhook } from 'uiohook-napi'
-import { MicaBrowserWindow } from 'mica-electron'
+
 import log from '../utils/logger'
 import { AssistantService } from '../services/assistantService'
 
@@ -57,34 +57,15 @@ function setupChatBoxIPC(): void {
     if (chatBoxWin) chatBoxWin.show()
   })
 
-  ipcMain.on('show-assistant-message', (_event, data) => {
-    BrowserWindow.getAllWindows().forEach((win) => {
-      win.webContents.send('show-assistant-message', data)
-    })
-
-    MicaBrowserWindow.getAllWindows().forEach((win) => {
-      win.webContents.send('show-assistant-message', data)
-    })
-  })
-
   ipcMain.on('chat-box:send-message', (_event, data) => {
-    log.info('show-assistant-message', data)
     BrowserWindow.getAllWindows().forEach((win) => {
-      win.webContents.send('chat-box:send-message', data)
-    })
-
-    MicaBrowserWindow.getAllWindows().forEach((win) => {
       win.webContents.send('chat-box:send-message', data)
     })
   })
 
-  ipcMain.on('loading-state-changed', (_event, data) => {
+  ipcMain.on('chat-box:update-status', (_event, data) => {
     BrowserWindow.getAllWindows().forEach((win) => {
-      win.webContents.send('loading-state-changed', data)
-    })
-
-    MicaBrowserWindow.getAllWindows().forEach((win) => {
-      win.webContents.send('loading-state-changed', data)
+      win.webContents.send('chat-box:status-updated', data)
     })
   })
 }

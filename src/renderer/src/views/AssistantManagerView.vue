@@ -163,6 +163,13 @@
                 </div>
               </div>
             </div>
+            <!-- 在助手头像上添加加载动画 -->
+            <div
+              v-if="isSwitchingAssistant && assistant.name === nextAssistantInfo?.name"
+              class="avatar-loading-overlay"
+            >
+              <div class="spinner"></div>
+            </div>
           </div>
         </div>
       </div>
@@ -244,6 +251,7 @@ const isAssistantOpen = ref(false)
 const assistantManager = AssistantManager.getInstance()
 // 当前助手信息
 const assistantInfo = ref<AssistantInfo | null>(assistantManager.getCurrentAssistant())
+const nextAssistantInfo = ref<AssistantInfo | null>()
 // 当前助手的好感度
 const currentLove = computed(() => assistantInfo.value?.love || 0) // 当前好感度值
 // 助手列表
@@ -256,6 +264,8 @@ const isVisibleSelectMethodDialog = ref(false)
 const assistantListLoading = ref(true)
 // 是否从角色卡导入
 const isImportFromCard = ref(false)
+// 是否正在切换助手
+const isSwitchingAssistant = ref(false)
 
 // 计算进度百分比
 const lovePercentage = computed(() => {
@@ -278,8 +288,17 @@ const assistantToDelete = ref('')
 
 // 选择助手
 async function selectAssistant(assistant: AssistantInfo): Promise<void> {
-  await assistantManager.setCurrentAssistant(assistant.name)
-  assistantInfo.value = assistantManager.getCurrentAssistant()
+  // 先设置下一个助手信息，触发加载动画
+  nextAssistantInfo.value = assistant
+  // 设置加载状态为true
+  isSwitchingAssistant.value = true
+  try {
+    await assistantManager.setCurrentAssistant(assistant.name)
+    assistantInfo.value = assistantManager.getCurrentAssistant()
+  } finally {
+    // 切换完成后，设置加载状态为false
+    isSwitchingAssistant.value = false
+  }
 }
 
 // 计算属性
@@ -444,9 +463,10 @@ onMounted(() => {
   assistantManager.loadAssistants().then(() => {
     assistantListLoading.value = false
     assistantList.value = assistantManager.getAssistants()
-    assistantInfo.value = assistantManager.getCurrentAssistant()
-    if (assistantInfo.value) {
-      selectAssistant(assistantInfo.value)
+    const currentAssistant = assistantManager.getCurrentAssistant()
+    if (currentAssistant && assistantInfo.value?.name !== currentAssistant.name) {
+      assistantInfo.value = currentAssistant
+      selectAssistant(currentAssistant)
     }
   })
 
@@ -1054,5 +1074,37 @@ onUnmounted(() => {
 .option-description {
   color: #666;
   font-size: 14px;
+}
+
+.avatar-loading-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(255, 255, 255, 0.8);
+  border-radius: 15px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 10;
+}
+
+.spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid #f3f3f3;
+  border-top: 2px solid #fb7299;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
 }
 </style>

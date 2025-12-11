@@ -2,6 +2,7 @@ import { MessageTips } from '../services/MessageTips'
 import { Live2DManager } from './Live2dManager'
 import { useConfigStore } from '../stores/useConfigStore'
 import { computed } from 'vue'
+import { AssistantManager } from './assistantManager'
 
 interface ChatMessage {
   role: 'user' | 'assistant'
@@ -60,8 +61,8 @@ class ChatService {
   private static instance: ChatService
   // 消息提示对象
   private messageTips: MessageTips
-  // 聊天记录
-  private chatHistory: ChatMessage[] = []
+  // 聊天记录, 键为助手名称
+  private chatHistory: Map<string, ChatMessage[]> = new Map()
   // 文本和音频的组合队列
   private textAudioQueue: TextAudioPair[] = []
   // 文本缓冲区
@@ -88,13 +89,15 @@ class ChatService {
   // 文本显示定时器
   private textDisplayTimer: NodeJS.Timeout | null = null
 
+  private assistantManager: AssistantManager
+
   private constructor() {
+    // 初始化助手管理器
+    this.assistantManager = AssistantManager.getInstance()
     // 初始化消息提示对象
     this.messageTips = new MessageTips()
     // 获取 Live2DManager 实例
     this.live2DManager = Live2DManager.getInstance()
-    // 初始化聊天记录
-    this.initializeChatHistory()
   }
 
   /**
@@ -117,26 +120,32 @@ class ChatService {
   }
 
   /**
-   * 初始化聊天记录
-   */
-  private initializeChatHistory(): void {
-    this.chatHistory = []
-  }
-
-  /**
    * 获取聊天记录
    * @returns ChatMessage[] 聊天记录
    */
   public getChatHistory(): ChatMessage[] {
-    return this.chatHistory
+    const assistantName = this.assistantManager.getCurrentAssistant()?.name || ''
+    return this.chatHistory.get(assistantName) || []
+  }
+
+  /**
+   * 确保聊天历史记录不超过指定数量
+   * @param messages 消息数组
+   * @param maxLength 最大长度
+   * @returns 修剪后的消息数组
+   */
+  private trimChatHistory(messages: ChatMessage[], maxLength: number): ChatMessage[] {
+    if (messages.length > maxLength) {
+      return messages.slice(-maxLength)
+    }
+    return messages
   }
 
   /**
    * 清空聊天记录
    */
   public clearChatHistory(): void {
-    this.chatHistory = []
-    this.initializeChatHistory()
+    this.chatHistory = new Map()
   }
 
   /**
@@ -165,7 +174,18 @@ class ChatService {
     this.textBuffer = ''
 
     try {
-      this.chatHistory.push({ role: 'user', content: message })
+      const assistantName = this.assistantManager.getCurrentAssistant()?.name || ''
+      // 确保当前助手有聊天记录数组
+      if (!this.chatHistory.has(assistantName)) {
+        this.chatHistory.set(assistantName, [])
+      }
+
+      const currentHistory = this.chatHistory.get(assistantName)!
+      currentHistory.push({ role: 'user', content: message })
+
+      // 限制聊天历史记录长度为20条
+      const trimmedHistory = this.trimChatHistory(currentHistory, 20)
+      this.chatHistory.set(assistantName, trimmedHistory)
 
       // 创建 AbortController 用于可能的中断
       this.abortController = new AbortController()
@@ -176,7 +196,7 @@ class ChatService {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          msg: this.chatHistory
+          msg: this.chatHistory.get(assistantName) || []
         }),
         signal: this.abortController.signal // 添加信号用于中断
       })
@@ -209,8 +229,12 @@ class ChatService {
       }
 
       console.error('请求失败:', error)
-      this.messageTips.showMessage('发送消息失败，请稍后重试', 3000, 1)
-      this.chatHistory.pop()
+      // 出错时移除刚刚添加的用户消息
+      const assistantName = this.assistantManager.getCurrentAssistant()?.name || ''
+      const currentHistory = this.chatHistory.get(assistantName)
+      if (currentHistory && currentHistory.length > 0) {
+        currentHistory.pop()
+      }
       return false
     }
   }
@@ -386,10 +410,21 @@ class ChatService {
    */
   private handleComplete(): void {
     if (this.currentDisplayText.trim()) {
-      this.chatHistory.push({
+      const assistantName = this.assistantManager.getCurrentAssistant()?.name || ''
+      // 确保当前助手有聊天记录数组
+      if (!this.chatHistory.has(assistantName)) {
+        this.chatHistory.set(assistantName, [])
+      }
+
+      const currentHistory = this.chatHistory.get(assistantName)!
+      currentHistory.push({
         role: 'assistant',
         content: this.currentDisplayText.trim()
       })
+
+      // 限制聊天历史记录长度为20条
+      const trimmedHistory = this.trimChatHistory(currentHistory, 20)
+      this.chatHistory.set(assistantName, trimmedHistory)
     }
   }
 
@@ -464,7 +499,7 @@ class ChatService {
     const estimatedDuration = ((audioBlob.size - 44) / 176400) * 1000 // 转换为毫秒
 
     // 确保最小持续时间为100ms，最大为文本长度*100ms
-    const duration = Math.max(100, estimatedDuration, text.length * 100)
+    const duration = Math.max(100, estimatedDuration, text.length * 70)
     const textLength = text.length
     const interval = duration / textLength // 每个字符的显示间隔
 

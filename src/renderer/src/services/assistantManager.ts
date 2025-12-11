@@ -19,8 +19,6 @@ class AssistantManager {
    * 初始化助手服务
    */
   public async initialize(): Promise<void> {
-    // 初始化主进程的助手服务
-    await window.api.initAssistant()
     // 从主进程加载助手列表
     await this.loadAssistants()
     // 加载当前助手信息

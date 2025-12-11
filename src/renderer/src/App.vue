@@ -5,9 +5,15 @@
 
 <script setup lang="ts">
 import Notification from './components/Notification.vue'
+import { AssistantManager } from './services/assistantManager'
 import { logService } from './services/LogService'
 
-logService.error('应用启动')
+logService.info('应用启动')
+
+// 助手管理器实例
+const assistantManager = AssistantManager.getInstance()
+assistantManager.initialize()
+assistantManager.loadAssistants()
 // import { useConfigStore } from './stores/useConfigStore'
 // import { watch } from 'vue'
 
