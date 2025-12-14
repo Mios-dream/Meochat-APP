@@ -1,5 +1,6 @@
-import { AssistantInfo, AssistantBaseInfo } from '../types/assistant'
-
+import { AssistantInfo, AssistantBaseInfo } from '../../../renderer/src/types/AssistantInfo'
+import { PythonServiceStatus } from '../../../renderer/src/types/PythonService'
+import { PythonTask } from '../../../renderer/src/types/PythonService'
 export interface MainWindowApi {
   // 主窗口
   /**
@@ -217,4 +218,60 @@ export interface MainWindowApi {
     warn: (message: string, details?: string) => void
     error: (message: string, details?: string) => void
   }
+
+  /**
+   * 选择任务目录
+   */
+  selectTaskDir: () => Promise<
+    { success: true; tasks: PythonTask[] } | { success: false; error: string }
+  >
+
+  /**
+   * 获取所有Python服务
+   */
+  getAllPythonServices: () => Promise<PythonTask[]>
+
+  /**
+   * 获取Python服务状态
+   * @param serviceId Python服务ID
+   */
+  getPythonServiceStatus: (serviceId: number) => Promise<PythonServiceStatus>
+  /**
+   * 启动Python服务
+   * @param serviceId Python服务ID
+   */
+  startPythonService: (serviceId: number) => Promise<{ success: boolean; error?: string }>
+  /**
+   * 重启Python服务
+   * @param serviceId Python服务ID
+   */
+  restartPythonService: (serviceId: number) => Promise<{ success: boolean; error?: string }>
+  /**
+   * 停止Python服务
+   * @param serviceId Python服务ID
+   */
+  stopPythonService: (serviceId: number) => Promise<{ success: boolean; error?: string }>
+  /**
+   * 创建Python服务
+   * @param task 任务对象
+   */
+  createPythonService: (
+    task: Omit<PythonTask, 'id'>
+  ) => Promise<{ success: boolean; error?: string }>
+
+  /**
+   * 删除Python服务
+   * @param serviceId Python服务ID
+   */
+  removePythonService: (serviceId: number) => Promise<{ success: boolean; error?: string }>
+
+  /**
+   * 更新Python服务开机启动设置
+   * @param serviceId Python服务ID
+   * @param autoStart 是否开机启动
+   */
+  updatePythonServiceAutoStart: (
+    serviceId: number,
+    autoStart: boolean
+  ) => Promise<{ success: boolean; error?: string }>
 }

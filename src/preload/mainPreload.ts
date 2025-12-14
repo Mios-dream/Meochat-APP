@@ -1,8 +1,26 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import globalAPI from './sharePreload'
 
+const pythonServiceAPI = {
+  selectTaskDir: () => ipcRenderer.invoke('pythonService:selectTaskDir'),
+  createPythonService: (pythonTask) => ipcRenderer.invoke('pythonService:create', pythonTask),
+  startPythonService: (serviceId: number) => ipcRenderer.invoke('pythonService:start', serviceId),
+  stopPythonService: (serviceId: number) => ipcRenderer.invoke('pythonService:stop', serviceId),
+  restartPythonService: (serviceId: number) =>
+    ipcRenderer.invoke('pythonService:restart', serviceId),
+  getPythonServiceStatus: (serviceId: number) =>
+    ipcRenderer.invoke('pythonService:getStatus', serviceId),
+  stopAllPythonServices: () => ipcRenderer.invoke('pythonService:stopAll'),
+  updatePythonServiceAutoStart: (serviceId: number, autoStart: boolean) =>
+    ipcRenderer.invoke('pythonService:updateAutoStart', serviceId, autoStart),
+  // 添加删除Python服务的API
+  removePythonService: (serviceId: number) => ipcRenderer.invoke('pythonService:remove', serviceId),
+  getAllPythonServices: () => ipcRenderer.invoke('pythonService:getAll')
+}
+
 contextBridge.exposeInMainWorld('api', {
   ...globalAPI,
+  ...pythonServiceAPI,
   // 主窗口专用 API
   getAssistantStatus: () => ipcRenderer.invoke('assistant:get-status'),
   setAutoStartOnBoot: (enable) => ipcRenderer.invoke('set-auto-start-on-boot', enable),

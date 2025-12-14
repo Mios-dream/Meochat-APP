@@ -1,268 +1,558 @@
+<!-- HomeView.vue -->
 <template>
   <div class="background-container">
     <div class="dashboard-content">
-      <h1 class="page-title">主页</h1>
-      <p class="page-title-description">你好，阁下！今天是我陪伴阁下的第100天！</p>
-      <div class="top-cards">
-        <div class="card purple-card">
-          <div class="card-head">
-            <div class="card-icon">
-              <div class="icon">
-                <font-awesome-icon icon="fa-solid fa-square-binary" />
-              </div>
-            </div>
-            <div class="card-content">
-              <p class="card-title">Token消耗</p>
-              <p class="card-value">{{ token }}</p>
-              <p class="card-description"></p>
+      <div class="page-top-container">
+        <h1 class="page-title">主页</h1>
+        <p class="page-title-description">你好，阁下！今天是我陪伴阁下的第100天！</p>
+      </div>
+      <div class="main-container">
+        <div class="task-list-container">
+          <div class="task-list-title">正在运行的任务</div>
+          <div class="task-card-container">
+            <TaskCard
+              v-for="task in tasks"
+              :key="task.id"
+              :task="task"
+              :is-selected="selectedTaskId === task.id"
+              @select="selectTask"
+              @start="startTask"
+              @stop="stopTask"
+              @restart="restartTask"
+              @contextmenu.prevent="showContextMenu($event, task)"
+            />
+            <div class="add-task-card-container" @click="openAddTaskDialog">
+              <font-awesome-icon icon="fa-solid fa-plus" class="add-task-card-button" />
+              <div class="add-task-card-button-text">Add Task</div>
             </div>
           </div>
-          <div class="card-footer">日均0/总消耗0</div>
         </div>
-        <div class="card blue-card">
-          <div class="card-head">
-            <div class="card-icon">
-              <div class="icon">
-                <font-awesome-icon icon="fa-solid fa-heart-pulse" />
+        <div class="task-info-sidebar-container">
+          <div v-if="selectedTask" class="task-info-content">
+            <div class="task-info-title">
+              <div :class="['state', { active: tasksStatus.get(selectedTaskId!)?.running }]"></div>
+              <div class="task-card-title">{{ selectedTask.name }}</div>
+            </div>
+
+            <div class="task-info-section">
+              <div class="task-info-item">
+                <font-awesome-icon icon="fa-solid fa-code" class="task-info-icon" />
+                <div class="task-info-item-content">
+                  <div class="task-info-label">Virtual Env</div>
+                  <div class="task-info-value">{{ selectedTask.venvPython }}</div>
+                </div>
+              </div>
+              <div class="task-info-item">
+                <font-awesome-icon icon="fa-solid fa-folder" class="task-info-icon" />
+                <div class="task-info-item-content">
+                  <div class="task-info-label">Working Directory</div>
+                  <div class="task-info-value">{{ selectedTask.workDir }}</div>
+                </div>
               </div>
             </div>
-            <div class="card-content">
-              <p class="card-title">助手执勤时间</p>
-              <p class="card-value">{{ token }}</p>
-              <p class="card-description"></p>
-            </div>
-          </div>
-          <div class="card-footer">累计0年0小时0分</div>
-        </div>
-        <div class="card pink-card">
-          <div class="card-head">
-            <div class="card-icon">
-              <div class="icon">
-                <font-awesome-icon icon="fa-solid fa-microchip" />
+            <div class="task-info-section">
+              <div class="task-info-item">
+                <font-awesome-icon icon="fa-solid fa-gear" class="task-info-icon" />
+                <div class="task-info-item-content">
+                  <div class="task-info-label">Auto Start</div>
+                  <div class="task-info-item-setting">
+                    <span class="task-info-value">开机启动</span>
+                    <div class="task-card-auto-start">
+                      <label class="switch">
+                        <input
+                          :checked="autoStart"
+                          type="checkbox"
+                          @click="updateAutoStart(selectedTaskId!, !autoStart)"
+                        />
+                        <span class="slider"></span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
-            <div class="card-content">
-              <p class="card-title">内存占用</p>
-              <p class="card-value">{{ token }}</p>
-              <p class="card-description"></p>
+            <div class="task-info-section">
+              <div class="terminal-container">
+                <div class="terminal-header">
+                  <div class="terminal-buttons">
+                    <font-awesome-icon
+                      icon="fa-solid fa-terminal"
+                      class="terminal-button"
+                    ></font-awesome-icon>
+                    <div class="terminal-title">Task Logs</div>
+                  </div>
+                  <div
+                    :class="['state', { active: tasksStatus.get(selectedTaskId!)?.running }]"
+                  ></div>
+                </div>
+                <div class="terminal-body">
+                  <div
+                    v-for="(line, index) in selectedTaskStatus?.logs || []"
+                    :key="index"
+                    class="log-line"
+                  >
+                    <!-- <span class="log-time">{{ line.time }}</span> -->
+                    <span class="log-content">{{ line }}</span>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
-          <div class="card-footer">日均0/总消耗0</div>
+          <div v-else class="no-task-selected">
+            <p>请选择一个任务查看详细信息</p>
+          </div>
         </div>
       </div>
-      <div class="main-content">
-        <div class="log-card card">
-          <div class="log-heard">
-            <h2 class="card-title">日志</h2>
-            <div class="log-level">
-              <div class="log-level-item">
-                <div class="log-level-flag level-error"></div>
-                <div class="log-level-value">0</div>
-              </div>
-              <div class="log-level-item">
-                <div class="log-level-flag level-warning"></div>
-                <div class="log-level-value">0</div>
-              </div>
-              <div class="log-level-item">
-                <div class="log-level-flag level-info"></div>
-                <div class="log-level-value">0</div>
-              </div>
-            </div>
-          </div>
-          <div class="log-body">
-            <div v-if="log.length <= 0" class="no-log">暂无日志</div>
-            <div v-else class="log-list"></div>
-          </div>
-        </div>
-      </div>
+      <ContextMenu
+        :visible="contextMenuVisible"
+        :style="contextMenuStyle"
+        :items="contextMenuItems"
+      />
+      <!-- 添加任务对话框 -->
+      <AddTaskDialog v-model="isAddTaskDialogVisible" />
     </div>
   </div>
 </template>
 
-<script setup>
-import { ref } from 'vue'
-const log = ref([])
-const token = ref(1000)
+<script setup lang="ts">
+import { computed, onMounted, ref } from 'vue'
+import TaskCard from '../components/TaskCard.vue'
+import TaskManager from '../services/TaskManager'
+import AddTaskDialog from '../components/AddTaskDialog.vue'
+import { PythonTask } from '../types/PythonService'
+import ContextMenu from '../components/Toolbar.vue'
+
+// 获取任务管理器实例
+const taskManager = TaskManager.getInstance()
+
+// 使用任务管理器的状态
+const tasks = taskManager.tasks
+const tasksStatus = taskManager.tasksStatus
+const selectedTaskId = taskManager.selectedTaskId
+const selectedTask = taskManager.selectedTask
+const selectedTaskStatus = taskManager.selectedTaskStatus
+const autoStart = computed(() => {
+  return selectedTask.value?.autoStart || false
+})
+
+// 添加任务对话框的可见性状态
+const isAddTaskDialogVisible = ref(false)
+// 确认对话框相关状态
+const contextMenuVisible = ref(false)
+const contextMenuStyle = ref({ top: '0px', left: '0px' })
+const contextMenuTask = ref<PythonTask | null>(null)
+
+// 计算属性
+const contextMenuItems = computed(() => [
+  {
+    icon: 'fa-solid fa-trash',
+    text: '删除',
+    action: () => {
+      if (contextMenuTask.value) {
+        taskManager.removeTask(contextMenuTask.value.id)
+        hideContextMenu()
+      }
+    }
+  }
+])
+
+// 显示右键菜单
+function showContextMenu(event: MouseEvent, task: PythonTask): void {
+  contextMenuStyle.value = {
+    top: `${event.clientY}px`,
+    left: `${event.clientX}px`
+  }
+  contextMenuTask.value = task
+  contextMenuVisible.value = true
+}
+
+// 隐藏右键菜单
+function hideContextMenu(): void {
+  contextMenuVisible.value = false
+  contextMenuTask.value = null
+}
+
+// 监听点击事件，点击其他地方关闭右键菜单
+function handleClickOutside(event: MouseEvent): void {
+  if (!contextMenuVisible.value) return
+  const target = event.target as HTMLElement
+  if (!target.closest('.context-menu') && !target.closest('.task-card')) {
+    hideContextMenu()
+  }
+}
+
+// 选择任务的方法
+const selectTask = (taskId: number): void => {
+  taskManager.selectTask(taskId)
+}
+
+// 任务操作方法
+const startTask = (taskId: number): void => {
+  taskManager.startTask(taskId)
+}
+
+const stopTask = (taskId: number): void => {
+  taskManager.stopTask(taskId)
+}
+
+const restartTask = (taskId: number): void => {
+  taskManager.restartTask(taskId)
+}
+
+// 添加任务的方法
+function openAddTaskDialog(): void {
+  isAddTaskDialogVisible.value = true
+}
+
+function updateAutoStart(taskId: number, autoStart: boolean): void {
+  taskManager.updateAutoStart(taskId, autoStart)
+}
+
+onMounted(() => {
+  document.addEventListener('click', handleClickOutside)
+})
 </script>
 
 <style scoped>
-.top-cards {
-  display: grid;
-  height: 170px;
-  grid-template-columns: repeat(3, 1fr);
-  grid-template-rows: 1fr;
-  gap: 20px;
+.page-top-container {
+  margin-bottom: 20px;
 }
 
-.card {
-  display: flex;
-  flex-direction: column;
-  background-color: #fff;
-  border-radius: 20px;
+.main-container {
+  height: auto;
+  width: 100%;
   padding: 20px;
-  transition: all 0.3s ease-in-out;
-  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.05);
-}
-
-.card:hover {
-  transform: translateY(-3px);
-}
-
-.card-icon {
-  width: 60px;
-  height: 100%;
-}
-.card-icon .icon {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  width: 60px;
-  height: 60px;
-  font-size: 40px;
-  background-color: #f9fafc;
-  border-radius: 15px;
-}
-
-.purple-card {
-  color: #a785ff;
-}
-
-.blue-card {
-  color: #fb7299;
-}
-
-.pink-card {
-  color: #ffa73b;
-}
-
-.card-head {
-  display: flex;
-  flex-direction: row;
-  justify-content: start;
-  align-items: center;
-  height: 50%;
-}
-
-.card-content {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  justify-content: start;
-  align-items: start;
-  margin-left: 20px;
-}
-
-.card-title {
-  font-size: 16px;
-  margin: 0;
-  /* color: rgba(255, 255, 255, 0.6); */
-}
-
-.card-value {
-  margin: 0;
-  font-size: 30px;
-  font-weight: bold;
-}
-
-.card-description {
-  margin: 0;
-}
-
-.card-footer {
-  width: 100%;
-  height: 100%;
-  margin-top: 15px;
-  background-color: #f9fafc;
+  background-color: #fdfefe;
   border-radius: 10px;
   display: flex;
-  justify-content: center;
-  align-items: center;
 }
 
-.main-content {
-  margin-top: 30px;
-  display: grid;
-  width: 100%;
-  height: 500px;
-  grid-template-columns: repeat(2, 1fr);
-  grid-template-rows: repeat(2, 1fr);
+.task-list-container {
+  height: 100%;
+  width: 80%;
 }
 
-.log-card {
-  background-color: #f9fafc;
-  border-radius: 20px;
-  padding: 20px;
-  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.05);
-  grid-row: 1 / 3;
-}
-
-.log-card .card-title {
-  font-size: 25px;
-}
-
-.log-heard {
-  display: flex;
-  height: 40px;
-  justify-content: space-between;
-  align-items: end;
-}
-
-.log-level {
-  width: 200px;
-  display: flex;
-  flex-direction: row;
+.task-list-title {
+  font-size: 20px;
+  color: #333;
+  margin-top: 10px;
   margin-left: 20px;
-  justify-content: space-between;
-}
-
-.log-level-item {
-  position: relative;
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.log-level-flag {
-  width: 15px;
-  height: 15px;
-  border-radius: 100px;
-  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.05);
-}
-
-.log-level-value {
-  margin-left: 10px;
-  color: black;
-  font-size: 28px;
   font-weight: bold;
 }
 
-.level-error {
-  background-color: rgb(255, 115, 115);
-}
-
-.level-warning {
-  background-color: rgb(255, 227, 115);
-}
-.level-info {
-  background-color: rgb(105, 219, 90);
-}
-
-.log-body {
+/* 任务卡片容器 - 网格布局 */
+.task-card-container {
+  flex: 1;
   display: grid;
-  height: 100%;
-  width: 100%;
-  grid-template-columns: repeat(1, 1fr);
-  grid-template-rows: repeat(5, 1fr);
+  margin-top: 10px;
+  padding: 30px 20px 20px 20px;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  overflow-y: auto;
+  gap: 10px;
 }
 
-.no-log {
-  width: 100%;
-  height: 100%;
-
-  grid-row: 1 / 5;
+.add-task-card-container {
   display: flex;
-  justify-content: center;
   align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  position: relative;
+  height: 270px;
+  border-radius: 20px;
+  padding: 20px 30px;
+  transition: all 0.3s ease;
+  border: 2px dashed #94a3b8;
+  cursor: pointer;
+  z-index: 1;
+  margin-top: -30px;
+  margin-left: 10px;
+  margin-right: 10px;
+  color: #94a3b8;
+}
+
+.add-task-card-container:hover {
+  border: 2px dashed #fca5b9;
+  color: #fca5b9;
+}
+
+.add-task-card-button {
+  padding: 12px 10px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #efefef;
+  font-size: 20px;
+}
+
+/* 任务信息侧边栏 */
+.task-info-sidebar-container {
+  width: 500px;
+  background-color: #f8fafc;
+  padding: 20px;
+  border-radius: 10px;
+  border: 1px solid #e5e7eb;
+  margin-right: 10px;
+}
+.task-info-content {
+  margin-bottom: -25px;
+}
+
+.task-info-title {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  margin-bottom: 20px;
+}
+
+.task-card-title {
+  padding-left: 10px;
+  font-size: 20px;
+  color: #333;
+  font-weight: bold;
+}
+
+.task-info-section {
+  margin-bottom: 25px;
+}
+
+.task-info-item {
+  display: flex;
+  margin-bottom: 10px;
+  font-size: 17px;
+  align-items: center;
+  color: #94a3b8;
+  border-radius: 10px;
+  padding-left: 10px;
+}
+
+.task-info-item:hover {
+  background-color: white;
+}
+
+.task-info-item-content {
+  width: 100%;
+  height: 50px;
+  display: flex;
+  flex-direction: column;
+  margin-left: 10px;
+}
+
+.task-info-item-setting {
+  height: 50px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+}
+
+.task-info-label {
+  font-weight: bold;
+  color: #94a3b8;
+  font-size: 14px;
+}
+
+.task-info-value {
+  flex: 1;
+  color: #333;
+  word-break: break-all;
+  font-size: 12px;
+}
+
+.no-task-selected {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #999;
+  font-size: 1.1em;
+}
+
+/* 终端样式日志容器 */
+.terminal-container {
+  background-color: #0f172a;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+}
+
+.terminal-header {
+  background-color: #1e293b;
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid #3e3e42;
+}
+
+.terminal-buttons {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.terminal-title {
+  color: white;
+  font-size: 12px;
+}
+
+.terminal-button {
+  font-size: 14px;
+  color: var(--theme-color);
+}
+
+.terminal-body {
+  padding: 12px;
+  height: 300px;
+  overflow-y: auto;
+  scrollbar-width: none;
+  /* font-family: 'LoliFont'; */
+}
+
+.log-line {
+  color: #d4d4d4;
+  font-size: 12px;
+  margin-bottom: 4px;
+  line-height: 1.4;
+}
+
+/* .log-time {
+  color: #6a9955;
+  margin-right: 10px;
+} */
+
+.log-content {
+  color: #bac4d1;
+}
+
+/* 响应式设计 */
+@media (max-width: 1024px) {
+  .task-card-container {
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    grid-gap: -5px 20px;
+  }
+
+  .task-info-sidebar-container {
+    width: 350px;
+  }
+}
+
+@media (max-width: 768px) {
+  .main-container {
+    flex-direction: column;
+  }
+
+  .task-card-container {
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    grid-gap: 10px;
+    height: 50%;
+  }
+
+  .task-info-sidebar-container {
+    width: 100%;
+    height: 50%;
+    border-left: none;
+    border-top: 1px solid #e5e7eb;
+  }
+}
+
+@media (max-width: 480px) {
+  .dashboard-content {
+    padding: 10px;
+  }
+
+  .task-card-container {
+    padding: 10px;
+    grid-template-columns: 1fr;
+  }
+}
+
+.state {
+  height: 10px;
+  width: 10px;
+  background-color: rgba(128, 128, 128, 0.4);
+  border-radius: 50%;
+  margin-right: 5px;
+  transition: all 0.3s ease;
+  box-shadow: none;
+}
+
+.state.active {
+  height: 10px;
+  width: 10px;
+  background-color: rgb(74 222 128);
+  border-radius: 50%;
+  margin-right: 5px;
+  animation: blink 3s infinite;
+}
+
+@keyframes blink {
+  0% {
+    box-shadow: none;
+  }
+  50% {
+    box-shadow: 0 0px 7px #34d399;
+  }
+  100% {
+    box-shadow: none;
+  }
+}
+
+/* 添加开机启动开关样式 */
+.task-card-auto-start {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  margin-right: 10px;
+}
+
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 40px;
+  height: 20px;
+}
+
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #ccc;
+  transition: 0.4s;
+  border-radius: 20px;
+}
+
+.slider:before {
+  position: absolute;
+  content: '';
+  height: 16px;
+  width: 16px;
+  left: 2px;
+  bottom: 2px;
+  background-color: white;
+  transition: 0.4s;
+  border-radius: 50%;
+}
+
+input:checked + .slider {
+  background-color: var(--theme-color-light);
+}
+
+input:checked:hover + .slider {
+  box-shadow: 0 0 5px var(--theme-color-light);
+}
+
+input:checked + .slider:before {
+  transform: translateX(20px);
 }
 </style>

@@ -46,14 +46,14 @@ export class InteractionSystem {
   /**
    * 初始化事件模块,添加需要的事件模块到列表中,通常是定时任务
    */
-  private initializeEventModules() {
+  private initializeEventModules(): void {
     this.eventModules.push(new TimeEventModule(this.eventCenter))
     this.eventModules.push(new IdleEventModule(this.eventCenter))
     this.eventModules.push(new FestivalEventModule(this.eventCenter))
   }
 
   // 注册所有默认处理器
-  registerHandlers() {
+  registerHandlers(): void {
     this.eventSystem.registerHandler(new TimeEventHandler())
     this.eventSystem.registerHandler(new FestivalEventHandler())
     this.eventSystem.registerHandler(new IdleEventHandler())

@@ -1,3 +1,5 @@
+import log from './logger'
+
 /**
  * 从图片文件中读取并提取隐藏的base64编码信息
  * 支持从图片的元数据或注释中提取信息
@@ -86,7 +88,7 @@ class ImageMetadataExtractor {
           }
           return chunkData.toString('utf8')
         } catch (e) {
-          console.error('解析PNG文本块时出错:', e)
+          log.error('解析PNG文本块时出错:', e)
         }
       }
 
@@ -112,7 +114,7 @@ class ImageMetadataExtractor {
     if (info) return info
 
     // 可以根据需要添加其他图片格式的支持
-    console.log('未在支持的元数据中找到隐藏信息，尝试从文件末尾查找')
+    log.info('未在支持的元数据中找到隐藏信息，尝试从文件末尾查找')
 
     return null
   }

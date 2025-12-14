@@ -1,4 +1,4 @@
-import { AssistantInfo } from '../types/assistant'
+import { AssistantInfo } from '../../../renderer/src/types/AssistantInfo'
 
 export interface AssistantApi {
   // 助手窗口

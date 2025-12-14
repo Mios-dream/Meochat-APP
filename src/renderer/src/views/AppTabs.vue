@@ -264,6 +264,7 @@ main {
   justify-content: center;
   align-items: end;
   transition: all 0.2s ease-in-out;
+  z-index: 10;
 }
 
 #tabs {

@@ -1,9 +1,13 @@
-import { ipcMain, app, shell, Notification } from 'electron'
+import { ipcMain, app, shell, Notification, dialog } from 'electron'
 import { getMainWindow } from '../windows/mainWindow'
 import { AssistantService } from '../services/assistantService'
 import log from '../utils/logger'
 import { AssistantAssets } from '../../renderer/src/types/AssistantInfo'
+import path from 'path'
+import { PythonServiceManager, PythonTask } from '../services/pythonService'
+import fs from 'fs'
 
+const pythonServiceManager = PythonServiceManager.getInstance()
 /**
  * 设置助手服务IPC
  */
@@ -173,7 +177,7 @@ function setupLoggerIPC(): void {
       {
         level,
         message,
-        args = []
+        args
       }: {
         level: string
         message: string
@@ -234,11 +238,143 @@ function setupUtilityIPC(): void {
   })
 }
 
-function setupMainIPC(): void {
-  setupUtilityIPC()
-  setupAssistantServerIPC()
-  setupLoggerIPC()
+function setupPythonServiceIPC(): void {
+  // 添加文件夹选择功能
+  ipcMain.handle('pythonService:selectTaskDir', async () => {
+    const result = await dialog.showOpenDialog({
+      properties: ['openDirectory']
+    })
 
+    if (result.canceled) {
+      return { success: false, error: '取消选择' }
+    }
+    // 检查指定路径是否存在
+    if (!result.filePaths[0]) {
+      return { success: false, error: '未选择任何文件夹' }
+    }
+    const selectedPath = result.filePaths[0]
+
+    if (!fs.existsSync(path.join(selectedPath, '.venv'))) {
+      return { success: false, error: '项目未初始化，或选择的文件夹不是MoeChat项目' }
+    }
+    if (!fs.existsSync(path.join(selectedPath, 'gptsovits'))) {
+      return { success: false, error: 'Gptsovits子项目不存在，请检查版本' }
+    }
+    if (!fs.existsSync(path.join(selectedPath, 'main_web.py'))) {
+      return { success: false, error: 'MoeChat主程序不存在' }
+    }
+
+    if (!fs.existsSync(path.join(selectedPath, 'gptsovits', 'api_v2.py'))) {
+      return { success: false, error: 'Gptsovits主程序不存在' }
+    }
+
+    // 构建任务
+    const mainTask: PythonTask = {
+      id: 1,
+      name: 'MoeChat',
+      scriptPath: 'main_web.py',
+      description: `MoeChat 主程序`,
+      venvPython: path.join(selectedPath, '.venv', 'Scripts', 'python.exe'),
+      workDir: selectedPath,
+      autoStart: false
+    }
+    // 构建任务
+    const gptsovitsTask: PythonTask = {
+      id: 2,
+      name: 'Gptsovits',
+      scriptPath: 'api_v2.py',
+      description: 'Gptsovits 语音合成引擎',
+      venvPython: path.join(selectedPath, '.venv', 'Scripts', 'python.exe'),
+      workDir: path.join(selectedPath, 'gptsovits'),
+      autoStart: false
+    }
+
+    return {
+      success: true,
+      tasks: [mainTask, gptsovitsTask]
+    }
+  })
+
+  ipcMain.handle('pythonService:start', async (_event, serviceId: number) => {
+    try {
+      await pythonServiceManager.startService(serviceId)
+      return { success: true }
+    } catch (error) {
+      return { success: false, error: (error as Error).message }
+    }
+  })
+  ipcMain.handle('pythonService:stop', async (_event, serviceId: number) => {
+    try {
+      await pythonServiceManager.stopService(serviceId)
+      return { success: true }
+    } catch (error) {
+      return { success: false, error: (error as Error).message }
+    }
+  })
+  ipcMain.handle('pythonService:restart', async (_event, serviceId: number) => {
+    try {
+      await pythonServiceManager.restartService(serviceId)
+      return { success: true }
+    } catch (error) {
+      return { success: false, error: (error as Error).message }
+    }
+  })
+  ipcMain.handle('pythonService:create', async (_event, pythonTask: PythonTask) => {
+    try {
+      const serviceId = await pythonServiceManager.createService(pythonTask)
+      return { success: true, data: serviceId }
+    } catch (error) {
+      return { success: false, error: (error as Error).message }
+    }
+  })
+
+  // 添加删除任务的IPC处理程序
+  ipcMain.handle('pythonService:remove', async (_event, serviceId: number) => {
+    try {
+      const success = pythonServiceManager.removeService(serviceId)
+      return { success }
+    } catch (error) {
+      return { success: false, error: (error as Error).message }
+    }
+  })
+  ipcMain.handle('pythonService:getStatus', async (_event, serviceId: number) => {
+    try {
+      return await pythonServiceManager.getServiceStatus(serviceId)
+    } catch (error) {
+      return { success: false, error: (error as Error).message }
+    }
+  })
+  ipcMain.handle('pythonService:stopAll', async () => {
+    try {
+      await pythonServiceManager.stopAllServices()
+      return { success: true }
+    } catch (error) {
+      return { success: false, error: (error as Error).message }
+    }
+  })
+  ipcMain.handle('pythonService:getAll', async () => {
+    try {
+      return pythonServiceManager.getAllServicesInfo()
+    } catch (error) {
+      return { success: false, error: (error as Error).message }
+    }
+  })
+
+  // 在 setupPythonServiceIPC 函数中添加
+  ipcMain.handle(
+    'pythonService:updateAutoStart',
+    async (_event, serviceId: number, autoStart: boolean) => {
+      try {
+        const success = pythonServiceManager.updateAutoStart(serviceId, autoStart)
+        return { success }
+      } catch (error) {
+        return { success: false, error: (error as Error).message }
+      }
+    }
+  )
+}
+
+function setupMainIPC(): void {
   ipcMain.on('app:show', () => {
     const win = getMainWindow()
     if (win) win.show()
@@ -270,6 +406,10 @@ function setupMainIPC(): void {
   ipcMain.on('app:quit', () => {
     app.quit()
   })
+  setupUtilityIPC()
+  setupAssistantServerIPC()
+  setupLoggerIPC()
+  setupPythonServiceIPC()
 }
 
 export { setupMainIPC }

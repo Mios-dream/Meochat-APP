@@ -25,4 +25,6 @@ export interface AppConfig {
   themeColor: string
   // 聊天快捷键
   chatShortcut: string
+  // Python服务配置
+  pythonTasks: PythonTask[]
 }

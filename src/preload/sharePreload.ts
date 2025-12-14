@@ -48,25 +48,25 @@ const globalAPI = {
   log: {
     openLogDir: () => ipcRenderer.send('logger:open-log-dir'),
 
-    debug: (message: string, ...args) =>
+    debug: (message: string, args) =>
       ipcRenderer.send('logger:log', {
         level: 'debug',
         message,
         args
       }),
-    info: (message: string, ...args) =>
+    info: (message: string, args) =>
       ipcRenderer.send('logger:log', {
         level: 'info',
         message,
         args
       }),
-    warn: (message: string, ...args) =>
+    warn: (message: string, args) =>
       ipcRenderer.send('logger:log', {
         level: 'warning',
         message,
         args
       }),
-    error: (message: string, ...args) =>
+    error: (message: string, args) =>
       ipcRenderer.send('logger:log', {
         level: 'error',
         message,

@@ -15,8 +15,10 @@
     "Loli",
     "Meochat",
     "napi",
+    "pidusage",
     "pinia",
     "sovits",
-    "Uiohook"
+    "Uiohook",
+    "venv"
   ]
 }

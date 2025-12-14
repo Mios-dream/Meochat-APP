@@ -23,7 +23,9 @@ const schema: Schema<AppConfig> = {
   // 主题色
   themeColor: { type: 'string', default: '#fb7299' },
   // 聊天快捷键
-  chatShortcut: { type: 'string', default: 'Alt+A' }
+  chatShortcut: { type: 'string', default: 'Alt+A' },
+  // Python服务配置
+  pythonTasks: { type: 'array', default: [] }
 }
 
 const store = new Store({ schema })
