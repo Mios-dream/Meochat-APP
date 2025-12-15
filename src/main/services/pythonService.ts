@@ -39,10 +39,10 @@ class PythonService {
     if (this.logs.length > this.maxLogCount) {
       this.logs.shift()
     }
-    BrowserWindow.getAllWindows().forEach((win) => {
+    BrowserWindow.getAllWindows().forEach(async (win) => {
       win.webContents.send('pythonService:StateUpdate', {
         id: this.id,
-        status: this.getStatus()
+        status: await this.getStatus()
       })
     })
   }
@@ -113,11 +113,11 @@ class PythonService {
   }
 
   // 添加获取服务状态的方法
-  getStatus(): PythonServiceStatus {
+  async getStatus(): Promise<PythonServiceStatus> {
     return {
       running: this.running,
-      pid: this.child?.pid,
-      memory: 0,
+      pid: this.child?.pid || -1,
+      memory: (await this.getMemoryUsage()) || 0,
       logs: this.logs
     }
   }
@@ -341,10 +341,10 @@ class PythonServiceManager {
    * @param name 服务名称
    * @returns 服务状态
    */
-  getServiceStatus(id: number): PythonServiceStatus {
+  async getServiceStatus(id: number): Promise<PythonServiceStatus> {
     const service = this.services.get(id)
     if (service) {
-      return service.getStatus()
+      return await service.getStatus()
     } else {
       throw new Error(`服务 "${id}" 不存在`)
     }

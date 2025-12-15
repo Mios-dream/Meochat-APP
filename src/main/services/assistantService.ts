@@ -847,32 +847,25 @@ class AssistantService {
   /**
    * 从图片文件中提取并解码隐藏的助手信息
    */
-  public extractHiddenInfo(
-    imageData: Buffer
-  ): { success: true; data: AssistantBaseInfo } | { success: false; error: string } {
-    try {
-      const extractor = new ImageMetadataExtractor()
-      const result = JSON.parse(extractor.extractAndDecodeHiddenInfo(imageData))
-      if (!result || !result.data) {
-        return { success: false, error: '隐藏信息中缺少角色数据' }
-      }
-      const hiddenInfo = result.data
-      const assistantInfo: AssistantBaseInfo = {
-        name: hiddenInfo.name?.trim(),
-        extraDescription: hiddenInfo?.description?.trim(),
-        messageExamples: [
-          ...(hiddenInfo?.mes_example
-            ?.split('<START>')
-            .map((item: string) => item.trim())
-            .filter((item: string) => item !== '') || [])
-        ],
-        startWith: [...(hiddenInfo?.alternate_greetings || [])]
-      }
-      return { success: true, data: assistantInfo }
-    } catch (error) {
-      log.error('提取隐藏信息失败:', error)
-      return { success: false, error: (error as Error).message }
+  public extractHiddenInfo(imageData: Buffer): AssistantBaseInfo {
+    const extractor = new ImageMetadataExtractor()
+    const result = JSON.parse(extractor.extractAndDecodeHiddenInfo(imageData))
+    if (!result || !result.data) {
+      throw new Error('隐藏信息中缺少角色数据')
     }
+    const hiddenInfo = result.data
+    const assistantInfo: AssistantBaseInfo = {
+      name: hiddenInfo.name?.trim(),
+      extraDescription: hiddenInfo?.description?.trim(),
+      messageExamples: [
+        ...(hiddenInfo?.mes_example
+          ?.split('<START>')
+          .map((item: string) => item.trim())
+          .filter((item: string) => item !== '') || [])
+      ],
+      startWith: [...(hiddenInfo?.alternate_greetings || [])]
+    }
+    return assistantInfo
   }
 }
 

@@ -1,3 +1,5 @@
+import { PythonTask } from '@renderer/types/PythonService'
+
 export interface AppConfig {
   // 服务器地址
   baseUrl: string

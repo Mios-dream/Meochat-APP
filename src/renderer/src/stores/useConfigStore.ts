@@ -16,7 +16,8 @@ export const useConfigStore = defineStore('config', () => {
     assistantEnabled: false,
     currentAssistant: '',
     themeColor: '#fb7299',
-    chatShortcut: 'Alt+A'
+    chatShortcut: 'Alt+A',
+    pythonTasks: []
   })
 
   async function loadConfig(): Promise<void> {

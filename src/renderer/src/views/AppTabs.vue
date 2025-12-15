@@ -66,7 +66,6 @@ const titlebarIcons = [
     color: '#f3bc4f',
     text: '最小化',
     action: () => {
-      console.log('minimize')
       window.api.minimizeApp()
     }
   },
@@ -74,7 +73,6 @@ const titlebarIcons = [
     color: '#64c857',
     text: '最大化',
     action: () => {
-      console.log('maximize')
       window.api.maximizeApp()
     }
   },
@@ -82,7 +80,6 @@ const titlebarIcons = [
     color: '#e97168',
     text: '关闭',
     action: () => {
-      console.log('close')
       window.api.hideApp()
     }
   }
@@ -148,7 +145,6 @@ function handleBlur(): void {
 // 检查云端版本
 async function checkCloudVersion(): Promise<void> {
   const result = await window.api.checkCloudVersion()
-  console.log(result)
   if (result.success) {
     if (result.fullVersionMatch) {
       console.log(`版本完全匹配: 当前版本 ${result.currentVersion}`)
@@ -165,6 +161,8 @@ async function checkCloudVersion(): Promise<void> {
         duration: 10000
       })
     }
+  } else {
+    console.error('检查云端版本失败,服务端连接失败')
   }
 }
 

@@ -1,5 +1,9 @@
 <template>
-  <BlurModal :model-value="modelValue" @update:model-value="emit('update:modelValue', $event)">
+  <BlurModal
+    :model-value="modelValue"
+    @close="handleCancel"
+    @update:model-value="emit('update:modelValue', $event)"
+  >
     <div class="add-assistant-dialog">
       <div class="add-assistant-title">
         {{ isEditMode ? '编辑助手' : '聘用助手' }}
@@ -489,7 +493,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, computed } from 'vue'
+import { ref, watch } from 'vue'
 import BlurModal from './BlurModal.vue'
 import type { AssistantAssets, AssistantInfo } from '../services/assistantManager'
 import { AssistantManager } from '../services/assistantManager'
@@ -500,6 +504,7 @@ interface Props {
   modelValue: boolean
   editingAssistant?: AssistantInfo | null
   isImportFromCard?: boolean
+  isEditMode?: boolean
 }
 
 interface Emits {
@@ -527,7 +532,7 @@ const tabs = [
 const activeTab = ref('basic')
 
 // 是否为编辑模式
-const isEditMode = computed(() => !!props.editingAssistant)
+const isEditMode = props.isEditMode
 
 // 加载状态
 const isSubmitting = ref(false)
@@ -782,7 +787,7 @@ const triggerFileInput = (): void => {
 }
 
 // 处理头像文件选择 - 只保存文件信息
-const handleAvatarFileSelect = async (event: Event): Promise<void> => {
+async function handleAvatarFileSelect(event: Event): Promise<void> {
   const input = event.target as HTMLInputElement
   if (input.files && input.files[0]) {
     const file = input.files[0]
@@ -1008,7 +1013,7 @@ const saveAssistantAssets = async (): Promise<boolean> => {
 }
 
 // 从角色卡片导入助手信息
-const handleCharacterCardFileSelected = async (event: Event): Promise<void> => {
+async function handleCharacterCardFileSelected(event: Event): Promise<void> {
   try {
     const input = event.target as HTMLInputElement
     if (!input.files || input.files.length === 0) {
@@ -1021,7 +1026,7 @@ const handleCharacterCardFileSelected = async (event: Event): Promise<void> => {
     const importResult = await window.api.importAssistantFromCard(await file.arrayBuffer())
 
     if (importResult.success) {
-      const importData = importResult.data.data
+      const importData = importResult.data
       // 填充表单数据
       formData.value.name = importData.name || formData.value.name
       formData.value.extraDescription =
@@ -1029,8 +1034,14 @@ const handleCharacterCardFileSelected = async (event: Event): Promise<void> => {
 
       formData.value.messageExamples = importData.messageExamples || formData.value.messageExamples
       formData.value.startWith = importData.startWith || formData.value.startWith
-      // 将事件传递给头像文件选择处理函数
-      handleAvatarFileSelect(event)
+      // 创建预览
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        previewImage.value = e.target?.result as string
+      }
+      reader.readAsDataURL(file)
+      // 仅保存文件信息，不立即上传
+      selectedFile.value = file
 
       notificationService.success({
         message: '角色信息导入成功！'
@@ -1151,7 +1162,7 @@ const handleSubmit = async (): Promise<void> => {
     // 将响应式数据转换为普通JavaScript对象
     const plainProcessedFormData = JSON.parse(JSON.stringify(processedFormData))
 
-    if (isEditMode.value && props.editingAssistant) {
+    if (isEditMode && props.editingAssistant) {
       // 编辑模式：更新助手信息
       const updatedAssistant: AssistantInfo = {
         ...props.editingAssistant,
@@ -1197,7 +1208,7 @@ const handleSubmit = async (): Promise<void> => {
   } catch (error) {
     // 获取详细的错误信息
     const errorMessage = error instanceof Error ? error.message : '操作失败'
-    console.error(isEditMode.value ? '更新助手失败:' : '添加助手失败:', errorMessage)
+    console.error(isEditMode ? '更新助手失败:' : '添加助手失败:', errorMessage)
   } finally {
     // 无论成功或失败，都将提交状态设为false
     isSubmitting.value = false
@@ -1207,6 +1218,7 @@ const handleSubmit = async (): Promise<void> => {
 // 取消操作
 const handleCancel = (): void => {
   if (!isSubmitting.value) {
+    resetForm()
     emit('cancel')
     emit('update:modelValue', false)
   }

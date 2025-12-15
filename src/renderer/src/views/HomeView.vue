@@ -287,7 +287,9 @@ onMounted(() => {
 
 /* 任务信息侧边栏 */
 .task-info-sidebar-container {
-  width: 500px;
+  width: 450px;
+  min-width: 450px;
+  flex-shrink: 0;
   background-color: #f8fafc;
   padding: 20px;
   border-radius: 10px;

@@ -206,6 +206,7 @@
         v-model="isVisibleAddAssistantDialog"
         :editing-assistant="null"
         :is-import-from-card="isImportFromCard"
+        :is-edit-mode="false"
         @cancel="closeAddAssistantDialog"
         @success="handleAssistantUpdated"
       />
@@ -214,6 +215,7 @@
       <EditAssistantDialog
         v-model="isVisibleEditAssistantDialog"
         :editing-assistant="editingAssistant"
+        :is-edit-mode="true"
         @cancel="handleEditCancel"
         @success="handleAssistantUpdated"
       />
