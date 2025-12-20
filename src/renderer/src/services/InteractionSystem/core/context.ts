@@ -4,24 +4,30 @@ export interface Context {
   userMood: string
   isBusy: boolean
   lastMessage?: string
+  taskEventStatus?: {
+    taskName: string
+    success: boolean
+    timestamp: number
+  }
+  systemEventStatus?: {
+    eventName: string
+    description: string
+    timestamp: number
+  }
 }
 
 export class ContextManager {
   private state: Context = {
     lastInteraction: Date.now(),
-    userMood: 'neutral',
-    isBusy: false,
+    userMood: '正常',
+    isBusy: false
   }
 
-  update(partial: Partial<Context>) {
+  update(partial: Partial<Context>): void {
     this.state = { ...this.state, ...partial }
   }
 
-  get() {
+  get(): Context {
     return this.state
-  }
-
-  shouldInteract(minGap = 3 * 60 * 1000): boolean {
-    return Date.now() - this.state.lastInteraction > minGap && !this.state.isBusy
   }
 }

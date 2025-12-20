@@ -10,8 +10,8 @@ interface ChatMessage {
 }
 
 interface TextAndAudioData {
-  message: string
-  file: string
+  audio: string
+  text: string
   done?: boolean
 }
 
@@ -269,31 +269,15 @@ class ChatService {
     const reader = response.body!.getReader()
     const decoder = new TextDecoder()
 
-    // 添加文本缓冲区来处理不完整的数据行
-    let textBuffer = ''
-
     while (true) {
       const { done, value } = await reader.read()
       if (done) {
-        // 处理缓冲区中剩余的数据
-        if (textBuffer.trim()) {
-          this.processStreamData(textBuffer)
-        }
+        this.parseStreamChunk(this.textBuffer)
         break
       }
 
       const chunk = decoder.decode(value, { stream: true })
-      textBuffer += chunk
-
-      // 按行分割处理数据
-      const lines = textBuffer.split('\n')
-      textBuffer = lines.pop() || '' // 保留最后一个不完整的行
-
-      for (const line of lines) {
-        if (line.trim()) {
-          this.processStreamData(line.trim())
-        }
-      }
+      this.processStreamData(chunk)
     }
   }
 
@@ -392,13 +376,14 @@ class ChatService {
 
   public handleTextAndAudio(data: TextAndAudioData): void {
     // 处理音频数据
-    const audioBlob = this.base64ToBlob(data.file, 'audio/wav')
+    const audioBlob = this.base64ToBlob(data.audio, 'audio/wav')
     if (audioBlob.size > 0) {
       // 将文本和音频作为一个对存储到音频队列中
       this.textAudioQueue.push({
-        text: data.message,
+        text: data.text,
         audioBlob: audioBlob
       })
+
       // 立即尝试播放（使用 Live2D 同步口型）
       this.playAudioQueueWithLive2D()
     }

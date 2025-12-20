@@ -633,7 +633,7 @@ async function saveShortcut(shortcut: string): Promise<void> {
 }
 
 #chatBox {
-  bottom: 50px;
+  bottom: 80px;
   left: 50%;
   position: absolute;
   width: 60%;

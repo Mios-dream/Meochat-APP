@@ -3,9 +3,7 @@ import { getMainWindow } from '../windows/mainWindow'
 import { AssistantService } from '../services/assistantService'
 import log from '../utils/logger'
 import { AssistantAssets } from '../../renderer/src/types/AssistantInfo'
-import path from 'path'
 import { PythonServiceManager, PythonTask } from '../services/pythonService'
-import fs from 'fs'
 
 const pythonServiceManager = PythonServiceManager.getInstance()
 /**
@@ -236,65 +234,68 @@ function setupUtilityIPC(): void {
       log.warn('Notification not supported')
     }
   })
-}
 
-function setupPythonServiceIPC(): void {
-  // 添加文件夹选择功能
-  ipcMain.handle('pythonService:selectTaskDir', async () => {
-    const result = await dialog.showOpenDialog({
-      properties: ['openDirectory']
-    })
+  // 选择文件
+  ipcMain.handle('tool:select-file', async (_event, options) => {
+    try {
+      const result = await dialog.showOpenDialog({
+        title: options?.title || '选择文件',
+        defaultPath: options?.defaultPath,
+        buttonLabel: options?.buttonLabel || '选择',
+        filters: options?.filters || [{ name: '所有文件', extensions: ['*'] }],
+        properties: ['openFile']
+      })
 
-    if (result.canceled) {
-      return { success: false, error: '取消选择' }
-    }
-    // 检查指定路径是否存在
-    if (!result.filePaths[0]) {
-      return { success: false, error: '未选择任何文件夹' }
-    }
-    const selectedPath = result.filePaths[0]
+      if (result.canceled) {
+        return { success: false, error: '取消选择' }
+      }
 
-    if (!fs.existsSync(path.join(selectedPath, '.venv'))) {
-      return { success: false, error: '项目未初始化，或选择的文件夹不是MoeChat项目' }
-    }
-    if (!fs.existsSync(path.join(selectedPath, 'gptsovits'))) {
-      return { success: false, error: 'Gptsovits子项目不存在，请检查版本' }
-    }
-    if (!fs.existsSync(path.join(selectedPath, 'main_web.py'))) {
-      return { success: false, error: 'MoeChat主程序不存在' }
-    }
+      if (!result.filePaths[0]) {
+        return { success: false, error: '未选择任何文件' }
+      }
 
-    if (!fs.existsSync(path.join(selectedPath, 'gptsovits', 'api_v2.py'))) {
-      return { success: false, error: 'Gptsovits主程序不存在' }
-    }
-
-    // 构建任务
-    const mainTask: PythonTask = {
-      id: 1,
-      name: 'MoeChat',
-      scriptPath: 'main_web.py',
-      description: `MoeChat 主程序`,
-      venvPython: path.join(selectedPath, '.venv', 'Scripts', 'python.exe'),
-      workDir: selectedPath,
-      autoStart: false
-    }
-    // 构建任务
-    const gptsovitsTask: PythonTask = {
-      id: 2,
-      name: 'Gptsovits',
-      scriptPath: 'api_v2.py',
-      description: 'Gptsovits 语音合成引擎',
-      venvPython: path.join(selectedPath, '.venv', 'Scripts', 'python.exe'),
-      workDir: path.join(selectedPath, 'gptsovits'),
-      autoStart: false
-    }
-
-    return {
-      success: true,
-      tasks: [mainTask, gptsovitsTask]
+      return {
+        success: true,
+        filePath: result.filePaths[0],
+        filePaths: result.filePaths
+      }
+    } catch (error) {
+      log.error('选择文件失败:', error)
+      return { success: false, error: (error as Error).message }
     }
   })
 
+  // 选择文件夹
+  ipcMain.handle('tool:select-folder', async (_event, options) => {
+    try {
+      const result = await dialog.showOpenDialog({
+        title: options?.title || '选择文件夹',
+        defaultPath: options?.defaultPath,
+        buttonLabel: options?.buttonLabel || '选择',
+        properties: ['openDirectory']
+      })
+
+      if (result.canceled) {
+        return { success: false, error: '取消选择' }
+      }
+
+      if (!result.filePaths[0]) {
+        return { success: false, error: '未选择任何文件夹' }
+      }
+
+      return {
+        success: true,
+        folderPath: result.filePaths[0],
+        folderPaths: result.filePaths
+      }
+    } catch (error) {
+      log.error('选择文件夹失败:', error)
+      return { success: false, error: (error as Error).message }
+    }
+  })
+}
+
+function setupPythonServiceIPC(): void {
   ipcMain.handle('pythonService:start', async (_event, serviceId: number) => {
     try {
       await pythonServiceManager.startService(serviceId)
@@ -360,12 +361,23 @@ function setupPythonServiceIPC(): void {
     }
   })
 
-  // 在 setupPythonServiceIPC 函数中添加
   ipcMain.handle(
     'pythonService:updateAutoStart',
     async (_event, serviceId: number, autoStart: boolean) => {
       try {
         const success = pythonServiceManager.updateAutoStart(serviceId, autoStart)
+        return { success }
+      } catch (error) {
+        return { success: false, error: (error as Error).message }
+      }
+    }
+  )
+
+  ipcMain.handle(
+    'pythonService:update',
+    async (_event, serviceId: number, serviceData: Partial<PythonTask>) => {
+      try {
+        const success = pythonServiceManager.updateService(serviceId, serviceData)
         return { success }
       } catch (error) {
         return { success: false, error: (error as Error).message }

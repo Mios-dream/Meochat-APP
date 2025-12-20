@@ -5,6 +5,7 @@ import pidusage from 'pidusage'
 import { PythonTask, PythonServiceStatus } from '../../renderer/src/types/PythonService'
 import { getConfig, setConfig } from '../config/configManager'
 import log from '../utils/logger'
+import iconv from 'iconv-lite'
 
 class PythonService {
   id: number
@@ -30,6 +31,27 @@ class PythonService {
     this.child = null
     this.running = false
     this.logs = []
+  }
+
+  private decodeBuffer(buffer: Buffer): string {
+    // Windows 平台尝试多种编码
+    if (process.platform === 'win32') {
+      // 首先尝试 UTF-8 解码
+      const utf8Text = buffer.toString('utf8')
+      // 检查是否有乱码字符（替换字符 U+FFFD）
+      if (!utf8Text.includes('�')) {
+        return utf8Text
+      }
+
+      // UTF-8 失败后尝试 GBK/CP936
+      try {
+        return iconv.decode(buffer, 'gbk')
+      } catch {
+        return buffer.toString('utf8') // 降级到 UTF-8
+      }
+    }
+
+    return buffer.toString('utf8')
   }
 
   // 添加日志的私有方法，用于控制日志数量
@@ -77,32 +99,62 @@ class PythonService {
 
     this.addLog(`[${this.name}] 服务启动中...`)
 
-    this.child = spawn(pythonPath, ['-u', script], {
-      cwd: this.workDir,
-      stdio: 'pipe',
-      shell: process.platform === 'win32' // Windows 需要 shell
-    })
+    try {
+      this.child = spawn(pythonPath, ['-u', script], {
+        cwd: this.workDir,
+        stdio: 'pipe',
+        shell: process.platform === 'win32', // Windows 需要 shell
+        env: {
+          PYTHONIOENCODING: 'utf-8',
+          PYTHONLEGACYWINDOWSSTDIO: 'utf-8', // Python 3.6+
+          PYTHONUTF8: '1' // 强制 Python 使用 UTF-8 模式 (Python 3.7+)
+        }
+      })
+    } catch (error) {
+      this.running = false
+      this.addLog(`[${this.name}] 启动服务失败: ${error}, 请检查配置是否正确`)
+      return
+    }
 
     this.child.stdout.on('data', (data) => {
-      this.addLog(data.toString().trim())
+      // this.addLog(data.toString().trim())
+      this.addLog(this.decodeBuffer(data).trim())
     })
 
     this.child.stderr.on('data', (data) => {
-      this.addLog(data.toString().trim())
+      // this.addLog(data.toString().trim())
+      this.addLog(this.decodeBuffer(data).trim())
     })
-  }
 
-  stop(): void {
-    if (!this.running || !this.child) return
+    this.child.on('error', (error) => {
+      this.running = false
+      this.child = null
+      this.addLog(`[${this.name}] 启动服务失败: ${error}, 请检查配置是否正确`)
+    })
+
     this.child.on('close', (code, signal) => {
       this.child = null
       this.running = false
       this.addLog(`[${this.name}] 停止服务,退出码: ${code}, 信号: ${signal}`)
     })
+  }
+
+  stop(): void {
+    if (!this.running || !this.child) {
+      this.addLog(`[${this.name}] 服务未运行,无需停止`)
+      return
+    }
+
     try {
       execSync(`taskkill /PID ${this.child.pid} /T /F`, { stdio: 'ignore' })
-    } catch {
-      this.addLog(`[${this.name}] 强制终止进程失败,请手动终止进程`)
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('No process found')) {
+        this.child = null
+        this.running = false
+        this.addLog(`[${this.name}] 进程已不存在,无需强制终止`)
+      } else {
+        this.addLog(`[${this.name}] 强制终止进程失败,请手动终止进程`)
+      }
     }
     // this.child.kill('SIGKILL')
   }
@@ -123,15 +175,15 @@ class PythonService {
   }
 
   // 添加获取内存使用的方法
-  async getMemoryUsage(): Promise<number | undefined> {
-    if (!this.running || !this.child?.pid) return undefined
+  async getMemoryUsage(): Promise<number> {
+    if (!this.running || !this.child?.pid) return 0
 
     try {
       const stats = await pidusage(this.child.pid)
       return Math.round(stats.memory / 1024 / 1024) // 转换为 MB
     } catch (error) {
       log.error(`[${this.name}] 获取内存使用失败:`, error)
-      return undefined
+      return 0
     }
   }
 
@@ -171,30 +223,7 @@ class PythonServiceManager {
   }
 
   // 新增：保存任务列表到配置文件
-  private saveTasks(): void {
-    const tasks = this.getAllServices().map((service) => ({
-      id: service.id,
-      name: service.name,
-      description: service.description,
-      scriptPath: service.scriptPath,
-      venvPython: service.venvPython,
-      workDir: service.workDir,
-      autoStart: service.autoStart
-    }))
-    setConfig('pythonTasks', tasks)
-  }
-
-  /**
-   * 创建新的Python服务
-   * @param pythonTask Python任务配置
-   * @returns PythonService实例的ID
-   */
-  createService(pythonTask: Omit<PythonTask, 'id'>): number {
-    // 检查是否已存在同名服务
-    const newPythonTask = { ...pythonTask, id: this.services.size + 1 }
-
-    const service = new PythonService(newPythonTask)
-    this.services.set(newPythonTask.id, service)
+  private saveAndUpdateTasks(): void {
     BrowserWindow.getAllWindows().forEach((win) => {
       // 发送更新事件到渲染进程
       win.webContents.send('pythonService:TaskListUpdate', {
@@ -209,8 +238,41 @@ class PythonServiceManager {
         }))
       })
     })
+    const tasks = this.getAllServices().map((service) => ({
+      id: service.id,
+      name: service.name,
+      description: service.description,
+      scriptPath: service.scriptPath,
+      venvPython: service.venvPython,
+      workDir: service.workDir,
+      autoStart: service.autoStart
+    }))
+    setConfig('pythonTasks', tasks)
+  }
+
+  updateService(id: number, serviceData: Partial<PythonTask>): boolean {
+    const service = this.services.get(id)
+    if (!service) return false
+    Object.assign(service, serviceData)
     // 新增：保存任务列表
-    this.saveTasks()
+    this.saveAndUpdateTasks()
+    return true
+  }
+
+  /**
+   * 创建新的Python服务
+   * @param pythonTask Python任务配置
+   * @returns PythonService实例的ID
+   */
+  createService(pythonTask: Omit<PythonTask, 'id'>): number {
+    // 检查是否已存在同名服务
+    const newPythonTask = { ...pythonTask, id: this.services.size + 1 }
+
+    const service = new PythonService(newPythonTask)
+    this.services.set(newPythonTask.id, service)
+
+    // 新增：保存任务列表
+    this.saveAndUpdateTasks()
 
     return newPythonTask.id
   }
@@ -256,22 +318,7 @@ class PythonServiceManager {
       const success = this.services.delete(id)
       // 新增：保存任务列表
       if (success) {
-        this.saveTasks()
-
-        // 发送更新事件到渲染进程
-        BrowserWindow.getAllWindows().forEach((win) => {
-          win.webContents.send('pythonService:TaskListUpdate', {
-            tasks: this.getAllServices().map((s) => ({
-              id: s.id,
-              name: s.name,
-              description: s.description,
-              scriptPath: s.scriptPath,
-              venvPython: s.venvPython,
-              workDir: s.workDir,
-              autoStart: s.autoStart
-            }))
-          })
-        })
+        this.saveAndUpdateTasks()
       }
       return success
     }
@@ -363,22 +410,7 @@ class PythonServiceManager {
     if (service) {
       service.autoStart = autoStart
       // 保存任务列表
-      this.saveTasks()
-      // 发送更新事件到渲染进程
-      BrowserWindow.getAllWindows().forEach((win) => {
-        win.webContents.send('pythonService:TaskListUpdate', {
-          tasks: this.getAllServices().map((s) => ({
-            id: s.id,
-            name: s.name,
-            description: s.description,
-            scriptPath: s.scriptPath,
-            venvPython: s.venvPython,
-            workDir: s.workDir,
-            autoStart: s.autoStart
-          }))
-        })
-      })
-
+      this.saveAndUpdateTasks()
       return true
     }
     return false

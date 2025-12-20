@@ -49,6 +49,7 @@ export class ActionDispatcher {
    * @param action
    */
   private async executeSend(action: OutputAction): Promise<void> {
+    console.log('执行发送:', action)
     this.chatService.sendMessage(action.text)
   }
 

@@ -7,6 +7,7 @@ import { EventModule } from './types/eventModules'
 import { TimeEventHandler, TimeEventModule } from '@renderer/events/timeEvent'
 import { IdleEventHandler, IdleEventModule } from '@renderer/events/idleEvent'
 import { FestivalEventHandler, FestivalEventModule } from '@renderer/events/festivalEvents'
+import { Live2dEventHandler, Live2dEventModule } from '@renderer/events/live2dEvent'
 
 export class InteractionSystem {
   private static instance: InteractionSystem | null = null
@@ -50,6 +51,7 @@ export class InteractionSystem {
     this.eventModules.push(new TimeEventModule(this.eventCenter))
     this.eventModules.push(new IdleEventModule(this.eventCenter))
     this.eventModules.push(new FestivalEventModule(this.eventCenter))
+    this.eventModules.push(new Live2dEventModule(this.eventCenter))
   }
 
   // 注册所有默认处理器
@@ -57,6 +59,7 @@ export class InteractionSystem {
     this.eventSystem.registerHandler(new TimeEventHandler())
     this.eventSystem.registerHandler(new FestivalEventHandler())
     this.eventSystem.registerHandler(new IdleEventHandler())
+    this.eventSystem.registerHandler(new Live2dEventHandler())
   }
 
   /**
@@ -116,7 +119,7 @@ export class InteractionSystem {
   }
 
   /**
-   * 手动触发事件（用于测试）
+   * 手动触发事件
    */
   triggerEvent(event: string): void {
     this.eventCenter.emit(event)

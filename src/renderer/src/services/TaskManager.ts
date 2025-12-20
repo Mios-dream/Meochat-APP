@@ -80,14 +80,14 @@ class TaskManager {
   public async removeTask(taskId: number): Promise<boolean> {
     const result = await window.api.removePythonService(taskId)
     if (result.success) {
-      console.info(taskId, '任务删除成功')
+      console.info(`任务ID ${taskId} 删除成功`)
       // 如果删除的是当前选中的任务，则清除选中状态
       if (this.selectedTaskId.value === taskId) {
         this.selectedTaskId.value = null
       }
       return true
     } else {
-      console.error(taskId, `任务删除失败: ${result.error}`)
+      console.error(`任务ID ${taskId} 删除失败: ${result.error}`)
       return false
     }
   }
@@ -110,9 +110,9 @@ class TaskManager {
   public async stopTask(taskId: number): Promise<void> {
     const result = await window.api.stopPythonService(taskId)
     if (result.success) {
-      console.info(taskId, '任务停止成功')
+      console.info(`任务ID ${taskId} 停止成功`)
     } else {
-      console.error(taskId, `任务停止失败: ${result.error}`)
+      console.error(`任务ID ${taskId} 停止失败: ${result.error}`)
     }
   }
 
@@ -123,9 +123,9 @@ class TaskManager {
   public async restartTask(taskId: number): Promise<void> {
     const result = await window.api.restartPythonService(taskId)
     if (result.success) {
-      console.info(taskId, '任务重启成功')
+      console.info(`任务ID ${taskId} 重启成功`)
     } else {
-      console.error(taskId, `任务重启失败: ${result.error}`)
+      console.error(`任务ID ${taskId} 重启失败: ${result.error}`)
     }
   }
 
@@ -154,9 +154,28 @@ class TaskManager {
   public async startTask(taskId: number): Promise<void> {
     const result = await window.api.startPythonService(taskId)
     if (result.success) {
-      console.info(taskId, '任务启动成功')
+      console.info(`任务ID ${taskId} 启动成功`)
     } else {
-      console.error(taskId, `任务启动失败: ${result.error}`)
+      console.error(`任务ID ${taskId} 启动失败: ${result.error}`)
+    }
+  }
+
+  /**
+   * 更新任务
+   * @param taskId 任务ID
+   * @param taskData 更新的任务数据
+   */
+  public async updateTask(
+    taskId: number,
+    taskData: Partial<Omit<PythonTask, 'id'>>
+  ): Promise<boolean> {
+    const result = await window.api.updatePythonService(taskId, taskData)
+    if (result.success) {
+      console.info(`任务ID ${taskId} 更新成功`)
+      return true
+    } else {
+      console.error(`任务ID ${taskId} 更新失败: ${result.error}`)
+      return false
     }
   }
 

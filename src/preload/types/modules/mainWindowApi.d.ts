@@ -43,6 +43,35 @@ export interface MainWindowApi {
    */
   openExternal: (url: string) => void
 
+  fileSelectAPI: {
+    /**
+     * 选择单个文件
+     * @param options 选择选项
+     */
+    selectFile: (options?: {
+      title?: string
+      defaultPath?: string
+      buttonLabel?: string
+      filters?: Array<{ name: string; extensions: string[] }>
+    }) => Promise<
+      { success: true; filePath: string; filePaths: string[] } | { success: false; error: string }
+    >
+
+    /**
+     * 选择文件夹
+     * @param options 选择选项
+     * @returns 选择的文件夹路径
+     */
+    selectFolder: (options?: {
+      title?: string
+      defaultPath?: string
+      buttonLabel?: string
+    }) => Promise<
+      | { success: true; folderPath: string; folderPaths: string[] }
+      | { success: false; error: string }
+    >
+  }
+
   // 更新相关api
   /**
    * 获取当前版本信息
@@ -220,13 +249,6 @@ export interface MainWindowApi {
   }
 
   /**
-   * 选择任务目录
-   */
-  selectTaskDir: () => Promise<
-    { success: true; tasks: PythonTask[] } | { success: false; error: string }
-  >
-
-  /**
    * 获取所有Python服务
    */
   getAllPythonServices: () => Promise<PythonTask[]>
@@ -257,6 +279,16 @@ export interface MainWindowApi {
    */
   createPythonService: (
     task: Omit<PythonTask, 'id'>
+  ) => Promise<{ success: boolean; error?: string }>
+
+  /**
+   * 更新Python服务
+   * @param serviceId Python服务ID
+   * @param serviceData 更新的服务数据
+   */
+  updatePythonService: (
+    serviceId: number,
+    serviceData: Partial<PythonTask>
   ) => Promise<{ success: boolean; error?: string }>
 
   /**

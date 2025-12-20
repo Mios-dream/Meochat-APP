@@ -110,6 +110,8 @@
       />
       <!-- 添加任务对话框 -->
       <AddTaskDialog v-model="isAddTaskDialogVisible" />
+      <!-- 编辑任务对话框 -->
+      <EditTaskDialog v-model="isEditTaskDialogVisible" :task="editingTask" />
     </div>
   </div>
 </template>
@@ -119,6 +121,7 @@ import { computed, onMounted, ref } from 'vue'
 import TaskCard from '../components/TaskCard.vue'
 import TaskManager from '../services/TaskManager'
 import AddTaskDialog from '../components/AddTaskDialog.vue'
+import EditTaskDialog from '../components/EditTaskDialog.vue'
 import { PythonTask } from '../types/PythonService'
 import ContextMenu from '../components/Toolbar.vue'
 
@@ -137,6 +140,10 @@ const autoStart = computed(() => {
 
 // 添加任务对话框的可见性状态
 const isAddTaskDialogVisible = ref(false)
+// 编辑任务对话框的可见性状态
+const isEditTaskDialogVisible = ref(false)
+const editingTask = ref<PythonTask | null>(null) // 新增编辑任务数据
+
 // 确认对话框相关状态
 const contextMenuVisible = ref(false)
 const contextMenuStyle = ref({ top: '0px', left: '0px' })
@@ -144,6 +151,16 @@ const contextMenuTask = ref<PythonTask | null>(null)
 
 // 计算属性
 const contextMenuItems = computed(() => [
+  {
+    icon: 'fa-solid fa-edit',
+    text: '编辑',
+    action: () => {
+      if (contextMenuTask.value) {
+        openEditDialog(contextMenuTask.value)
+        hideContextMenu()
+      }
+    }
+  },
   {
     icon: 'fa-solid fa-trash',
     text: '删除',
@@ -202,6 +219,12 @@ const restartTask = (taskId: number): void => {
 // 添加任务的方法
 function openAddTaskDialog(): void {
   isAddTaskDialogVisible.value = true
+}
+
+// 新增编辑任务的方法
+function openEditDialog(task: PythonTask): void {
+  editingTask.value = task
+  isEditTaskDialogVisible.value = true
 }
 
 function updateAutoStart(taskId: number, autoStart: boolean): void {

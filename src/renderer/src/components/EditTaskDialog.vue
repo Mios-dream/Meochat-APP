@@ -5,7 +5,7 @@
       <div class="moe-decoration-circle bottom-left"></div>
 
       <div class="dialog-header">
-        <h2 class="dialog-title">添加新任务</h2>
+        <h2 class="dialog-title">编辑任务</h2>
       </div>
 
       <div class="dialog-content">
@@ -17,7 +17,7 @@
                 <font-awesome-icon icon="fa-solid fa-tag" />
               </div>
               <input
-                v-model="manualTask.name"
+                v-model="editingTask.name"
                 type="text"
                 class="moe-input"
                 placeholder="给任务起个可爱的名字吧"
@@ -34,7 +34,7 @@
                 <font-awesome-icon icon="fa-solid fa-code" />
               </div>
               <input
-                v-model="manualTask.scriptPath"
+                v-model="editingTask.scriptPath"
                 type="text"
                 class="moe-input"
                 placeholder="输入文件入口，例如 main.py，会和工作目录拼接"
@@ -49,7 +49,7 @@
               <label class="form-label">Python 环境</label>
               <div class="input-wrapper small" :class="{ 'is-focus': focusedField === 'venv' }">
                 <input
-                  v-model="manualTask.venvPython"
+                  v-model="editingTask.venvPython"
                   type="text"
                   class="moe-input"
                   placeholder="venv/bin/python"
@@ -66,7 +66,7 @@
               <label class="form-label">工作目录</label>
               <div class="input-wrapper small" :class="{ 'is-focus': focusedField === 'workdir' }">
                 <input
-                  v-model="manualTask.workDir"
+                  v-model="editingTask.workDir"
                   type="text"
                   class="moe-input"
                   placeholder="脚本目录"
@@ -84,7 +84,7 @@
             <label class="form-label">备注描述</label>
             <div class="textarea-wrapper" :class="{ 'is-focus': focusedField === 'desc' }">
               <textarea
-                v-model="manualTask.description"
+                v-model="editingTask.description"
                 class="moe-textarea"
                 placeholder="记录一下这个任务的用途..."
                 rows="2"
@@ -96,20 +96,16 @@
 
           <div class="form-footer-row">
             <label class="moe-switch">
-              <input v-model="manualTask.autoStart" type="checkbox" />
+              <input v-model="editingTask.autoStart" type="checkbox" />
               <span class="slider round"></span>
               <span class="switch-label">自动启动</span>
             </label>
 
             <div class="action-buttons">
               <button class="moe-btn secondary" @click="closeDialog">取消</button>
-              <button
-                class="moe-btn primary"
-                :disabled="!isManualFormValid"
-                @click="submitManualTask"
-              >
+              <button class="moe-btn primary" :disabled="!isFormValid" @click="submitEditTask">
                 <font-awesome-icon icon="fa-solid fa-check" />
-                <span>确认添加</span>
+                <span>保存修改</span>
               </button>
             </div>
           </div>
@@ -120,26 +116,29 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, reactive } from 'vue'
+import { ref, computed, reactive, watch } from 'vue'
 import BlurModal from './BlurModal.vue'
 import TaskManager from '../services/TaskManager'
+import { PythonTask } from '../types/PythonService'
 
 interface Emits {
   (e: 'update:modelValue', value: boolean): void
+  (e: 'taskUpdated', taskId: number): void
 }
 
 interface Props {
   modelValue: boolean
+  task: PythonTask | null
 }
 
-defineProps<Props>()
+const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
 
 // 用于UI交互的状态
 const focusedField = ref<string>('')
 
-// 表单数据
-const manualTask = reactive({
+// 编辑中的任务数据
+const editingTask = reactive<Omit<PythonTask, 'id'>>({
   name: '',
   description: '',
   scriptPath: '',
@@ -151,9 +150,27 @@ const manualTask = reactive({
 const taskManager = TaskManager.getInstance()
 
 // 表单验证
-const isManualFormValid = computed(() => {
-  return manualTask.name.trim() !== '' && manualTask.scriptPath.trim() !== ''
+const isFormValid = computed(() => {
+  return editingTask.name.trim() !== '' && editingTask.scriptPath.trim() !== ''
 })
+
+// 监听传入的任务数据变化
+watch(
+  () => props.task,
+  (newTask) => {
+    if (newTask) {
+      Object.assign(editingTask, {
+        name: newTask.name,
+        description: newTask.description,
+        scriptPath: newTask.scriptPath,
+        venvPython: newTask.venvPython,
+        workDir: newTask.workDir,
+        autoStart: newTask.autoStart
+      })
+    }
+  },
+  { immediate: true }
+)
 
 async function browsePythonPath(): Promise<void> {
   const result = await window.api.fileSelectAPI.selectFile({
@@ -161,7 +178,7 @@ async function browsePythonPath(): Promise<void> {
     filters: [{ name: 'Python', extensions: ['exe'] }]
   })
   if (result.success) {
-    manualTask.venvPython = result.filePath
+    editingTask.venvPython = result.filePath
   }
 }
 
@@ -170,44 +187,45 @@ async function browseWorkDir(): Promise<void> {
     title: '选择工作目录'
   })
   if (result.success) {
-    manualTask.workDir = result.folderPath
+    editingTask.workDir = result.folderPath
   }
 }
 
-// 提交表单
-function submitManualTask(): void {
-  if (!isManualFormValid.value) return
+// 提交编辑
+function submitEditTask(): void {
+  if (!isFormValid.value || !props.task) return
 
-  const task = {
-    name: manualTask.name.trim(),
-    description: manualTask.description.trim(),
-    scriptPath: manualTask.scriptPath.trim(),
-    venvPython: manualTask.venvPython.trim(),
-    workDir: manualTask.workDir.trim(),
-    autoStart: manualTask.autoStart
+  const taskData = {
+    name: editingTask.name.trim(),
+    description: editingTask.description.trim(),
+    scriptPath: editingTask.scriptPath.trim(),
+    venvPython: editingTask.venvPython.trim(),
+    workDir: editingTask.workDir.trim(),
+    autoStart: editingTask.autoStart
   }
 
-  taskManager.addTask(task)
-  resetManualForm()
+  taskManager.updateTask(props.task.id, taskData)
+  emit('taskUpdated', props.task.id)
   closeDialog()
 }
 
-function resetManualForm(): void {
-  manualTask.name = ''
-  manualTask.description = ''
-  manualTask.scriptPath = ''
-  manualTask.venvPython = ''
-  manualTask.workDir = ''
-  manualTask.autoStart = false
+function resetForm(): void {
+  editingTask.name = ''
+  editingTask.description = ''
+  editingTask.scriptPath = ''
+  editingTask.venvPython = ''
+  editingTask.workDir = ''
+  editingTask.autoStart = false
 }
 
 const closeDialog = (): void => {
+  resetForm()
   emit('update:modelValue', false)
 }
 </script>
 
 <style scoped>
-/* 核心弹窗容器 */
+/* 复用AddTaskDialog的样式 */
 .moe-dialog-card {
   width: 520px;
   max-width: 95vw;
@@ -223,7 +241,6 @@ const closeDialog = (): void => {
   font-family: 'Segoe UI', 'PingFang SC', sans-serif;
 }
 
-/* 背景装饰圆圈 */
 .moe-decoration-circle {
   position: absolute;
   border-radius: 50%;
@@ -248,27 +265,11 @@ const closeDialog = (): void => {
   left: -80px;
 }
 
-/* 头部样式 */
 .dialog-header {
   position: relative;
   z-index: 1;
   text-align: center;
   margin-bottom: 25px;
-}
-
-.header-icon-wrapper {
-  width: 50px;
-  height: 50px;
-  background: linear-gradient(135deg, #fb7299 0%, #ff97b5 100%);
-  border-radius: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: white;
-  font-size: 20px;
-  margin: 0 auto 12px;
-  box-shadow: 0 8px 16px rgba(251, 114, 153, 0.25);
-  transform: rotate(-5deg);
 }
 
 .dialog-title {
@@ -279,13 +280,6 @@ const closeDialog = (): void => {
   letter-spacing: 0.5px;
 }
 
-.dialog-subtitle {
-  font-size: 13px;
-  color: #999;
-  margin: 5px 0 0;
-}
-
-/* 表单区域 */
 .dialog-content {
   position: relative;
   z-index: 1;
@@ -315,7 +309,6 @@ const closeDialog = (): void => {
   padding-left: 4px;
 }
 
-/* 输入框包装器 (实现图标+输入框+按钮的组合) */
 .input-wrapper {
   display: flex;
   align-items: center;
@@ -363,7 +356,6 @@ const closeDialog = (): void => {
   color: #ccc;
 }
 
-/* 文本域特殊处理 */
 .textarea-wrapper {
   background: #f4f6f9;
   border: 2px solid transparent;
@@ -391,7 +383,6 @@ const closeDialog = (): void => {
   outline: none;
 }
 
-/* 输入框内的小按钮 */
 .icon-action-btn {
   width: 32px;
   height: 32px;
@@ -431,7 +422,6 @@ const closeDialog = (): void => {
   font-size: 12px;
 }
 
-/* 底部区域 */
 .form-footer-row {
   display: flex;
   justify-content: space-between;
@@ -441,7 +431,6 @@ const closeDialog = (): void => {
   border-top: 1px dashed #eee;
 }
 
-/* Moe Switch 开关 */
 .moe-switch {
   position: relative;
   display: flex;
@@ -493,7 +482,6 @@ input:checked + .slider:before {
   font-weight: 500;
 }
 
-/* 按钮组 */
 .action-buttons {
   display: flex;
   gap: 12px;

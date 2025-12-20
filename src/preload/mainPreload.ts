@@ -2,7 +2,6 @@ import { contextBridge, ipcRenderer } from 'electron'
 import globalAPI from './sharePreload'
 
 const pythonServiceAPI = {
-  selectTaskDir: () => ipcRenderer.invoke('pythonService:selectTaskDir'),
   createPythonService: (pythonTask) => ipcRenderer.invoke('pythonService:create', pythonTask),
   startPythonService: (serviceId: number) => ipcRenderer.invoke('pythonService:start', serviceId),
   stopPythonService: (serviceId: number) => ipcRenderer.invoke('pythonService:stop', serviceId),
@@ -15,12 +14,24 @@ const pythonServiceAPI = {
     ipcRenderer.invoke('pythonService:updateAutoStart', serviceId, autoStart),
   // 添加删除Python服务的API
   removePythonService: (serviceId: number) => ipcRenderer.invoke('pythonService:remove', serviceId),
-  getAllPythonServices: () => ipcRenderer.invoke('pythonService:getAll')
+  getAllPythonServices: () => ipcRenderer.invoke('pythonService:getAll'),
+  // 更新Python服务
+  updatePythonService: (serviceId, serviceData) =>
+    ipcRenderer.invoke('pythonService:update', serviceId, serviceData)
+}
+
+// 文件选择工具API
+const fileSelectAPI = {
+  // 选择单个文件
+  selectFile: (options) => ipcRenderer.invoke('tool:select-file', options),
+  // 选择文件夹
+  selectFolder: (options) => ipcRenderer.invoke('tool:select-folder', options)
 }
 
 contextBridge.exposeInMainWorld('api', {
   ...globalAPI,
   ...pythonServiceAPI,
+  fileSelectAPI,
   // 主窗口专用 API
   getAssistantStatus: () => ipcRenderer.invoke('assistant:get-status'),
   setAutoStartOnBoot: (enable) => ipcRenderer.invoke('set-auto-start-on-boot', enable),

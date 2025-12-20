@@ -1,4 +1,6 @@
-type EventHandler = (event: string, payload?: any) => void
+import { Context } from './context'
+
+type EventHandler = (event: string, context?: Partial<Context>) => void
 
 export class EventCenter {
   private handlers = new Map<string, EventHandler[]>()
@@ -8,7 +10,7 @@ export class EventCenter {
    * @param event - 事件名称，支持通配符（如 "time.*", "*"）
    * @param handler
    */
-  on(event: string, handler: EventHandler) {
+  on(event: string, handler: EventHandler): void {
     console.log(`事件监听注册: ${event}`)
     const list = this.handlers.get(event) || []
     list.push(handler)
@@ -18,16 +20,14 @@ export class EventCenter {
   /**
    * 触发事件
    * @param event
-   * @param payload
    */
-  emit(event: string) {
-    console.log(this.handlers)
+  emit(event: string, context?: Partial<Context>): void {
     console.log(`事件触发: ${event}`)
 
     // 触发通配符匹配的事件
     this.handlers.forEach((handlers, pattern) => {
       if (pattern.includes('*') && this.matchesPattern(event, pattern)) {
-        handlers.forEach((h) => h(event))
+        handlers.forEach((handler) => handler(event, context))
       }
     })
   }
@@ -55,12 +55,12 @@ export class EventCenter {
    * @param event
    * @param handler
    */
-  off(event: string, handler: EventHandler) {
+  off(event: string, handler: EventHandler): void {
     const list = this.handlers.get(event)
     if (list) {
       this.handlers.set(
         event,
-        list.filter((h) => h !== handler),
+        list.filter((h) => h !== handler)
       )
     }
   }

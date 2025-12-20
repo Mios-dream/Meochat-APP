@@ -1,6 +1,7 @@
 import { Live2DModel, MotionPriority, config } from 'pixi-live2d-display-lipsyncpatch'
 import * as PIXI from 'pixi.js'
 import throttle from '../utils/Throttle'
+import { InteractionSystem } from './InteractionSystem/InteractionSystem'
 
 // 设置模型配置
 config.motionFadingDuration = 500
@@ -384,6 +385,7 @@ export class Live2DManager {
    * 初始化事件监听器
    */
   public initListeners(): void {
+    const interactionSystem = InteractionSystem.getInstance()
     // 开启鼠标跟踪
     this.startMouseTracking()
 
@@ -417,11 +419,14 @@ export class Live2DManager {
     this.canvasElement!.addEventListener('pointerdown', (e) =>
       this.model!.tap(e.clientX, e.clientY)
     )
+    // 监听鼠标点击事件，触发整体点击事件
+    this.canvasElement!.addEventListener('pointerdown', () =>
+      interactionSystem.triggerEvent('live2d.click')
+    )
 
-    // 监听模型点击事件
-    this.model!.on('hit', (hitAreaNames) => {
+    this.model!.on('live2d.hit', (hitAreaNames) => {
       console.log('Hit:', hitAreaNames)
-      // chatService.showTempMessage('点击了' + hitAreaNames.join(', '), 2000, 10)
+      interactionSystem.triggerEvent('live2d.hit.' + hitAreaNames)
     })
   }
 
