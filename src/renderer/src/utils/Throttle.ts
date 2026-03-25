@@ -1,4 +1,9 @@
-// 节流
+/**
+ * 节流函数
+ * @param fn 要节流的函数
+ * @param wait 节流时间间隔，默认 50ms
+ * @returns 节流后的函数
+ */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export default function throttle(fn: (...args: any[]) => any, wait = 50) {
   let last = 0

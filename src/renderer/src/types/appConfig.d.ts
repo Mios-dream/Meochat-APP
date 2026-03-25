@@ -5,6 +5,8 @@ export interface AppConfig {
   baseUrl: string
   // 音量
   volume: number
+  // 是否启用动作生成（启用后使用 /api/chat_v3）
+  generateMotion: boolean
   //是否开机启动
   autoStartOnBoot: boolean
   // 是否自动更新
@@ -29,4 +31,6 @@ export interface AppConfig {
   chatShortcut: string
   // Python服务配置
   pythonTasks: PythonTask[]
+
+  performanceMode: 'high' | 'balanced' | 'low'
 }

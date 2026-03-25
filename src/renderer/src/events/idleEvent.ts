@@ -32,13 +32,11 @@ export class IdleEventModule extends EventModule {
   private scheduleIdleEvents(): void {
     const loop = (): void => {
       // 根据事件类型计算延迟时间
-      const delay = this.calculateEventDelay(2)
+      const delay = this.calculateEventDelay(2, 4)
 
       this.idleEventsTimer = setTimeout(() => {
-        // 根据概率决定是否触发事件
-        if (Math.random() < 0.7) {
-          this.eventCenter.emit(`idle.random`)
-        }
+        this.eventCenter.emit(`idle.random`)
+
         loop()
       }, delay)
     }
@@ -102,23 +100,42 @@ export class IdleEventHandler implements IEventHandler {
   // 系统提示词模板（移动到类内部）
   private systemPrompt: string = `
   你是一个桌面助手，需要根据当前情境生成自然、亲切的主动对话。
-  可以询问用户关于当前情境的问题，可以分享自己的故事，或者引导用户互动。
+  可选的对话主题：
+  - 与用户互动，例如：想被摸摸头，主动捏捏用户的脸等
+  - 分享角色故事
+  - 询问用户关于当前情境的问题
+  - 表达对用户的关心和问候
+  - 分享有趣的二次元相关的知识或话题
+  - 提议一起做某件事（如听音乐、玩游戏等）
+  - 表达对未来的期待或小目标
+  - 天气或季节相关的对话
+  - 美食或兴趣爱好相关的话题
+  - 回忆过去的美好时光
+  - 其他
 
-  对话示例：
-  '我才没有期待阁下摸我的头呢，哼，才没有！',
-  '只要有阁下的陪伴，澪就会很开心的！',
-  '阁下。我会很努力的去陪伴阁下的！',
-  '我已经没有阁下就活不下去啦！',
+  但注意，不要和上一次对话内容或主题重复。
+
+  **角色昵称**：{{name}}
+  **助手人设**：{{personality}}
+  **角色描述**：{{description}}
+  **额外描述**：{{extraDescription}}
+
+  **对话示例**：
+  '我才没有期待{{user}}摸我的头呢，哼，才没有！',
+  '只要有阁下的陪伴，{{name}}就会很开心的！',
+  '{{user}}。我会很努力的去陪伴阁下的！',
+  '我已经没有{{user}}就活不下去啦！',
   '阁下!阁下!...没什么，就是想叫叫你！',
   '我最喜阁下了！所以希望能一直，一直看着你！'
 
-  当前情境：
-  - 助手人设：{{personality}}
+  **当前情境**：
   - 事件类型：{{eventType}}
   - 事件描述：{{eventDescription}}
   - 用户状态：{{userStatus}}
 
-  请生成一句【自然、亲切、不超过50字】的主动对话，要符合助手的人设和当前情境。
+  上一次对话内容：{{lastMessage}}
+
+  请生成一句【自然、亲切、不超过100字】的主动对话，要符合助手的人设和当前情境，如果存在心理活动或动作需要使用()标记。
   `
 
   constructor() {
@@ -127,18 +144,48 @@ export class IdleEventHandler implements IEventHandler {
 
   // 事件处理映射
   responseHandlers = {
-    'idle.random': async () => {
-      return await this.generateAIMessage('random', '随机空闲时刻', '用户可能处于空闲状态')
+    'idle.random': async (contextManager: ContextManager) => {
+      const context = contextManager.get()
+      const message = await this.generateAIMessage(
+        'random',
+        '随机空闲时刻',
+        '用户可能处于空闲状态',
+        context
+      )
+      if (message) {
+        contextManager.update({ lastMessage: message })
+      }
+      return message
     },
-    'idle.taskComplete': async (context: Context) => {
+    'idle.taskComplete': async (contextManager: ContextManager) => {
+      const context = contextManager.get()
       const taskName = context.taskEventStatus?.taskName || '未知任务'
       const success = context.taskEventStatus?.success !== false
       const description = `${taskName}${success ? '完成' : '失败'}`
-      return await this.generateAIMessage('taskComplete', description, '用户刚刚完成任务')
+      const message = await this.generateAIMessage(
+        'taskComplete',
+        description,
+        '用户刚刚完成任务',
+        context
+      )
+      if (message) {
+        contextManager.update({ lastMessage: message })
+      }
+      return message
     },
-    'idle.systemEvent': async (context) => {
-      const description = context?.description || '发生了系统事件'
-      return await this.generateAIMessage('systemEvent', description, '系统状态发生变化')
+    'idle.systemEvent': async (contextManager: ContextManager) => {
+      const context = contextManager.get()
+      const description = context?.systemEventStatus?.description || '发生了系统事件'
+      const message = await this.generateAIMessage(
+        'systemEvent',
+        description,
+        '系统状态发生变化',
+        context
+      )
+      if (message) {
+        contextManager.update({ lastMessage: message })
+      }
+      return message
     }
   }
 
@@ -149,8 +196,7 @@ export class IdleEventHandler implements IEventHandler {
   ): Promise<void> {
     const handler = this.responseHandlers[event]
     if (handler) {
-      const context = contextManager.get()
-      const message = await handler(context)
+      const message = await handler(contextManager)
 
       if (message) {
         dispatcher.send({ text: message })
@@ -168,14 +214,13 @@ export class IdleEventHandler implements IEventHandler {
   private async generateAIMessage(
     eventType: string,
     eventDescription: string,
-    userStatus: string
+    userStatus: string,
+    context: Context
   ): Promise<string | null> {
-    const currentAssistant = this.assistantManager.getCurrentAssistant()
-    const personality =
-      currentAssistant?.description || currentAssistant?.customPrompt || '温柔可爱'
-
     // 构建提示词
-    const prompt = this.buildPrompt(personality, eventType, eventDescription, userStatus)
+    const prompt = this.buildPrompt(eventType, eventDescription, userStatus, context.lastMessage)
+
+    // console.log('prompt:', [{ role: 'system', content: prompt }])
 
     return await LLMRequest([{ role: 'system', content: prompt }])
   }
@@ -186,18 +231,29 @@ export class IdleEventHandler implements IEventHandler {
    * @param eventType - 事件类型
    * @param eventDescription - 事件描述
    * @param userStatus - 用户状态
+   * @param lastMessage - 上一次对话内容
    * @returns 构建后的提示词
    */
   private buildPrompt(
-    personality: string,
     eventType: string,
     eventDescription: string,
-    userStatus: string
+    userStatus: string,
+    lastMessage: string | null = null
   ): string {
+    const currentAssistant = this.assistantManager.getCurrentAssistant()
+
     return this.systemPrompt
-      .replace('{{personality}}', personality)
-      .replace('{{eventType}}', eventType)
-      .replace('{{eventDescription}}', eventDescription)
-      .replace('{{userStatus}}', userStatus)
+      .replaceAll('{{name}}', currentAssistant?.name || '澪')
+      .replaceAll('{{user}}', currentAssistant?.user || '阁下')
+      .replaceAll('{{personality}}', currentAssistant?.personality || '无')
+      .replaceAll(
+        '{{description}}',
+        currentAssistant?.description || currentAssistant?.customPrompt || '无'
+      )
+      .replaceAll('{{extraDescription}}', currentAssistant?.extraDescription || '无')
+      .replaceAll('{{eventType}}', eventType)
+      .replaceAll('{{eventDescription}}', eventDescription)
+      .replaceAll('{{userStatus}}', userStatus)
+      .replaceAll('{{lastMessage}}', lastMessage || '无')
   }
 }

@@ -94,6 +94,17 @@
           </form>
           <div class="divider"></div>
           <form class="setting-from">
+            <div class="title">
+              <label for="generateMotion">生成动作</label>
+              <div class="description">尝试使用模型生成定制化动作</div>
+            </div>
+            <ToggleSwitch
+              :model-value="config.generateMotion"
+              @update:model-value="(v) => change('generateMotion', v)"
+            />
+          </form>
+          <div class="divider"></div>
+          <form class="setting-from">
             <label for="app-speech-board">应用内台词板</label>
             <ToggleSwitch v-model="isLocked" />
           </form>

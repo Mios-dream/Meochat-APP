@@ -22,7 +22,7 @@ export class EventCenter {
    * @param event
    */
   emit(event: string, context?: Partial<Context>): void {
-    console.log(`事件触发: ${event}`)
+    // console.log(`事件触发: ${event}`)
 
     // 触发通配符匹配的事件
     this.handlers.forEach((handlers, pattern) => {

@@ -7,6 +7,9 @@ import { getConfig, setConfig } from '../config/configManager'
 import log from '../utils/logger'
 import iconv from 'iconv-lite'
 
+// 任务优先级定义
+export type TaskPriority = 'critical' | 'high' | 'medium' | 'low'
+
 class PythonService {
   id: number
   name: string
@@ -17,8 +20,10 @@ class PythonService {
   child: ChildProcessWithoutNullStreams | null
   running: boolean
   autoStart: boolean // 是否开机启动
+  priority: TaskPriority = 'medium' // 默认中等优先级
   logs: string[]
   private maxLogCount: number = 100 // 限制日志数量为100条
+  private params: Record<string, string> = {}
 
   constructor(pythonTask: PythonTask) {
     this.id = pythonTask.id
@@ -30,6 +35,7 @@ class PythonService {
     this.autoStart = pythonTask.autoStart
     this.child = null
     this.running = false
+    this.priority = pythonTask.priority
     this.logs = []
   }
 
@@ -87,9 +93,11 @@ class PythonService {
     return this.logs
   }
 
-  start(): void {
+  start(param?: Record<string, string>): void {
     if (this.running) return
-
+    if (param) {
+      this.params = param
+    }
     const pythonPath = this.venvPython
     const script = path.resolve(this.workDir, this.scriptPath)
 
@@ -107,7 +115,8 @@ class PythonService {
         env: {
           PYTHONIOENCODING: 'utf-8',
           PYTHONLEGACYWINDOWSSTDIO: 'utf-8', // Python 3.6+
-          PYTHONUTF8: '1' // 强制 Python 使用 UTF-8 模式 (Python 3.7+)
+          PYTHONUTF8: '1', // 强制 Python 使用 UTF-8 模式 (Python 3.7+)
+          ...this.params
         }
       })
     } catch (error) {
@@ -161,7 +170,7 @@ class PythonService {
 
   restart(): void {
     this.stop()
-    setTimeout(() => this.start(), 1000)
+    setTimeout(() => this.start(this.params), 1000)
   }
 
   // 添加获取服务状态的方法
@@ -234,7 +243,8 @@ class PythonServiceManager {
           scriptPath: s.scriptPath,
           venvPython: s.venvPython,
           workDir: s.workDir,
-          autoStart: s.autoStart
+          autoStart: s.autoStart,
+          priority: s.priority
         }))
       })
     })
@@ -245,7 +255,8 @@ class PythonServiceManager {
       scriptPath: service.scriptPath,
       venvPython: service.venvPython,
       workDir: service.workDir,
-      autoStart: service.autoStart
+      autoStart: service.autoStart,
+      priority: service.priority
     }))
     setConfig('pythonTasks', tasks)
   }
@@ -302,7 +313,8 @@ class PythonServiceManager {
       scriptPath: service.scriptPath,
       venvPython: service.venvPython,
       workDir: service.workDir,
-      autoStart: service.autoStart
+      autoStart: service.autoStart,
+      priority: service.priority
     }))
   }
 
@@ -329,10 +341,10 @@ class PythonServiceManager {
    * 启动指定的Python服务
    * @param name 服务名称
    */
-  startService(id: number): void {
+  startService(id: number, param?: Record<string, string>): void {
     const service = this.services.get(id)
     if (service) {
-      service.start()
+      service.start(param)
     } else {
       throw new Error(`服务 "${id}" 不存在`)
     }
@@ -370,6 +382,15 @@ class PythonServiceManager {
   stopAllServices(): void {
     this.services.forEach((service) => {
       service.stop()
+    })
+  }
+
+  /**
+   * 启动所有Python服务
+   */
+  startAllServices(): void {
+    this.services.forEach((service) => {
+      service.start()
     })
   }
 

@@ -6,6 +6,34 @@
         <h1 class="page-title">主页</h1>
         <p class="page-title-description">你好，阁下！今天是我陪伴阁下的第100天！</p>
       </div>
+      <div class="perf-card-container">
+        <div class="perf-card-title">性能模式</div>
+        <div class="perf-card-wrapper">
+          <!-- 修改性能模式卡片的点击事件 -->
+          <div
+            v-for="mode in performanceModes"
+            :key="mode.id"
+            class="perf-card"
+            :class="{ active: currentGlobalMode === mode.id }"
+            :style="{
+              '--theme-color': mode.color,
+              '--theme-bg': mode.lightColor
+            }"
+            @click="setGlobalMode(mode.id)"
+          >
+            <div class="perf-icon-box">
+              <font-awesome-icon :icon="mode.icon" class="perf-icon" />
+            </div>
+
+            <div class="perf-content">
+              <div class="perf-title">{{ mode.title }}</div>
+              <div class="perf-desc">{{ mode.desc }}</div>
+            </div>
+
+            <div class="active-indicator"></div>
+          </div>
+        </div>
+      </div>
       <div class="main-container">
         <div class="task-list-container">
           <div class="task-list-title">正在运行的任务</div>
@@ -117,13 +145,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import TaskCard from '../components/TaskCard.vue'
 import TaskManager from '../services/TaskManager'
 import AddTaskDialog from '../components/AddTaskDialog.vue'
 import EditTaskDialog from '../components/EditTaskDialog.vue'
 import { PythonTask } from '../types/PythonService'
 import ContextMenu from '../components/Toolbar.vue'
+import throttle from '../utils/Throttle'
 
 // 获取任务管理器实例
 const taskManager = TaskManager.getInstance()
@@ -142,12 +171,71 @@ const autoStart = computed(() => {
 const isAddTaskDialogVisible = ref(false)
 // 编辑任务对话框的可见性状态
 const isEditTaskDialogVisible = ref(false)
-const editingTask = ref<PythonTask | null>(null) // 新增编辑任务数据
+const editingTask = ref<PythonTask | null>(null)
 
 // 确认对话框相关状态
 const contextMenuVisible = ref(false)
 const contextMenuStyle = ref({ top: '0px', left: '0px' })
 const contextMenuTask = ref<PythonTask | null>(null)
+
+const currentGlobalMode = ref('balanced')
+const performanceModes: GlobalPerfMode[] = [
+  {
+    id: 'high',
+    title: '高性能',
+    desc: '对服务无任何限制，将持续占用性能',
+    icon: 'fa-solid fa-rocket',
+    color: '#fb7299',
+    lightColor: 'rgba(244, 63, 94, 0.1)'
+  },
+  {
+    id: 'balanced',
+    title: '均衡',
+    desc: '助手将自动智能调度',
+    icon: 'fa-solid fa-scale-balanced',
+    color: '#3b82f6',
+    lightColor: 'rgba(59, 130, 246, 0.1)'
+  },
+  {
+    id: 'low',
+    title: '节能',
+    desc: '低功耗运行，禁用部分功能，保持安静',
+    icon: 'fa-solid fa-leaf',
+    color: '#10b981',
+    lightColor: 'rgba(16, 185, 129, 0.1)'
+  }
+]
+// 性能模式相关状态
+interface GlobalPerfMode {
+  id: 'high' | 'balanced' | 'low'
+  title: string
+  desc: string
+  icon: string
+  color: string
+  lightColor: string
+}
+
+// 加载当前性能模式
+const loadCurrentMode = async (): Promise<void> => {
+  const result = await window.api.getPerformanceMode()
+  if (result.success) {
+    currentGlobalMode.value = result.data
+  } else {
+    console.error('加载当前性能模式失败:', result.error)
+  }
+}
+
+// 创建节流函数实例
+const throttledSetPerformanceMode = throttle(async (modeId: 'high' | 'balanced' | 'low') => {
+  console.log('设置性能模式:', modeId)
+  await window.api.setPerformanceMode(modeId)
+}, 3000)
+
+// 设置性能模式
+const setGlobalMode = async (modeId: 'high' | 'balanced' | 'low'): Promise<void> => {
+  currentGlobalMode.value = modeId
+  throttledSetPerformanceMode(modeId)
+}
 
 // 计算属性
 const contextMenuItems = computed(() => [
@@ -233,6 +321,12 @@ function updateAutoStart(taskId: number, autoStart: boolean): void {
 
 onMounted(() => {
   document.addEventListener('click', handleClickOutside)
+  loadCurrentMode()
+})
+
+// 组件卸载时清理
+onUnmounted(() => {
+  document.removeEventListener('click', handleClickOutside)
 })
 </script>
 
@@ -256,11 +350,11 @@ onMounted(() => {
 }
 
 .task-list-title {
-  font-size: 20px;
-  color: #333;
+  font-size: 16px;
+  font-weight: bold;
+  color: #334155;
   margin-top: 10px;
   margin-left: 20px;
-  font-weight: bold;
 }
 
 /* 任务卡片容器 - 网格布局 */
@@ -442,11 +536,6 @@ onMounted(() => {
   line-height: 1.4;
 }
 
-/* .log-time {
-  color: #6a9955;
-  margin-right: 10px;
-} */
-
 .log-content {
   color: #bac4d1;
 }
@@ -579,5 +668,150 @@ input:checked:hover + .slider {
 
 input:checked + .slider:before {
   transform: translateX(20px);
+}
+
+.perf-card-container {
+  margin-bottom: 20px;
+  background-color: white;
+  padding: 30px;
+  border-radius: 10px;
+}
+.perf-card-title {
+  font-size: 16px;
+  font-weight: bold;
+  color: #334155;
+  margin-bottom: 20px;
+}
+
+/* --- 性能卡片容器 (Grid布局) --- */
+.perf-card-wrapper {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr); /* 三等分 */
+  gap: 20px;
+  width: 100%;
+}
+
+/* --- 单个卡片样式 --- */
+.perf-card {
+  position: relative;
+  background-color: #fff;
+  border-radius: 12px; /* 圆角略大，更现代 */
+  padding: 15px 20px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+  border: 1px solid transparent; /* 预留边框位置，防止跳动 */
+  box-shadow:
+    0 4px 6px rgba(0, 0, 0, 0.02),
+    0 1px 3px rgba(0, 0, 0, 0.05); /* 极简阴影 */
+  overflow: hidden;
+}
+
+/* 悬停效果 */
+.perf-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 15px rgba(0, 0, 0, 0.05);
+}
+
+/* --- 选中状态 (核心设计) --- */
+.perf-card.active {
+  border-color: var(--theme-color); /* 边框变色 */
+  background-color: var(--theme-bg); /* 背景变淡色 */
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+}
+
+/* 图标容器 */
+.perf-icon-box {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background-color: #f1f5f9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 15px;
+  transition: all 0.3s ease;
+  flex-shrink: 0; /* 防止挤压 */
+  transition: all 0.3s ease-in-out;
+  border: 1px solid transparent;
+}
+
+.perf-icon {
+  font-size: 20px;
+  color: #94a3b8;
+  transition: all 0.3s ease;
+}
+
+/* 选中时图标的变化 */
+.perf-card.active .perf-icon-box {
+  /* background-color: #fff; */
+  /* box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1); */
+  transform: rotate(15deg);
+  /* border: 1px solid var(--theme-color); */
+  background-color: var(--theme-color);
+}
+
+.perf-card.active .perf-icon {
+  /* color: var(--theme-color); */
+  color: #fff;
+  transform: scale(1.1);
+}
+
+/* 文字区域 */
+.perf-content {
+  display: flex;
+  flex-direction: column;
+}
+
+.perf-title {
+  font-size: 16px;
+  font-weight: bold;
+  color: #334155;
+  margin-bottom: 4px;
+}
+
+.perf-desc {
+  font-size: 12px;
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+/* 选中时文字颜色加深 */
+.perf-card.active .perf-title {
+  color: var(--theme-color);
+}
+.perf-card.active .perf-desc {
+  color: #475569; /* 稍微深一点的灰色 */
+}
+
+/* 选中时的右上角装饰（可选，增加层次感） */
+.active-indicator {
+  position: absolute;
+  top: -10px;
+  right: -10px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--theme-color);
+  opacity: 0.15;
+  filter: blur(10px);
+  display: none;
+}
+
+.perf-card.active .active-indicator {
+  display: block;
+}
+
+/* --- 响应式适配 --- */
+@media (max-width: 768px) {
+  .perf-card-wrapper {
+    grid-template-columns: 1fr; /* 手机端变为单列 */
+    gap: 10px;
+  }
+
+  .perf-card {
+    padding: 12px 15px;
+  }
 }
 </style>

@@ -13,6 +13,7 @@ const schema: Schema<AppConfig> = {
   silentMode: { type: 'boolean', default: false },
   // 助手配置
   volume: { type: 'number', default: 0.8 },
+  generateMotion: { type: 'boolean', default: false },
   autoChat: { type: 'boolean', default: false },
   idleEvent: { type: 'boolean', default: true },
   idleTime: { type: 'number', default: 2 },
@@ -25,7 +26,9 @@ const schema: Schema<AppConfig> = {
   // 聊天快捷键
   chatShortcut: { type: 'string', default: 'Alt+A' },
   // Python服务配置
-  pythonTasks: { type: 'array', default: [] }
+  pythonTasks: { type: 'array', default: [] },
+  // 性能模式
+  performanceMode: { type: 'string', default: 'balanced' }
 }
 
 const store = new Store({ schema })

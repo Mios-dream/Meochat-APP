@@ -1,5 +1,5 @@
-import { powerMonitor } from 'electron'
-import { MicaBrowserWindow, IS_WINDOWS_11 } from 'mica-electron'
+import { BrowserWindow } from 'electron'
+// import { MicaBrowserWindow, IS_WINDOWS_11 } from 'mica-electron'
 import { getAppUrl, getPreloadPath, isDevelopment } from '../utils/pathResolve'
 import { getConfig } from '../config/configManager'
 import log from '../utils/logger'
@@ -7,49 +7,28 @@ import log from '../utils/logger'
 // 检查是否是开机自启
 const isAutoStarted = process.argv.includes('--auto-start')
 
-/*
- * 根据当前电源配置和系统更新窗口效果
- */
-function updateWindowEffect(): void {
-  if (!mainWindow) return
-  // 省电模式下使用纯色背景
-  if (powerMonitor.isOnBatteryPower()) {
-    mainWindow.setBackgroundColor('#eff4f9')
-    return
-  }
-  // 否则使用Acrylic
-  if (IS_WINDOWS_11) {
-    mainWindow.setMicaAcrylicEffect()
-    // 设置窗口圆角
-    mainWindow.setRoundedCorner()
-  } else {
-    mainWindow.setAcrylic()
-  }
-}
-
 // 主窗口的实例
-let mainWindow: MicaBrowserWindow | null = null
+let mainWindow: BrowserWindow | null = null
 
 /*
  * 创建主窗口
  */
-function createMainWindow(): MicaBrowserWindow {
+function createMainWindow(): BrowserWindow {
   if (mainWindow) {
     mainWindow.show()
     return mainWindow
   }
 
-  mainWindow = new MicaBrowserWindow({
+  mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
     minWidth: 1200, // 添加最小宽度
-    minHeight: 800,
+    minHeight: 600,
     resizable: true,
     autoHideMenuBar: true,
     frame: false,
-    thickFrame: true,
     show: false,
-    transparent: true,
+    // transparent: true,
     webPreferences: {
       devTools: true,
       preload: getPreloadPath('mainPreload'),
@@ -57,17 +36,6 @@ function createMainWindow(): MicaBrowserWindow {
       nodeIntegration: false,
       contextIsolation: true
     }
-  })
-  updateWindowEffect()
-
-  mainWindow.resizable = true
-
-  powerMonitor.on('on-ac', () => {
-    updateWindowEffect()
-  })
-
-  powerMonitor.on('on-battery', () => {
-    updateWindowEffect()
   })
 
   log.info('isDevelopment:', isDevelopment())
@@ -81,7 +49,6 @@ function createMainWindow(): MicaBrowserWindow {
   if (getConfig('debugMode')) {
     mainWindow.webContents.openDevTools({ mode: 'detach' })
   }
-  // mainWindow.webContents.openDevTools({ mode: 'detach' })
 
   mainWindow.webContents.once('dom-ready', () => {
     if (getConfig('silentMode') && isAutoStarted) {
@@ -100,7 +67,7 @@ function createMainWindow(): MicaBrowserWindow {
 /*
  * 获取主窗口
  */
-function getMainWindow(): MicaBrowserWindow | null {
+function getMainWindow(): BrowserWindow | null {
   return mainWindow && !mainWindow.isDestroyed() ? mainWindow : null
 }
 

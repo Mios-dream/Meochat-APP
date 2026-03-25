@@ -1,4 +1,4 @@
-import { ipcMain, screen, BrowserWindow } from 'electron'
+import { ipcMain, screen, BrowserWindow, app } from 'electron'
 import { getAssistantWindow, createAssistantWindow } from '../windows/assistantWindow'
 import { getChatBoxWindow, createChatBoxWindow } from '../windows/chatBoxWindow'
 import dragAddon from 'electron-click-drag-plugin'
@@ -35,6 +35,15 @@ function initUiohook(): void {
   })
   uIOhook.start()
   isUiohookStarted = true
+
+  app.on('will-quit', () => {
+    if (isUiohookStarted) {
+      uIOhook.stop()
+      uIOhook.removeAllListeners()
+      isUiohookStarted = false
+      isMousePressed = false
+    }
+  })
 }
 
 function setupChatBoxIPC(): void {

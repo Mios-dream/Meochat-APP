@@ -1,6 +1,7 @@
 import { AssistantInfo, AssistantBaseInfo } from '../../../renderer/src/types/AssistantInfo'
 import { PythonServiceStatus } from '../../../renderer/src/types/PythonService'
 import { PythonTask } from '../../../renderer/src/types/PythonService'
+
 export interface MainWindowApi {
   // 主窗口
   /**
@@ -306,4 +307,26 @@ export interface MainWindowApi {
     serviceId: number,
     autoStart: boolean
   ) => Promise<{ success: boolean; error?: string }>
+
+  // 系统资源相关API
+  /**
+   * 获取系统资源状态
+   */
+  getSystemResources: () => Promise<
+    { success: true; data: SystemResources } | { success: false; error: string }
+  >
+
+  /**
+   * 设置性能模式
+   */
+  setPerformanceMode: (
+    mode: 'high' | 'balanced' | 'low'
+  ) => Promise<{ success: boolean; error?: string }>
+
+  /**
+   * 获取当前性能模式
+   */
+  getPerformanceMode: () => Promise<
+    { success: true; data: string } | { success: false; error: string }
+  >
 }

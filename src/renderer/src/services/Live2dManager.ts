@@ -21,13 +21,13 @@ export class Live2DManager {
   private audioContext: AudioContext | null = null
   // 是否聚焦鼠标，用于全局鼠标跟踪
   private isMouseTracking = false
-  // 用于控制聚焦的状态
+  // 聚焦的状态,是否可以聚焦
   private isFocusEnabled = false
   // 聚焦超时定时器
   private focusTimeout: NodeJS.Timeout | null = null
   // 聚焦超时,用于全局
   public focus_timeout_ms = 5000 // 5秒无点击后取消聚焦
-  // 用于控制忽略状态
+  // 用于控制忽略状态。是否点击的空白区域
   private ignoreState = false
   // 恢复模型状态的定时器
   private restoreTimer: NodeJS.Timeout | null = null
@@ -39,7 +39,7 @@ export class Live2DManager {
   private mousePressTimer: NodeJS.Timeout | null = null
   // 鼠标长按触发时间
   private longPressDuration = 100 // 长按触发时间（毫秒）
-
+  // 拖动相关
   private dragStartX = 0
   private dragStartY = 0
 
@@ -53,6 +53,41 @@ export class Live2DManager {
 
   // 音量控制属性
   private volume: number = 1.0 // 0.0 to 1.0
+  // 语音播放状态，用于避免动作帧覆盖口型参数
+  private isSpeaking = false
+  // 动作帧插值动画句柄
+  private motionAnimationFrame: number | null = null
+  // 动作帧默认过渡时长
+  private motionFrameDurationMs = 1000
+  // 动作参数覆盖层（在内部动画更新后再写入）
+  private overlayParams: Record<string, number> = {}
+  private overlayExpireAt = 0
+  private overlayDurationMs = 3000
+
+  // 口型覆盖层
+  private currentMouthOpenY = 0
+  // motionManager.update 原始方法与挂钩状态
+  private originalMotionManagerUpdate: ((coreModel: object, now: number) => boolean) | null = null
+  private motionManagerHookInstalled = false
+
+  /**
+   * 缓动函数集合
+   */
+  private EASING_FUNCTIONS = {
+    linear: (t) => t,
+    easeIn: (t) => t * t,
+    easeOut: (t) => t * (2 - t),
+    easeInOut: (t) => (t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t),
+    easeInCubic: (t) => t * t * t,
+    easeOutCubic: (t) => --t * t * t + 1,
+    easeInOutCubic: (t) => (t < 0.5 ? 4 * t * t * t : (t - 1) * (2 * t - 2) * (2 * t - 2) + 1),
+    bounce: (t) => {
+      if (t < 1 / 2.75) return 7.5625 * t * t
+      if (t < 2 / 2.75) return 7.5625 * (t -= 1.5 / 2.75) * t + 0.75
+      if (t < 2.5 / 2.75) return 7.5625 * (t -= 2.25 / 2.75) * t + 0.9375
+      return 7.5625 * (t -= 2.625 / 2.75) * t + 0.984375
+    }
+  }
 
   /**
    * 获取单例实例
@@ -63,40 +98,6 @@ export class Live2DManager {
       Live2DManager.instance = new Live2DManager()
     }
     return Live2DManager.instance
-  }
-
-  /**
-   * 计算模型缩放比例
-   * @param canvasWidth 画布宽度
-   * @param canvasHeight 画布高度
-   * @param modelWidth 模型宽度
-   * @param modelHeight 模型高度
-   * @returns 模型缩放比例
-   */
-  private calculateOptimalScale(
-    canvasWidth: number,
-    canvasHeight: number,
-    modelWidth: number,
-    modelHeight: number
-  ): number {
-    // 计算基于宽高的缩放比例，让模型尽可能大地填充画布
-    const scaleX = canvasWidth / modelWidth
-    const scaleY = canvasHeight / modelHeight
-
-    // 选择较小的缩放比例以确保模型完整显示
-    const scale = Math.min(scaleX, scaleY)
-
-    console.log('Scale calculation:', {
-      canvasWidth,
-      canvasHeight,
-      modelWidth,
-      modelHeight,
-      scaleX,
-      scaleY,
-      finalScale: scale
-    })
-
-    return scale
   }
 
   /**
@@ -129,6 +130,8 @@ export class Live2DManager {
       autoInteract: false
     })
 
+    this.installMotionManagerHook()
+
     this.resetModelTransform()
 
     // 添加模型到舞台
@@ -137,26 +140,52 @@ export class Live2DManager {
     this.audioContext = new AudioContext()
   }
 
-  public async switchModel(modelPath: string): Promise<void> {
-    if (!modelPath) {
-      console.warn('Live2D模型路径为空')
-      return
+  /**
+   * 销毁方法
+   */
+  destroy(): void {
+    // 清理监听器
+    this.stopMouseTracking()
+
+    // 清理长按定时器
+    if (this.mousePressTimer) {
+      clearTimeout(this.mousePressTimer)
+      this.mousePressTimer = null
     }
-    // 移除旧模型
+
+    // 清理聚焦定时器
+    if (this.focusTimeout) {
+      clearTimeout(this.focusTimeout)
+      this.focusTimeout = null
+    }
+
+    // 清理重设定时器
+    if (this.restoreTimer) {
+      clearTimeout(this.restoreTimer)
+    }
+
+    if (this.motionAnimationFrame !== null) {
+      cancelAnimationFrame(this.motionAnimationFrame)
+      this.motionAnimationFrame = null
+    }
+
+    this.isSpeaking = false
+    this.currentMouthOpenY = 0
+    this.overlayParams = {}
+    this.overlayExpireAt = 0
+
+    // 销毁模型
     if (this.model) {
       this.model.destroy()
-      this.app!.stage.removeChild(this.model)
+      this.model = null
     }
-    // 加载新模型
-    this.model = await Live2DModel.from(modelPath, {
-      ticker: PIXI.Ticker.shared,
-      autoInteract: false
-    })
-    // 添加新模型到舞台
-    this.app!.stage.addChild(this.model)
 
-    // 重置模型变换
-    this.resetModelTransform()
+    // 销毁渲染器
+    if (this.app) {
+      this.app.destroy(true)
+      this.app = null
+      this.canvasElement = null
+    }
   }
 
   /*
@@ -275,6 +304,31 @@ export class Live2DManager {
     )
   }
 
+  public async switchModel(modelPath: string): Promise<void> {
+    if (!modelPath) {
+      console.warn('Live2D模型路径为空')
+      return
+    }
+    // 移除旧模型
+    if (this.model) {
+      this.model.destroy()
+      this.app!.stage.removeChild(this.model)
+    }
+    // 加载新模型
+    this.model = await Live2DModel.from(modelPath, {
+      ticker: PIXI.Ticker.shared,
+      autoInteract: false
+    })
+    this.motionManagerHookInstalled = false
+    // this.originalMotionManagerUpdate = null
+    this.installMotionManagerHook()
+    // 添加新模型到舞台
+    this.app!.stage.addChild(this.model)
+
+    // 重置模型变换
+    this.resetModelTransform()
+  }
+
   /**
    * 重置模型到初始位置和缩放
    */
@@ -285,7 +339,7 @@ export class Live2DManager {
     const displayHeight = this.app.renderer.height / this.app.renderer.resolution
 
     // 计算最优缩放
-    const optimalScale = this.calculateOptimalScale(
+    const optimalScale = this._calculateOptimalScale(
       displayWidth,
       displayHeight,
       this.model.width,
@@ -575,6 +629,234 @@ export class Live2DManager {
   }
 
   /**
+   * 获取模型参数值，兼容不同版本的 Live2D 运行时 API
+   * @param paramId 参数 ID
+   * @returns 参数值或 null
+   */
+  private getModelParameterValue(paramId: string): number | null {
+    if (!this.model) return null
+
+    const coreModel = this.model.internalModel.coreModel
+    if (!coreModel) return null
+
+    // @ts-expect-error 运行时 API 存在但类型不完整
+    const paramIndex = coreModel.getParameterIndex(paramId)
+    if (paramIndex >= 0) {
+      // @ts-expect-error 运行时 API 存在但类型不完整
+      if (typeof coreModel.getParameterValueByIndex === 'function') {
+        // @ts-expect-error 运行时 API 存在但类型不完整
+        const valueByIndex = coreModel.getParameterValueByIndex(paramIndex)
+        return valueByIndex
+      } else {
+        // @ts-expect-error 运行时 API 存在但类型不完整
+        const valueLegacy = coreModel.getParameterValue(paramIndex)
+        return valueLegacy
+      }
+    } else {
+      return null
+    }
+
+    // 回退 byId（兼容只提供 byId 的运行时）
+    // // @ts-expect-error 运行时 API 存在但类型不完整
+    // if (typeof coreModel.getParameterValueById === 'function') {
+    //   // @ts-expect-error 运行时 API 存在但类型不完整
+    //   const valueById = coreModel.getParameterValueById(paramId)
+    //   if (typeof valueById === 'number' && Number.isFinite(valueById)) return valueById
+    // }
+    // return null
+  }
+
+  private hasModelParameter(paramId: string): boolean {
+    if (!this.model) return false
+    try {
+      const coreModel = this.model.internalModel.coreModel
+      // @ts-expect-error 无法找到模型参数
+      if (!coreModel || typeof coreModel.getParameterIndex !== 'function') return false
+      // @ts-expect-error 无法找到模型参数
+      return coreModel.getParameterIndex(paramId) >= 0
+    } catch {
+      return false
+    }
+  }
+
+  private setModelParameterValue(paramId: string, value: number): boolean {
+    if (!this.model || !this.model.internalModel) return false
+
+    const coreModel = this.model.internalModel.coreModel
+    // @ts-expect-error 运行时 API 存在但类型不完整
+    const paramIndex = coreModel.getParameterIndex(paramId)
+
+    if (paramIndex < 0) return false
+    // @ts-expect-error 运行时 API 存在但类型不完整
+    if (typeof coreModel.setParameterValue === 'function') {
+      // @ts-expect-error 运行时 API 存在但类型不完整
+      coreModel.setParameterValue(paramIndex, value)
+      return true
+      // @ts-expect-error 运行时 API 存在但类型不完整
+    } else if (typeof coreModel.setParameterValueByIndex === 'function') {
+      // @ts-expect-error 运行时 API 存在但类型不完整
+      coreModel.setParameterValueByIndex(paramIndex, value, 1)
+      return true
+    } else {
+      console.warn(
+        `无法设置参数 ${paramId}，运行时不支持 setParameterValue 或 setParameterValueByIndex`
+      )
+      return true
+    }
+  }
+
+  /*
+   * 安装对 motionManager.update 的挂钩，以在动作更新后应用参数覆盖
+   * 这允许我们在动作帧过渡期间持续覆盖参数（如口型），而不会被动作本身覆盖
+   */
+  private installMotionManagerHook(): void {
+    if (!this.model || this.motionManagerHookInstalled) return
+
+    const motionManager = this.model.internalModel.motionManager
+    if (!motionManager || typeof motionManager.update !== 'function') return
+
+    this.originalMotionManagerUpdate = motionManager.update
+    motionManager.update = (coreModel: object, now: number): boolean => {
+      const result = this.originalMotionManagerUpdate!.call(motionManager, coreModel, now)
+
+      const ts = performance.now()
+      if (ts <= this.overlayExpireAt) {
+        for (const [paramId, value] of Object.entries(this.overlayParams)) {
+          this.setModelParameterValue(paramId, value)
+        }
+      }
+
+      if (this.isSpeaking) {
+        this.setModelParameterValue('ParamMouthOpenY', this.currentMouthOpenY)
+      }
+
+      return result
+    }
+
+    this.motionManagerHookInstalled = true
+  }
+
+  /**
+   * 应用动作帧参数
+   * @param parameters Live2D 参数键值对
+   */
+  public applyMotionFrame(parameters: Record<string, number>): void {
+    if (!this.model || !parameters) return
+
+    const targetParams: Record<string, number> = {}
+    const startParams: Record<string, number> = {}
+    const speakingBlockedParams = new Set(['ParamMouthOpenY'])
+
+    for (const [paramId, rawValue] of Object.entries(parameters)) {
+      if (typeof rawValue !== 'number' || Number.isNaN(rawValue)) {
+        continue
+      }
+      if (this.isSpeaking && speakingBlockedParams.has(paramId)) {
+        continue
+      }
+
+      if (!this.hasModelParameter(paramId)) {
+        continue
+      }
+
+      const currentValue = this.getModelParameterValue(paramId)
+      if (currentValue === null) {
+        continue
+      }
+
+      targetParams[paramId] = rawValue
+      startParams[paramId] = currentValue
+    }
+
+    const paramIds = Object.keys(targetParams)
+
+    if (this.motionAnimationFrame !== null) {
+      cancelAnimationFrame(this.motionAnimationFrame)
+      this.motionAnimationFrame = null
+    }
+
+    const startTime = performance.now()
+    const duration = this.motionFrameDurationMs
+
+    const animate = (now: number): void => {
+      const progress = Math.min((now - startTime) / duration, 1)
+      const eased = this.EASING_FUNCTIONS.easeOutCubic(progress)
+
+      const currentParams: Record<string, number> = {}
+
+      for (const paramId of paramIds) {
+        const from = startParams[paramId]
+        const to = targetParams[paramId]
+        const value = from + (to - from) * eased
+        currentParams[paramId] = value
+      }
+
+      this.overlayParams = currentParams
+      this.overlayExpireAt = performance.now() + this.overlayDurationMs
+
+      if (progress < 1) {
+        this.motionAnimationFrame = requestAnimationFrame(animate)
+      } else {
+        this.motionAnimationFrame = null
+      }
+    }
+
+    this.motionAnimationFrame = requestAnimationFrame(animate)
+  }
+
+  /**
+   * 清除当前的动作帧覆盖，平滑恢复模型参数到正常状态
+   */
+  public clearMotionFrame(): void {
+    if (!this.model || Object.keys(this.overlayParams).length === 0) {
+      this.overlayParams = {}
+      this.overlayExpireAt = 0
+      return
+    }
+
+    // 取消当前的动画帧
+    if (this.motionAnimationFrame !== null) {
+      cancelAnimationFrame(this.motionAnimationFrame)
+      this.motionAnimationFrame = null
+    }
+
+    const startParams = { ...this.overlayParams }
+    const paramIds = Object.keys(startParams)
+
+    if (paramIds.length === 0) return
+
+    const startTime = performance.now()
+    const duration = this.motionFrameDurationMs
+
+    const animate = (now: number): void => {
+      const progress = Math.min((now - startTime) / duration, 1)
+      const eased = this.EASING_FUNCTIONS.easeOutCubic(progress)
+
+      const currentParams: Record<string, number> = {}
+
+      for (const paramId of paramIds) {
+        const from = startParams[paramId]
+        const value = from * (1 - eased) // 从当前值平滑过渡到0
+        currentParams[paramId] = value
+      }
+
+      this.overlayParams = currentParams
+      this.overlayExpireAt = performance.now() + 100 // 设置较短的过期时间
+
+      if (progress < 1) {
+        this.motionAnimationFrame = requestAnimationFrame(animate)
+      } else {
+        // 动画结束，完全清除覆盖参数
+        this.overlayParams = {}
+        this.overlayExpireAt = 0
+        this.motionAnimationFrame = null
+      }
+    }
+
+    this.motionAnimationFrame = requestAnimationFrame(animate)
+  }
+
+  /**
    * 播放音频,并同步口型 (使用二进制音频数据)
    * @param audioData 音频二进制数据
    * @param volume 音量值 (0.0 to 1.0)
@@ -582,71 +864,59 @@ export class Live2DManager {
   public async speak(audioData: ArrayBuffer, volume: number = this.volume): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
+        this.isSpeaking = true
+        this.currentMouthOpenY = 0
         this.model!.motion('Speak', 0, MotionPriority.NORMAL)
         // this.model!.internalModel.motionManager.state.shouldRequestIdleMotion = () => false // 取消idle 动作
 
-        this.audioContext!.decodeAudioData(audioData).then((audioBuffer) => {
-          const source = this.audioContext!.createBufferSource()
-          const analyser = this.audioContext!.createAnalyser()
-          const gainNode = this.audioContext!.createGain()
-          // 设置音量
-          gainNode.gain.value = Math.max(0, Math.min(1, volume))
+        this.audioContext!.decodeAudioData(audioData)
+          .then((audioBuffer) => {
+            const source = this.audioContext!.createBufferSource()
+            const analyser = this.audioContext!.createAnalyser()
+            const gainNode = this.audioContext!.createGain()
+            // 设置音量
+            gainNode.gain.value = Math.max(0, Math.min(1, volume))
 
-          source.buffer = audioBuffer
-          analyser.connect(this.audioContext!.destination)
-          source.connect(analyser)
-          gainNode.connect(this.audioContext!.destination)
+            source.buffer = audioBuffer
+            source.connect(gainNode)
+            gainNode.connect(analyser)
+            analyser.connect(this.audioContext!.destination)
 
-          let requestId: number | null = null
-          let originalUpdate: ((coreModel: object, now: number) => boolean) | null = null
+            let requestId: number | null = null
 
-          // 监听音频播放完毕
-          source.onended = () => {
-            if (requestId !== null) {
-              cancelAnimationFrame(requestId)
+            // 监听音频播放完毕
+            source.onended = () => {
+              if (requestId !== null) {
+                cancelAnimationFrame(requestId)
+              }
+              this.currentMouthOpenY = 0
+              this.setModelParameterValue('ParamMouthOpenY', 0)
+              this.isSpeaking = false
+
+              resolve()
             }
-            // 恢复原始的 update 方法
-            if (originalUpdate) {
-              this.model!.internalModel.motionManager.update = originalUpdate
-            }
 
-            // @ts-expect-error 无法找到模型参数
-            this.model.internalModel.coreModel.setParameterValueById('ParamMouthOpenY', 0, 1)
+            source.start(0)
 
-            resolve()
-          }
+            const updateMouth = (): void => {
+              const dataArray = new Uint8Array(analyser.frequencyBinCount)
+              analyser.getByteFrequencyData(dataArray)
+              const volume = dataArray.reduce((a, b) => a + b) / dataArray.length
+              const mouthOpenCoefficient = 1.2
+              const mouthOpen = Math.min(1, (volume / 40) * mouthOpenCoefficient)
+              this.currentMouthOpenY = mouthOpen
 
-          source.start(0)
-
-          const updateMouth = (): void => {
-            const dataArray = new Uint8Array(analyser.frequencyBinCount)
-            analyser.getByteFrequencyData(dataArray)
-            const volume = dataArray.reduce((a, b) => a + b) / dataArray.length
-            const mouthOpenCoefficient = 1.2
-            const mouthOpen = Math.min(1, (volume / 40) * mouthOpenCoefficient)
-            // 只有在没有保存原始更新方法时才保存一次
-            if (!originalUpdate) {
-              originalUpdate = this.model!.internalModel.motionManager.update
-            }
-            // @ts-expect-error 无法找到模型参数
-            this.model!.internalModel.motionManager.update = (coreModel, time) => {
-              // 调用原始更新方法
-              originalUpdate!.call(this.model!.internalModel.motionManager, coreModel, time)
-
-              // 更新嘴巴参数
-              // @ts-expect-error 无法找到模型参数
-              this.model!.internalModel.coreModel.setParameterValueById(
-                'ParamMouthOpenY',
-                mouthOpen
-              )
+              requestId = requestAnimationFrame(updateMouth)
             }
 
             requestId = requestAnimationFrame(updateMouth)
-          }
-
-          requestId = requestAnimationFrame(updateMouth)
-        })
+          })
+          .catch((error) => {
+            this.isSpeaking = false
+            reject(error)
+          })
       } catch (error) {
+        this.isSpeaking = false
         reject(error)
       }
     })
@@ -729,40 +999,36 @@ export class Live2DManager {
   }, 200) // 每 200ms 检测一次
 
   /**
-   * 销毁方法
+   * 计算模型缩放比例
+   * @param canvasWidth 画布宽度
+   * @param canvasHeight 画布高度
+   * @param modelWidth 模型宽度
+   * @param modelHeight 模型高度
+   * @returns 模型缩放比例
    */
-  destroy(): void {
-    // 清理监听器
-    this.stopMouseTracking()
+  private _calculateOptimalScale(
+    canvasWidth: number,
+    canvasHeight: number,
+    modelWidth: number,
+    modelHeight: number
+  ): number {
+    // 计算基于宽高的缩放比例，让模型尽可能大地填充画布
+    const scaleX = canvasWidth / modelWidth
+    const scaleY = canvasHeight / modelHeight
 
-    // 清理长按定时器
-    if (this.mousePressTimer) {
-      clearTimeout(this.mousePressTimer)
-      this.mousePressTimer = null
-    }
+    // 选择较小的缩放比例以确保模型完整显示
+    const scale = Math.min(scaleX, scaleY)
 
-    // 清理聚焦定时器
-    if (this.focusTimeout) {
-      clearTimeout(this.focusTimeout)
-      this.focusTimeout = null
-    }
+    console.log('Scale calculation:', {
+      canvasWidth,
+      canvasHeight,
+      modelWidth,
+      modelHeight,
+      scaleX,
+      scaleY,
+      finalScale: scale
+    })
 
-    // 清理重设定时器
-    if (this.restoreTimer) {
-      clearTimeout(this.restoreTimer)
-    }
-
-    // 销毁模型
-    if (this.model) {
-      this.model.destroy()
-      this.model = null
-    }
-
-    // 销毁渲染器
-    if (this.app) {
-      this.app.destroy(true)
-      this.app = null
-      this.canvasElement = null
-    }
+    return scale
   }
 }

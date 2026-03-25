@@ -1,5 +1,5 @@
 <template>
-  <div id="container" :class="{ focus: isWindowFocused }">
+  <div id="container">
     <aside class="titlebar">
       <div class="titlebar-icons">
         <div
@@ -13,7 +13,7 @@
       </div>
     </aside>
 
-    <main>
+    <main style="backdrop-filter: blur(20px)">
       <component :is="currentComponent" v-if="currentComponent" />
     </main>
     <div id="tabs-container">
@@ -47,7 +47,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted, onUnmounted } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import HomeView from './HomeView.vue'
 import AssistantManagerView from './AssistantManagerView.vue'
 import PluginsView from './PluginManagerView.vue'
@@ -59,7 +59,6 @@ import { NotificationService } from '../services/NotificationService'
 const notificationService = NotificationService.getInstance()
 
 const activeTab = ref(0)
-const isWindowFocused = ref(true) // 默认聚焦状态
 
 const titlebarIcons = [
   {
@@ -133,15 +132,6 @@ function switchTab(index: number): void {
   activeTab.value = index
 }
 
-// 窗口聚焦事件处理
-function handleFocus(): void {
-  isWindowFocused.value = false
-}
-
-function handleBlur(): void {
-  isWindowFocused.value = true
-}
-
 // 检查云端版本
 async function checkCloudVersion(): Promise<void> {
   const result = await window.api.checkCloudVersion()
@@ -167,20 +157,7 @@ async function checkCloudVersion(): Promise<void> {
 }
 
 onMounted(() => {
-  // 添加事件监听器
-  window.addEventListener('focus', handleFocus)
-  window.addEventListener('blur', handleBlur)
-
-  // 初始化聚焦状态
-  isWindowFocused.value = document.hasFocus()
-
   checkCloudVersion()
-})
-
-onUnmounted(() => {
-  // 移除事件监听器
-  window.removeEventListener('focus', handleFocus)
-  window.removeEventListener('blur', handleBlur)
 })
 </script>
 
@@ -208,13 +185,21 @@ main {
   height: 100vh;
   display: flex;
   /* background-color: #eff4f9; */
-  background-color: rgba(255, 255, 255, 0.4);
+  /* background-color: rgba(255, 255, 255, 0.4); */
   overflow: hidden;
-  transition: background-color 0.3s ease;
+  background-image: url('../assets/images/app_background.png');
+  background-size: cover;
+  background-position: center;
 }
 
-#container.focus {
-  background-color: #eff4f9;
+#container::before {
+  position: absolute;
+  content: '';
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  /* background-color: #eff4f9; */
+  background-color: rgba(255, 255, 255, 0.6);
 }
 
 .titlebar {
@@ -268,7 +253,7 @@ main {
 #tabs {
   /* background-color: #eeeef6bd; */
   background-color: rgb(247, 247, 247, 0.3);
-  backdrop-filter: blur(10px);
+  backdrop-filter: blur(5px);
   border-radius: 50px;
   box-shadow: 0 3px 15px rgba(179, 179, 179, 0.5);
   width: auto;

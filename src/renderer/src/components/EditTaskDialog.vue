@@ -94,6 +94,28 @@
             </div>
           </div>
 
+          <div class="form-group">
+            <label class="form-label">任务优先级</label>
+            <div class="priority-selector">
+              <div
+                v-for="priority in priorityOptions"
+                :key="priority.value"
+                class="priority-option"
+                :class="{
+                  active: editingTask.priority === priority.value,
+                  critical: priority.value === 'critical',
+                  high: priority.value === 'high',
+                  medium: priority.value === 'medium',
+                  low: priority.value === 'low'
+                }"
+                @click="editingTask.priority = priority.value"
+              >
+                <div class="priority-dot"></div>
+                <span class="priority-label">{{ priority.label }}</span>
+              </div>
+            </div>
+          </div>
+
           <div class="form-footer-row">
             <label class="moe-switch">
               <input v-model="editingTask.autoStart" type="checkbox" />
@@ -134,6 +156,14 @@ interface Props {
 const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
 
+// 优先级选项
+const priorityOptions = [
+  { value: 'critical', label: '核心' },
+  { value: 'high', label: '高' },
+  { value: 'medium', label: '中' },
+  { value: 'low', label: '低' }
+]
+
 // 用于UI交互的状态
 const focusedField = ref<string>('')
 
@@ -144,7 +174,8 @@ const editingTask = reactive<Omit<PythonTask, 'id'>>({
   scriptPath: '',
   venvPython: '',
   workDir: '',
-  autoStart: false
+  autoStart: false,
+  priority: 'high'
 })
 
 const taskManager = TaskManager.getInstance()
@@ -165,7 +196,8 @@ watch(
         scriptPath: newTask.scriptPath,
         venvPython: newTask.venvPython,
         workDir: newTask.workDir,
-        autoStart: newTask.autoStart
+        autoStart: newTask.autoStart,
+        priority: newTask.priority
       })
     }
   },
@@ -201,7 +233,8 @@ function submitEditTask(): void {
     scriptPath: editingTask.scriptPath.trim(),
     venvPython: editingTask.venvPython.trim(),
     workDir: editingTask.workDir.trim(),
-    autoStart: editingTask.autoStart
+    autoStart: editingTask.autoStart,
+    priority: editingTask.priority
   }
 
   taskManager.updateTask(props.task.id, taskData)
@@ -216,6 +249,7 @@ function resetForm(): void {
   editingTask.venvPython = ''
   editingTask.workDir = ''
   editingTask.autoStart = false
+  editingTask.priority = 'high'
 }
 
 const closeDialog = (): void => {
@@ -525,5 +559,94 @@ input:checked + .slider:before {
   opacity: 0.6;
   cursor: not-allowed;
   transform: none;
+}
+
+.priority-selector {
+  display: flex;
+  gap: 8px;
+  background: #f4f6f9;
+  border-radius: 14px;
+  padding: 4px;
+  border: 2px solid transparent;
+}
+
+.priority-option {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.priority-option:hover {
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.priority-option.active {
+  background: white;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.priority-option.critical.active {
+  color: #ff4757;
+}
+
+.priority-option.high.active {
+  color: #ffa502;
+}
+
+.priority-option.medium.active {
+  color: #2ed573;
+}
+
+.priority-option.low.active {
+  color: #70a1ff;
+}
+
+.priority-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  transition: all 0.3s ease;
+}
+
+.priority-option.critical .priority-dot {
+  background: #ff4757;
+}
+
+.priority-option.high .priority-dot {
+  background: #ffa502;
+}
+
+.priority-option.medium .priority-dot {
+  background: #2ed573;
+}
+
+.priority-option.low .priority-dot {
+  background: #70a1ff;
+}
+
+.priority-option.active .priority-dot {
+  transform: scale(1.2);
+}
+
+.priority-label {
+  font-weight: 600;
+}
+
+/* 底部区域 */
+.form-footer-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 25px;
+  padding-top: 20px;
+  border-top: 1px dashed #eee;
 }
 </style>
