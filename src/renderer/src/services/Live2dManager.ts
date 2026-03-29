@@ -8,6 +8,11 @@ config.motionFadingDuration = 500
 config.idleMotionFadingDuration = 500
 config.expressionFadingDuration = 500
 
+interface MotionFrameOptions {
+  transitionMs?: number
+  holdMs?: number
+}
+
 export class Live2DManager {
   // 单例模式
   private static instance: Live2DManager
@@ -50,38 +55,80 @@ export class Live2DManager {
   private scaleStep = 0.05
   // 画步锁定相关
   private isLocked = false
-
   // 音量控制属性
   private volume: number = 1.0 // 0.0 to 1.0
   // 语音播放状态，用于避免动作帧覆盖口型参数
   private isSpeaking = false
-  // 动作帧插值动画句柄
-  private motionAnimationFrame: number | null = null
-  // 动作帧默认过渡时长
-  private motionFrameDurationMs = 1000
-  // 动作参数覆盖层（在内部动画更新后再写入）
-  private overlayParams: Record<string, number> = {}
-  private overlayExpireAt = 0
-  private overlayDurationMs = 3000
+  // 动作帧默认保持时长
+  private overlayDurationMs = 2000
+  // 动作参数覆盖层（每帧平滑更新，避免跳变）
+  private overlayCurrentParams: Record<string, number> = {}
+  private overlayTargetParams: Record<string, number> = {}
+  private overlayHoldUntil = 0
+  private overlayLastTickAt = 0
+  private overlayTransitionMs: number | null = null
 
-  // 口型覆盖层
+  // 当前口型开合度，用于语音驱动口型时的平滑过渡
   private currentMouthOpenY = 0
-  // motionManager.update 原始方法与挂钩状态
+  // motionManager.update 原始方法与钩子状态
   private originalMotionManagerUpdate: ((coreModel: object, now: number) => boolean) | null = null
+  private hookedMotionManager: { update: (coreModel: object, now: number) => boolean } | null = null
+  // 是否已安装 motionManager.update 钩子
   private motionManagerHookInstalled = false
+
+  // Procedural 层状态（眨眼、眼球微颤）
+  private proceduralBlinkPhase = 0 // 0=待机 1=闭眼中 2=睁眼中
+  private proceduralBlinkTimer = 0 // 当前阶段已过时间 ms
+  private proceduralNextBlinkIn = 3000 // 距下次眨眼 ms
+  private proceduralLastTickAt = 0
+  private proceduralBlinkValue = 0 // 当前眨眼叠加量（负值压低 EyeOpen）
+
+  /**
+   * 每个参数的独立过渡配置。
+   * transitionMs：进入目标值的过渡时长
+   * easing：进入时缓动函数名
+   * releaseMs：结束后恢复默认的过渡时长
+   */
+  private readonly PARAM_CONFIG: Record<
+    string,
+    { transitionMs: number; easing: keyof Live2DManager['EASING_FUNCTIONS']; releaseMs: number }
+  > = {
+    // 眼球 —— 最快，带弹性
+    ParamEyeBallX: { transitionMs: 80, easing: 'easeOutCubic', releaseMs: 500 },
+    ParamEyeBallY: { transitionMs: 80, easing: 'easeOutCubic', releaseMs: 500 },
+    // 眼睛开合
+    ParamEyeLOpen: { transitionMs: 130, easing: 'easeOutCubic', releaseMs: 700 },
+    ParamEyeROpen: { transitionMs: 130, easing: 'easeOutCubic', releaseMs: 700 },
+    eyesuoxiaoL: { transitionMs: 130, easing: 'easeOutCubic', releaseMs: 700 },
+    eyesuoxiaoR: { transitionMs: 130, easing: 'easeOutCubic', releaseMs: 700 }
+  }
+
+  private readonly DEFAULT_PARAM_CONFIG: {
+    transitionMs: number
+    easing: keyof Live2DManager['EASING_FUNCTIONS']
+    releaseMs: number
+  } = {
+    transitionMs: 220,
+    easing: 'easeOutCubic',
+    releaseMs: 700
+  }
 
   /**
    * 缓动函数集合
    */
   private EASING_FUNCTIONS = {
-    linear: (t) => t,
-    easeIn: (t) => t * t,
-    easeOut: (t) => t * (2 - t),
-    easeInOut: (t) => (t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t),
-    easeInCubic: (t) => t * t * t,
-    easeOutCubic: (t) => --t * t * t + 1,
-    easeInOutCubic: (t) => (t < 0.5 ? 4 * t * t * t : (t - 1) * (2 * t - 2) * (2 * t - 2) + 1),
-    bounce: (t) => {
+    linear: (t: number) => t,
+    easeIn: (t: number) => t * t,
+    easeOut: (t: number) => t * (2 - t),
+    easeInOut: (t: number) => (t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t),
+    easeInCubic: (t: number) => t * t * t,
+    easeOutCubic: (t: number) => {
+      const s = t - 1
+      return s * s * s + 1
+    },
+    easeInOutCubic: (t: number) =>
+      t < 0.5 ? 4 * t * t * t : (t - 1) * (2 * t - 2) * (2 * t - 2) + 1,
+    bounce: (t: number) => {
       if (t < 1 / 2.75) return 7.5625 * t * t
       if (t < 2 / 2.75) return 7.5625 * (t -= 1.5 / 2.75) * t + 0.75
       if (t < 2.5 / 2.75) return 7.5625 * (t -= 2.25 / 2.75) * t + 0.9375
@@ -164,15 +211,15 @@ export class Live2DManager {
       clearTimeout(this.restoreTimer)
     }
 
-    if (this.motionAnimationFrame !== null) {
-      cancelAnimationFrame(this.motionAnimationFrame)
-      this.motionAnimationFrame = null
-    }
-
     this.isSpeaking = false
     this.currentMouthOpenY = 0
-    this.overlayParams = {}
-    this.overlayExpireAt = 0
+    this.overlayCurrentParams = {}
+    this.overlayTargetParams = {}
+    this.overlayHoldUntil = 0
+    this.overlayLastTickAt = 0
+    this.overlayTransitionMs = null
+
+    this.uninstallMotionManagerHook()
 
     // 销毁模型
     if (this.model) {
@@ -311,6 +358,7 @@ export class Live2DManager {
     }
     // 移除旧模型
     if (this.model) {
+      this.uninstallMotionManagerHook()
       this.model.destroy()
       this.app!.stage.removeChild(this.model)
     }
@@ -319,8 +367,19 @@ export class Live2DManager {
       ticker: PIXI.Ticker.shared,
       autoInteract: false
     })
+
+    // 模型切换后重置语音/动作覆盖状态，避免沿用旧模型参数状态
+    this.isSpeaking = false
+    this.currentMouthOpenY = 0
+    this.overlayCurrentParams = {}
+    this.overlayTargetParams = {}
+    this.overlayHoldUntil = 0
+    this.overlayLastTickAt = 0
+    this.overlayTransitionMs = null
+
     this.motionManagerHookInstalled = false
-    // this.originalMotionManagerUpdate = null
+    this.originalMotionManagerUpdate = null
+    this.hookedMotionManager = null
     this.installMotionManagerHook()
     // 添加新模型到舞台
     this.app!.stage.addChild(this.model)
@@ -655,17 +714,13 @@ export class Live2DManager {
     } else {
       return null
     }
-
-    // 回退 byId（兼容只提供 byId 的运行时）
-    // // @ts-expect-error 运行时 API 存在但类型不完整
-    // if (typeof coreModel.getParameterValueById === 'function') {
-    //   // @ts-expect-error 运行时 API 存在但类型不完整
-    //   const valueById = coreModel.getParameterValueById(paramId)
-    //   if (typeof valueById === 'number' && Number.isFinite(valueById)) return valueById
-    // }
-    // return null
   }
 
+  /**
+   * 检查模型是否具有指定的参数 ID
+   * @param paramId 参数 ID
+   * @returns 是否存在该参数
+   */
   private hasModelParameter(paramId: string): boolean {
     if (!this.model) return false
     try {
@@ -713,19 +768,20 @@ export class Live2DManager {
     if (!this.model || this.motionManagerHookInstalled) return
 
     const motionManager = this.model.internalModel.motionManager
-    if (!motionManager || typeof motionManager.update !== 'function') return
+    const originalUpdate = motionManager.update
+    this.originalMotionManagerUpdate = originalUpdate
+    this.hookedMotionManager = motionManager
 
-    this.originalMotionManagerUpdate = motionManager.update
     motionManager.update = (coreModel: object, now: number): boolean => {
-      const result = this.originalMotionManagerUpdate!.call(motionManager, coreModel, now)
+      const result = originalUpdate.call(motionManager, coreModel, now)
 
-      const ts = performance.now()
-      if (ts <= this.overlayExpireAt) {
-        for (const [paramId, value] of Object.entries(this.overlayParams)) {
-          this.setModelParameterValue(paramId, value)
-        }
-      }
+      // 1. 先执行动作参数覆盖层（pose 级别）
+      this.tickMotionOverlay(performance.now())
 
+      // 2. 再叠加 Procedural 层（眨眼/微颤，优先级最高，不会被 overlay 压制）
+      this.tickProceduralLayer(performance.now())
+
+      // 3. 最后写入口型，确保语音驱动不被覆盖
       if (this.isSpeaking) {
         this.setModelParameterValue('ParamMouthOpenY', this.currentMouthOpenY)
       }
@@ -736,124 +792,229 @@ export class Live2DManager {
     this.motionManagerHookInstalled = true
   }
 
+  private uninstallMotionManagerHook(): void {
+    if (!this.motionManagerHookInstalled) {
+      this.originalMotionManagerUpdate = null
+      this.hookedMotionManager = null
+      return
+    }
+
+    if (this.hookedMotionManager && this.originalMotionManagerUpdate) {
+      this.hookedMotionManager.update = this.originalMotionManagerUpdate
+    }
+
+    this.originalMotionManagerUpdate = null
+    this.hookedMotionManager = null
+    this.motionManagerHookInstalled = false
+  }
+
   /**
    * 应用动作帧参数
    * @param parameters Live2D 参数键值对
    */
-  public applyMotionFrame(parameters: Record<string, number>): void {
+  public applyMotionFrame(parameters: Record<string, number>, options?: MotionFrameOptions): void {
     if (!this.model || !parameters) return
 
     const targetParams: Record<string, number> = {}
-    const startParams: Record<string, number> = {}
     const speakingBlockedParams = new Set(['ParamMouthOpenY'])
 
     for (const [paramId, rawValue] of Object.entries(parameters)) {
-      if (typeof rawValue !== 'number' || Number.isNaN(rawValue)) {
-        continue
-      }
-      if (this.isSpeaking && speakingBlockedParams.has(paramId)) {
-        continue
-      }
+      if (typeof rawValue !== 'number' || Number.isNaN(rawValue)) continue
+      if (this.isSpeaking && speakingBlockedParams.has(paramId)) continue
+      if (!this.hasModelParameter(paramId)) continue
 
-      if (!this.hasModelParameter(paramId)) {
-        continue
-      }
-
-      const currentValue = this.getModelParameterValue(paramId)
-      if (currentValue === null) {
-        continue
-      }
+      const modelValue = this.getModelParameterValue(paramId)
+      if (modelValue === null) continue
 
       targetParams[paramId] = rawValue
-      startParams[paramId] = currentValue
-    }
 
-    const paramIds = Object.keys(targetParams)
-
-    if (this.motionAnimationFrame !== null) {
-      cancelAnimationFrame(this.motionAnimationFrame)
-      this.motionAnimationFrame = null
-    }
-
-    const startTime = performance.now()
-    const duration = this.motionFrameDurationMs
-
-    const animate = (now: number): void => {
-      const progress = Math.min((now - startTime) / duration, 1)
-      const eased = this.EASING_FUNCTIONS.easeOutCubic(progress)
-
-      const currentParams: Record<string, number> = {}
-
-      for (const paramId of paramIds) {
-        const from = startParams[paramId]
-        const to = targetParams[paramId]
-        const value = from + (to - from) * eased
-        currentParams[paramId] = value
-      }
-
-      this.overlayParams = currentParams
-      this.overlayExpireAt = performance.now() + this.overlayDurationMs
-
-      if (progress < 1) {
-        this.motionAnimationFrame = requestAnimationFrame(animate)
-      } else {
-        this.motionAnimationFrame = null
+      // 关键改动：若该参数从未被追踪过，从模型当前值出发，避免首次进入时的跳变。
+      // 若已在追踪中（chunk 衔接），保留 overlayCurrentParams 的当前插值位置，
+      // 直接更新目标即可，插值会从"正在运动的位置"平滑转向新目标。
+      if (!(paramId in this.overlayCurrentParams)) {
+        this.overlayCurrentParams[paramId] = modelValue
       }
     }
+    if (Object.keys(targetParams).length === 0) return
 
-    this.motionAnimationFrame = requestAnimationFrame(animate)
+    const transitionMs = options?.transitionMs
+    this.overlayTransitionMs =
+      typeof transitionMs === 'number' && Number.isFinite(transitionMs)
+        ? this.clampDuration(transitionMs, 60, 2000)
+        : null
+
+    const holdDuration = this.clampDuration(options?.holdMs ?? this.overlayDurationMs, 120, 10000)
+    // 直接更新目标参数和持续时间，不重置 overlayCurrentParams
+    this.overlayTargetParams = targetParams
+    this.overlayHoldUntil = performance.now() + holdDuration
+  }
+
+  /**
+   * 限制持续时间在合理范围内，避免过短或过长导致的异常行为
+   * @param value 输入的持续时间（毫秒）
+   * @param min 最小持续时间（毫秒）
+   * @param max 最大持续时间（毫秒）
+   * @returns 限制后的持续时间
+   */
+  private clampDuration(value: number, min: number, max: number): number {
+    if (!Number.isFinite(value)) {
+      return min
+    }
+    return Math.max(min, Math.min(max, value))
   }
 
   /**
    * 清除当前的动作帧覆盖，平滑恢复模型参数到正常状态
    */
   public clearMotionFrame(): void {
-    if (!this.model || Object.keys(this.overlayParams).length === 0) {
-      this.overlayParams = {}
-      this.overlayExpireAt = 0
+    if (!this.model) {
+      this.overlayCurrentParams = {}
+      this.overlayTargetParams = {}
+      this.overlayHoldUntil = 0
+      this.overlayTransitionMs = null
       return
     }
+    // 清空目标，让 tickMotionOverlay 执行平滑释放，不立即归零
+    this.overlayTargetParams = {}
+    this.overlayHoldUntil = 0
+    this.overlayTransitionMs = null
+  }
 
-    // 取消当前的动画帧
-    if (this.motionAnimationFrame !== null) {
-      cancelAnimationFrame(this.motionAnimationFrame)
-      this.motionAnimationFrame = null
-    }
+  /**
+   * 动作序列正常结束时调用（对应后端 done=true）。
+   * 与 clearMotionFrame 不同：overlayCurrentParams 保留当前值，
+   * tickMotionOverlay 会从当前真实位置平滑缓出到默认，不会突变。
+   */
+  public finishMotionSequence(): void {
+    console.log('Motion sequence finished')
+    // holdUntil 设为过去，触发 release 逻辑
+    this.overlayHoldUntil = performance.now() - 1
+    // 清空目标，release 阶段 targetValue 为 0，current 从当前位置缓出
+    this.overlayTargetParams = {}
+    this.overlayTransitionMs = null
+    // 不动 overlayCurrentParams，保持当前插值位置作为 release 起点
+  }
 
-    const startParams = { ...this.overlayParams }
-    const paramIds = Object.keys(startParams)
+  /**
+   * 每帧调用，更新动作参数覆盖层并应用到模型。
+   * 改动要点：
+   *  1. 使用 PARAM_CONFIG 为每个参数独立查询 transitionMs / releaseMs / easing
+   *  2. dt 上限 50ms，防止窗口切换后大步长导致参数瞬移
+   *  3. 新 chunk 到来时 overlayCurrentParams 保留，从当前位置平滑切换目标
+   */
+  private tickMotionOverlay(now: number): void {
+    const rawDt = this.overlayLastTickAt > 0 ? now - this.overlayLastTickAt : 16
+    this.overlayLastTickAt = now
+    // 上限 50ms，避免页面切换后的超大步长
+    const dt = Math.min(rawDt, 50) / 1000
 
-    if (paramIds.length === 0) return
+    const isHolding = now <= this.overlayHoldUntil
 
-    const startTime = performance.now()
-    const duration = this.motionFrameDurationMs
+    const trackedIds = new Set<string>([
+      ...Object.keys(this.overlayCurrentParams),
+      ...Object.keys(this.overlayTargetParams)
+    ])
 
-    const animate = (now: number): void => {
-      const progress = Math.min((now - startTime) / duration, 1)
-      const eased = this.EASING_FUNCTIONS.easeOutCubic(progress)
+    if (trackedIds.size === 0) return
 
-      const currentParams: Record<string, number> = {}
+    for (const paramId of trackedIds) {
+      const cfg = this.PARAM_CONFIG[paramId] ?? this.DEFAULT_PARAM_CONFIG
+      const transMs = isHolding ? (this.overlayTransitionMs ?? cfg.transitionMs) : cfg.releaseMs
+      const easingFn = this.EASING_FUNCTIONS[cfg.easing]
 
-      for (const paramId of paramIds) {
-        const from = startParams[paramId]
-        const value = from * (1 - eased) // 从当前值平滑过渡到0
-        currentParams[paramId] = value
+      const currentValue = this.overlayCurrentParams[paramId] ?? 0
+      const targetValue = isHolding ? (this.overlayTargetParams[paramId] ?? 0) : 0
+
+      // 用时间步长计算本帧进度，再经缓动函数映射
+      const rawProgress = Math.min(1, dt / (transMs / 1000))
+      const easedProgress = easingFn(rawProgress)
+      const nextValue = currentValue + (targetValue - currentValue) * easedProgress
+
+      // 释放阶段接近零时直接清除，避免长尾抖动
+      if (!isHolding && Math.abs(nextValue) < 0.001) {
+        delete this.overlayCurrentParams[paramId]
+        continue
       }
 
-      this.overlayParams = currentParams
-      this.overlayExpireAt = performance.now() + 100 // 设置较短的过期时间
+      this.overlayCurrentParams[paramId] = nextValue
+      this.setModelParameterValue(paramId, nextValue)
+    }
 
-      if (progress < 1) {
-        this.motionAnimationFrame = requestAnimationFrame(animate)
-      } else {
-        // 动画结束，完全清除覆盖参数
-        this.overlayParams = {}
-        this.overlayExpireAt = 0
-        this.motionAnimationFrame = null
+    if (!isHolding) {
+      this.overlayTargetParams = {}
+    }
+  }
+
+  private tickProceduralLayer(now: number): void {
+    if (!this.model) return
+
+    const rawDt = this.proceduralLastTickAt > 0 ? now - this.proceduralLastTickAt : 16
+    this.proceduralLastTickAt = now
+    const dt = Math.min(rawDt, 50)
+
+    const overlayActive = Object.keys(this.overlayCurrentParams).length > 0
+    if (!overlayActive) return
+
+    // ── 眨眼状态机 ──────────────────────────────────────────
+    // phase 0: 待机倒计时
+    // phase 1: 闭眼（约 60ms 降到 -1）
+    // phase 2: 睁眼（约 100ms 回到 0）
+    const BLINK_CLOSE_MS = 60
+    const BLINK_OPEN_MS = 100
+
+    this.proceduralBlinkTimer += dt
+
+    if (this.proceduralBlinkPhase === 0) {
+      if (this.proceduralBlinkTimer >= this.proceduralNextBlinkIn) {
+        this.proceduralBlinkPhase = 1
+        this.proceduralBlinkTimer = 0
+      }
+    } else if (this.proceduralBlinkPhase === 1) {
+      // 闭眼：blinkValue 从 0 -> -1（压低 EyeOpen）
+      const progress = Math.min(1, this.proceduralBlinkTimer / BLINK_CLOSE_MS)
+      this.proceduralBlinkValue = -this.EASING_FUNCTIONS.easeIn(progress)
+      if (progress >= 1) {
+        this.proceduralBlinkPhase = 2
+        this.proceduralBlinkTimer = 0
+      }
+    } else if (this.proceduralBlinkPhase === 2) {
+      // 睁眼：blinkValue 从 -1 -> 0
+      const progress = Math.min(1, this.proceduralBlinkTimer / BLINK_OPEN_MS)
+      this.proceduralBlinkValue = -(1 - this.EASING_FUNCTIONS.easeOutCubic(progress))
+      if (progress >= 1) {
+        this.proceduralBlinkValue = 0
+        this.proceduralBlinkPhase = 0
+        this.proceduralBlinkTimer = 0
+        // 随机 2.5~5.5 秒后下次眨眼
+        this.proceduralNextBlinkIn = 2500 + Math.random() * 3000
       }
     }
 
-    this.motionAnimationFrame = requestAnimationFrame(animate)
+    // 将眨眼叠加到 overlay 写入的 EyeOpen 值上
+    if (this.proceduralBlinkValue !== 0) {
+      const curL = this.overlayCurrentParams['ParamEyeLOpen']
+      const curR = this.overlayCurrentParams['ParamEyeROpen']
+      if (curL !== undefined) {
+        this.setModelParameterValue('ParamEyeLOpen', Math.max(0, curL + this.proceduralBlinkValue))
+      }
+      if (curR !== undefined) {
+        this.setModelParameterValue('ParamEyeROpen', Math.max(0, curR + this.proceduralBlinkValue))
+      }
+    }
+
+    // ── 眼球微颤（saccade）────────────────────────────────────
+    // 两组不同频率的正弦叠加，模拟自然的眼球小幅抖动
+    const microX = Math.sin(now * 0.00133) * 0.025 + Math.sin(now * 0.00317) * 0.012
+    const microY = Math.cos(now * 0.00171) * 0.018 + Math.cos(now * 0.00289) * 0.009
+
+    const curX = this.overlayCurrentParams['ParamEyeBallX']
+    const curY = this.overlayCurrentParams['ParamEyeBallY']
+    if (curX !== undefined) {
+      this.setModelParameterValue('ParamEyeBallX', curX + microX)
+    }
+    if (curY !== undefined) {
+      this.setModelParameterValue('ParamEyeBallY', curY + microY)
+    }
   }
 
   /**

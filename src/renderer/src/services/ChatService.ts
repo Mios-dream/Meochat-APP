@@ -26,8 +26,15 @@ interface MotionFrameChunk {
   type: 'motion_frame'
   sentence_id: number
   source_text?: string
+  motions?: Array<{
+    duration?: number
+    action?: string
+    parameters?: Record<string, number>
+  }>
   action_label?: string
-  parameters: Record<string, number>
+  action?: string
+  duration?: number
+  parameters?: Record<string, number>
   done?: boolean
 }
 // 音频chunk
@@ -48,9 +55,24 @@ interface DoneChunk {
 type StreamChunk = TextAndAudioData | TextChunk | MotionFrameChunk | AudioChunk | DoneChunk
 
 interface TextAudioPair {
+  sentenceId?: number
   message: string
   audioBlob: Blob
+  motionSequence?: MotionStep[]
+  audioDurationMs?: number
   appendToDisplayText?: boolean
+}
+
+interface MotionStep {
+  durationMs: number
+  action?: string
+  parameters: Record<string, number>
+}
+
+interface SentenceSyncState {
+  message?: string
+  audioBlob?: Blob
+  motionSequence?: MotionStep[]
 }
 
 /**
@@ -124,6 +146,8 @@ class ChatService {
   private chatHistory: Map<string, ChatMessage[]> = new Map()
   // 文本和音频的组合队列
   private textAudioQueue: TextAudioPair[] = []
+  // 按句子缓存语音与动作，确保两者齐备后再播放
+  private pendingSentenceSync: Map<number, SentenceSyncState> = new Map()
   // 传输缓冲区，防止音频过长导致的chunk分割，json解析失败的问题
   private chunkBuffer: string = ''
   // 隐藏消息定时器
@@ -149,6 +173,10 @@ class ChatService {
   private textDisplayTimer: NodeJS.Timeout | null = null
   // 助手管理器
   private assistantManager: AssistantManager
+  // 当前流是否要求动作与语音严格配对
+  private expectMotionForStream = false
+  // 动作序列令牌，用于中断旧序列
+  private motionSequenceToken = 0
 
   private constructor() {
     // 初始化助手管理器
@@ -217,6 +245,7 @@ class ChatService {
     // 重置
     this.currentDisplayText = ''
     this.textAudioQueue = []
+    this.pendingSentenceSync.clear()
     this.chunkBuffer = ''
 
     try {
@@ -238,6 +267,7 @@ class ChatService {
 
       const configStore = useConfigStore()
       const useMotionGenerate = configStore.config.generateMotion
+      this.expectMotionForStream = useMotionGenerate
 
       const response = await fetch(this.apiUrl.value + '/api/chat', {
         method: 'POST',
@@ -378,6 +408,9 @@ class ChatService {
    */
   public stopAudio(): void {
     this.textAudioQueue = []
+    this.pendingSentenceSync.clear()
+    this.motionSequenceToken++
+    this.live2DManager?.finishMotionSequence()
     this.clearHideMessageTimer()
   }
 
@@ -471,7 +504,7 @@ class ChatService {
     if ('type' in data && typeof data.type === 'string') {
       switch (data.type) {
         case 'text':
-          this.handleText(data)
+          // this.handleText(data)
           return
         case 'motion_frame':
           this.handleMotionFrame(data)
@@ -490,45 +523,70 @@ class ChatService {
   }
 
   /**
-   * 处理文本数据块
-   * @param _data 文本数据块
-   */
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  private handleText(_data: TextChunk): void {
-    // this.currentDisplayText = data.message || ''
-    // const tipText = this.getTailDisplayText(this.currentDisplayText)
-    // if (tipText) {
-    //   this.showTempMessage(tipText, -1, 999, 0)
-    //   this.clearHideMessageTimer()
-    // }
-  }
-
-  /**
    * 处理动作帧数据块
    * @param data 动作帧数据块
    */
   private handleMotionFrame(data: MotionFrameChunk): void {
-    if (!data.parameters || !this.live2DManager) return
-    this.live2DManager.applyMotionFrame(data.parameters)
+    const motionSequence = this.normalizeMotionFrame(data)
+
+    if (motionSequence.length === 0) return
+
+    const state = this.pendingSentenceSync.get(data.sentence_id) || {}
+    state.motionSequence = motionSequence
+    this.pendingSentenceSync.set(data.sentence_id, state)
+    this.tryQueueSynchronizedSentence(data.sentence_id)
   }
 
   /**
    * 处理音频数据块
    * @param data 音频数据块
    */
-  private handleAudio(data: AudioChunk): void {
+  private async handleAudio(data: AudioChunk): Promise<void> {
     if (!data.file) return
     const audioBlob = base64ToBlob(data.file, 'audio/wav')
+
+    // 未启用动作生成时，直接作为纯语音句子入队
+    if (!this.expectMotionForStream) {
+      this.textAudioQueue.push({
+        sentenceId: data.sentence_id,
+        message: data.message,
+        audioBlob,
+        audioDurationMs: await this.estimateAudioDurationMs(audioBlob),
+        appendToDisplayText: true
+      })
+      this.playAudioQueueWithLive2D()
+      this.clearHideMessageTimer()
+      return
+    }
+
+    const state = this.pendingSentenceSync.get(data.sentence_id) || {}
+    state.message = data.message
+    state.audioBlob = audioBlob
+    this.pendingSentenceSync.set(data.sentence_id, state)
+    await this.tryQueueSynchronizedSentence(data.sentence_id)
+  }
+
+  private async tryQueueSynchronizedSentence(sentenceId: number): Promise<void> {
+    const state = this.pendingSentenceSync.get(sentenceId)
+    if (!state?.audioBlob || !state.motionSequence?.length) {
+      return
+    }
+
     this.textAudioQueue.push({
-      message: data.message,
-      audioBlob,
+      sentenceId,
+      message: state.message || '',
+      audioBlob: state.audioBlob,
+      motionSequence: state.motionSequence,
+      audioDurationMs: await this.estimateAudioDurationMs(state.audioBlob),
       appendToDisplayText: true
     })
+
+    this.pendingSentenceSync.delete(sentenceId)
     this.playAudioQueueWithLive2D()
     this.clearHideMessageTimer()
   }
 
-  private handleTextAndAudio(data: TextAndAudioData): void {
+  private async handleTextAndAudio(data: TextAndAudioData): Promise<void> {
     // 处理音频数据
     if (data.file) {
       const audioBlob = base64ToBlob(data.file, 'audio/wav')
@@ -536,6 +594,7 @@ class ChatService {
       this.textAudioQueue.push({
         message: data.message,
         audioBlob: audioBlob,
+        audioDurationMs: await this.estimateAudioDurationMs(audioBlob),
         appendToDisplayText: true
       })
       // 立即尝试播放（使用 Live2D 同步口型）
@@ -592,7 +651,6 @@ class ChatService {
     try {
       while (this.textAudioQueue.length > 0) {
         const pair = this.textAudioQueue.shift()!
-        const audioUrl = URL.createObjectURL(pair.audioBlob)
 
         if (pair.appendToDisplayText !== false) {
           this.currentDisplayText += pair.message
@@ -600,18 +658,31 @@ class ChatService {
           this.displayTextGradually(pair.message, pair.audioBlob)
         }
 
-        try {
-          // 使用 Live2DManager 的 speak 方法播放音频并同步口型
-          if (this.live2DManager) {
-            // 将Blob转换为AudioBuffer
-            const audioArrayBuffer = await pair.audioBlob.arrayBuffer()
-            await this.live2DManager.speak(audioArrayBuffer, this.volume)
+        // 将Blob转换为AudioBuffer
+        const audioArrayBuffer = await pair.audioBlob.arrayBuffer()
+
+        // 使用 Live2DManager 的 speak 方法播放音频并同步口型
+        if (this.live2DManager) {
+          const token = ++this.motionSequenceToken
+          const audioDurationMs =
+            pair.audioDurationMs || (await this.estimateAudioDurationMs(pair.audioBlob))
+
+          if (pair.motionSequence?.length) {
+            // 动作与语音并行，并对齐时长
+            const speakPromise = this.live2DManager.speak(audioArrayBuffer, this.volume)
+            const motionPromise = this.playMotionSequence(
+              pair.motionSequence,
+              audioDurationMs,
+              token
+            )
+            await Promise.all([speakPromise, motionPromise])
           } else {
-            // 如果 Live2DManager 不可用，降级到普通播放
-            await this.playAudioSimple(audioUrl)
+            await this.live2DManager.speak(audioArrayBuffer, this.volume)
           }
-        } finally {
-          // 清理 URL 对象
+        } else {
+          // 如果 Live2DManager 不可用，降级到普通播放
+          const audioUrl = URL.createObjectURL(pair.audioBlob)
+          await this.playAudioSimple(audioUrl)
           URL.revokeObjectURL(audioUrl)
         }
       }
@@ -621,7 +692,7 @@ class ChatService {
       this.hideMessageTimer = setTimeout(() => {
         this.messageTips.hideMessage()
         this.hideMessageTimer = null
-        this.live2DManager?.clearMotionFrame()
+        this.live2DManager?.finishMotionSequence()
       }, 5000)
     } catch (error) {
       // 音频播放完毕后，设置3秒延迟隐藏消息,恢复模型到默认状态
@@ -629,12 +700,133 @@ class ChatService {
       this.hideMessageTimer = setTimeout(() => {
         this.messageTips.hideMessage()
         this.hideMessageTimer = null
-        this.live2DManager?.clearMotionFrame()
+        this.live2DManager?.finishMotionSequence()
       }, 5000)
       console.error('播放音频失败:', error)
     } finally {
       this.isPlaying = false
     }
+  }
+
+  /**
+   * 精确获取音频时长（毫秒）
+   * 使用 Web Audio API 解码音频数据获取准确时长
+   */
+  private async estimateAudioDurationMs(audioBlob: Blob): Promise<number> {
+    try {
+      const audioContext = new AudioContext()
+      const arrayBuffer = await audioBlob.arrayBuffer()
+      const audioBuffer = await audioContext.decodeAudioData(arrayBuffer)
+      const duration = audioBuffer.duration * 1000 // 转换为毫秒
+
+      // 清理资源
+      await audioContext.close()
+
+      return Math.max(120, duration)
+    } catch (error) {
+      console.warn('无法精确获取音频时长，使用回退估算方法:', error)
+      const audioDataSize = Math.max(0, audioBlob.size - 44)
+      // 16bit * 2ch * 44100Hz ~= 176400 bytes/s
+      const estimatedDuration = (audioDataSize / 176400) * 1000
+      return Math.max(120, estimatedDuration)
+    }
+  }
+
+  /**
+   * 规范化动作帧数据，过滤无效数据，确保参数格式正确，并将持续时间限制在合理范围内
+   */
+  private normalizeMotionFrame(data: MotionFrameChunk): MotionStep[] {
+    const normalized: MotionStep[] = []
+
+    if (Array.isArray(data.motions) && data.motions.length > 0) {
+      for (const motion of data.motions) {
+        if (!motion || typeof motion !== 'object' || !motion.parameters) continue
+
+        const params: Record<string, number> = {}
+        for (const [paramId, rawValue] of Object.entries(motion.parameters)) {
+          if (typeof rawValue !== 'number' || Number.isNaN(rawValue)) continue
+          params[paramId] = rawValue
+        }
+
+        if (Object.keys(params).length === 0) continue
+
+        normalized.push({
+          durationMs: this.clampMotionDuration(motion.duration),
+          action: motion.action,
+          parameters: params
+        })
+      }
+
+      return normalized
+    }
+
+    // 兼容单帧结构：motion_frame 直接携带 parameters/duration
+    if (data.parameters && typeof data.parameters === 'object') {
+      const params: Record<string, number> = {}
+      for (const [paramId, rawValue] of Object.entries(data.parameters)) {
+        if (typeof rawValue !== 'number' || Number.isNaN(rawValue)) continue
+        params[paramId] = rawValue
+      }
+
+      if (Object.keys(params).length > 0) {
+        normalized.push({
+          durationMs: this.clampMotionDuration(data.duration),
+          action: data.action,
+          parameters: params
+        })
+      }
+    }
+
+    return normalized
+  }
+
+  /**
+   * 按顺序应用动作片段，duration 作为每段持续时间
+   */
+  private async playMotionSequence(
+    sequence: MotionStep[],
+    audioDurationMs: number,
+    token: number
+  ): Promise<void> {
+    if (!this.live2DManager || sequence.length === 0) return
+
+    const motionTotalDuration = sequence.reduce((sum, step) => sum + step.durationMs, 0)
+    const scaleFactor = Math.max(0.5, Math.min(2, audioDurationMs / motionTotalDuration))
+
+    let carriedParams: Record<string, number> = {}
+
+    for (let i = 0; i < sequence.length; i++) {
+      const step = sequence[i]
+      if (token !== this.motionSequenceToken) return
+
+      const mergedParams = { ...carriedParams, ...step.parameters }
+      carriedParams = mergedParams
+      const scaledDuration = Math.floor(step.durationMs * scaleFactor)
+      const transitionMs = Math.min(
+        980,
+        Math.max(220, Math.floor(Math.min(scaledDuration - 30, scaledDuration * 0.88)))
+      )
+      const holdMs = scaledDuration + Math.min(220, Math.floor(scaledDuration * 0.24))
+
+      this.live2DManager.applyMotionFrame(mergedParams, { transitionMs, holdMs })
+
+      const waitMs =
+        i === sequence.length - 1 ? scaledDuration : Math.max(100, Math.floor(scaledDuration * 0.7))
+
+      await new Promise((resolve) => window.setTimeout(resolve, waitMs))
+    }
+
+    if (token === this.motionSequenceToken) {
+      this.live2DManager.finishMotionSequence()
+    }
+  }
+
+  private clampMotionDuration(durationMs?: number): number {
+    const defaultDuration = 700
+    if (typeof durationMs !== 'number' || !Number.isFinite(durationMs)) {
+      return defaultDuration
+    }
+    return Math.max(120, Math.min(8000, durationMs))
   }
 
   /**
