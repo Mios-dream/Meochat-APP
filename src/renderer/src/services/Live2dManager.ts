@@ -61,11 +61,15 @@ export class Live2DManager {
   private isSpeaking = false
   // 动作帧默认保持时长
   private overlayDurationMs = 2000
-  // 动作参数覆盖层（每帧平滑更新，避免跳变）
+  // 当前叠加层参数状态
   private overlayCurrentParams: Record<string, number> = {}
+  // 新的动作帧目标参数状态
   private overlayTargetParams: Record<string, number> = {}
+  // 叠加层保持结束时间戳，单位 ms，过了这个时间会触发参数恢复
   private overlayHoldUntil = 0
+  // 上次 tick 叠加层更新的时间戳，单位 ms，用于计算过渡进度
   private overlayLastTickAt = 0
+  // 当前叠加层过渡时长，单位 ms，null 表示使用默认值
   private overlayTransitionMs: number | null = null
 
   // 当前口型开合度，用于语音驱动口型时的平滑过渡
@@ -76,58 +80,85 @@ export class Live2DManager {
   // 是否已安装 motionManager.update 钩子
   private motionManagerHookInstalled = false
 
-  // Procedural 层状态（眨眼、眼球微颤）
-  private proceduralBlinkPhase = 0 // 0=待机 1=闭眼中 2=睁眼中
-  private proceduralBlinkTimer = 0 // 当前阶段已过时间 ms
-  private proceduralNextBlinkIn = 3000 // 距下次眨眼 ms
-  private proceduralLastTickAt = 0
-  private proceduralBlinkValue = 0 // 当前眨眼叠加量（负值压低 EyeOpen）
-
   /**
    * 每个参数的独立过渡配置。
    * transitionMs：进入目标值的过渡时长
    * easing：进入时缓动函数名
    * releaseMs：结束后恢复默认的过渡时长
+   * releaseTargetValue：释放时的目标值（默认为0，但眼睛等参数可自定义为1）
    */
   private readonly PARAM_CONFIG: Record<
     string,
-    { transitionMs: number; easing: keyof Live2DManager['EASING_FUNCTIONS']; releaseMs: number }
+    {
+      transitionMs: number
+      easing: keyof Live2DManager['EASING_FUNCTIONS']
+      releaseMs: number
+      releaseTargetValue?: number
+    }
   > = {
-    // 眼球 —— 最快，带弹性
-    ParamEyeBallX: { transitionMs: 80, easing: 'easeOutCubic', releaseMs: 500 },
-    ParamEyeBallY: { transitionMs: 80, easing: 'easeOutCubic', releaseMs: 500 },
-    // 眼睛开合
-    ParamEyeLOpen: { transitionMs: 130, easing: 'easeOutCubic', releaseMs: 700 },
-    ParamEyeROpen: { transitionMs: 130, easing: 'easeOutCubic', releaseMs: 700 },
-    eyesuoxiaoL: { transitionMs: 130, easing: 'easeOutCubic', releaseMs: 700 },
-    eyesuoxiaoR: { transitionMs: 130, easing: 'easeOutCubic', releaseMs: 700 }
+    // 眼球 —— 最快，带弹性（释放时回到0，中立位置）
+    ParamEyeBallX: {
+      transitionMs: 80,
+      easing: 'easeOutCubic',
+      releaseMs: 500,
+      releaseTargetValue: 0
+    },
+    ParamEyeBallY: {
+      transitionMs: 80,
+      easing: 'easeOutCubic',
+      releaseMs: 500,
+      releaseTargetValue: 0
+    },
+    // 眼睛开合 —— 释放时应该回到睁开状态（1），而不是闭合（0）
+    ParamEyeLOpen: {
+      transitionMs: 130,
+      easing: 'easeOutCubic',
+      releaseMs: 700,
+      releaseTargetValue: 1
+    },
+    ParamEyeROpen: {
+      transitionMs: 130,
+      easing: 'easeOutCubic',
+      releaseMs: 700,
+      releaseTargetValue: 1
+    }
   }
 
   private readonly DEFAULT_PARAM_CONFIG: {
     transitionMs: number
     easing: keyof Live2DManager['EASING_FUNCTIONS']
     releaseMs: number
+    releaseTargetValue: number
   } = {
     transitionMs: 220,
     easing: 'easeOutCubic',
-    releaseMs: 700
+    releaseMs: 700,
+    releaseTargetValue: 0
   }
 
   /**
    * 缓动函数集合
    */
   private EASING_FUNCTIONS = {
+    // 线性（匀速）
     linear: (t: number) => t,
+    // 缓入
     easeIn: (t: number) => t * t,
+    // 缓出
     easeOut: (t: number) => t * (2 - t),
+    // 缓入缓出
     easeInOut: (t: number) => (t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t),
+    // 更平滑的缓入缓出
     easeInCubic: (t: number) => t * t * t,
+    // 更平滑的缓出
     easeOutCubic: (t: number) => {
       const s = t - 1
       return s * s * s + 1
     },
+    // 更平滑的缓入缓出
     easeInOutCubic: (t: number) =>
       t < 0.5 ? 4 * t * t * t : (t - 1) * (2 * t - 2) * (2 * t - 2) + 1,
+    // 弹性缓动
     bounce: (t: number) => {
       if (t < 1 / 2.75) return 7.5625 * t * t
       if (t < 2 / 2.75) return 7.5625 * (t -= 1.5 / 2.75) * t + 0.75
@@ -190,7 +221,7 @@ export class Live2DManager {
   /**
    * 销毁方法
    */
-  destroy(): void {
+  public destroy(): void {
     // 清理监听器
     this.stopMouseTracking()
 
@@ -779,7 +810,7 @@ export class Live2DManager {
       this.tickMotionOverlay(performance.now())
 
       // 2. 再叠加 Procedural 层（眨眼/微颤，优先级最高，不会被 overlay 压制）
-      this.tickProceduralLayer(performance.now())
+      // this.tickProceduralLayer(performance.now())
 
       // 3. 最后写入口型，确保语音驱动不被覆盖
       if (this.isSpeaking) {
@@ -819,33 +850,39 @@ export class Live2DManager {
     const speakingBlockedParams = new Set(['ParamMouthOpenY'])
 
     for (const [paramId, rawValue] of Object.entries(parameters)) {
+      // 参数值必须是有效数字，跳过无效值
       if (typeof rawValue !== 'number' || Number.isNaN(rawValue)) continue
+      // 如果正在说话且该参数会被语音覆盖，跳过以避免冲突
       if (this.isSpeaking && speakingBlockedParams.has(paramId)) continue
+      // 参数不存在于模型中，跳过（避免无效参数导致的异常）
       if (!this.hasModelParameter(paramId)) continue
-
+      // 获取模型当前值，如果为 null 说明参数不可用，跳过
       const modelValue = this.getModelParameterValue(paramId)
       if (modelValue === null) continue
-
+      // 记录目标参数值，后续在 tickMotionOverlay 中平滑过渡
       targetParams[paramId] = rawValue
 
-      // 关键改动：若该参数从未被追踪过，从模型当前值出发，避免首次进入时的跳变。
+      // 若该参数从未被追踪过，从模型当前值出发，避免首次进入时的跳变。
       // 若已在追踪中（chunk 衔接），保留 overlayCurrentParams 的当前插值位置，
       // 直接更新目标即可，插值会从"正在运动的位置"平滑转向新目标。
       if (!(paramId in this.overlayCurrentParams)) {
         this.overlayCurrentParams[paramId] = modelValue
       }
     }
+    // 如果没有有效参数需要覆盖，直接返回，避免无意义的过渡和性能开销
     if (Object.keys(targetParams).length === 0) return
 
     const transitionMs = options?.transitionMs
+    // 如果外部指定了过渡时间，且是有效数字，则使用它；否则保持现有的过渡时间设置（可能是上次调用时设置的，也可能是默认值）
     this.overlayTransitionMs =
       typeof transitionMs === 'number' && Number.isFinite(transitionMs)
         ? this.clampDuration(transitionMs, 60, 2000)
         : null
 
-    const holdDuration = this.clampDuration(options?.holdMs ?? this.overlayDurationMs, 120, 10000)
+    const holdDuration = this.clampDuration(options?.holdMs ?? this.overlayDurationMs, 300, 10000)
     // 直接更新目标参数和持续时间，不重置 overlayCurrentParams
     this.overlayTargetParams = targetParams
+    // holdUntil 设为当前时间加上持续时长，tickMotionOverlay 会根据这个时间判断是保持阶段还是释放阶段
     this.overlayHoldUntil = performance.now() + holdDuration
   }
 
@@ -888,26 +925,29 @@ export class Live2DManager {
   public finishMotionSequence(): void {
     console.log('Motion sequence finished')
     // holdUntil 设为过去，触发 release 逻辑
-    this.overlayHoldUntil = performance.now() - 1
-    // 清空目标，release 阶段 targetValue 为 0，current 从当前位置缓出
-    this.overlayTargetParams = {}
-    this.overlayTransitionMs = null
+    // this.overlayHoldUntil = performance.now() + 1000
+    // // 清空目标，release 阶段 targetValue 为 0，current 从当前位置缓出
+    // this.overlayTargetParams = {}
+    // this.overlayTransitionMs = null
     // 不动 overlayCurrentParams，保持当前插值位置作为 release 起点
   }
 
   /**
    * 每帧调用，更新动作参数覆盖层并应用到模型。
    * 改动要点：
-   *  1. 使用 PARAM_CONFIG 为每个参数独立查询 transitionMs / releaseMs / easing
+   *  1. 使用 PARAM_CONFIG 为每个参数独立查询 transitionMs / releaseMs / easing / releaseTargetValue
    *  2. dt 上限 50ms，防止窗口切换后大步长导致参数瞬移
    *  3. 新 chunk 到来时 overlayCurrentParams 保留，从当前位置平滑切换目标
+   *  4. 释放阶段根据参数的 releaseTargetValue 进行过渡，眼睛等参数返回到睁开（1）而非闭合（0）
    */
   private tickMotionOverlay(now: number): void {
+    // 计算时间步长，第一次 tick 时默认 16ms，后续基于上次 tick 的时间戳计算，确保平滑过渡
     const rawDt = this.overlayLastTickAt > 0 ? now - this.overlayLastTickAt : 16
+    // 覆盖层的时间步长计算基于上次 tick 的时间戳，确保无论帧率如何波动，过渡都能保持平滑和一致
     this.overlayLastTickAt = now
     // 上限 50ms，避免页面切换后的超大步长
     const dt = Math.min(rawDt, 50) / 1000
-
+    // 根据当前时间和 holdUntil 判断是保持阶段还是释放阶段，保持阶段使用 targetParams，释放阶段使用各参数的 releaseTargetValue
     const isHolding = now <= this.overlayHoldUntil
 
     const trackedIds = new Set<string>([
@@ -918,102 +958,36 @@ export class Live2DManager {
     if (trackedIds.size === 0) return
 
     for (const paramId of trackedIds) {
+      // 对于每个正在追踪的参数，分别获取其配置、当前值、目标值，根据当前阶段（保持/释放）计算过渡，并应用到模型
       const cfg = this.PARAM_CONFIG[paramId] ?? this.DEFAULT_PARAM_CONFIG
+      // 保持阶段使用 overlayTransitionMs
       const transMs = isHolding ? (this.overlayTransitionMs ?? cfg.transitionMs) : cfg.releaseMs
+      // 获取缓动函数
       const easingFn = this.EASING_FUNCTIONS[cfg.easing]
-
+      // 当前值来自 overlayCurrentParams，目标值根据阶段选择 overlayTargetParams 或各参数的 releaseTargetValue
       const currentValue = this.overlayCurrentParams[paramId] ?? 0
-      const targetValue = isHolding ? (this.overlayTargetParams[paramId] ?? 0) : 0
+      // 保持阶段目标为 overlayTargetParams[paramId]，释放阶段目标为参数的 releaseTargetValue（眼睛为1，其他为0）
+      const releaseTarget = cfg.releaseTargetValue ?? 0
+      const targetValue = isHolding ? (this.overlayTargetParams[paramId] ?? 0) : releaseTarget
 
       // 用时间步长计算本帧进度，再经缓动函数映射
       const rawProgress = Math.min(1, dt / (transMs / 1000))
       const easedProgress = easingFn(rawProgress)
+      // 根据当前值、目标值和缓动进度计算本帧的新值
       const nextValue = currentValue + (targetValue - currentValue) * easedProgress
 
-      // 释放阶段接近零时直接清除，避免长尾抖动
-      if (!isHolding && Math.abs(nextValue) < 0.001) {
+      // 释放阶段接近目标值时直接清除，避免长尾抖动
+      if (!isHolding && Math.abs(nextValue - releaseTarget) < 0.005) {
         delete this.overlayCurrentParams[paramId]
         continue
       }
-
+      // 更新当前值并应用到模型
       this.overlayCurrentParams[paramId] = nextValue
       this.setModelParameterValue(paramId, nextValue)
     }
-
+    // 如果当前没有任何参数需要保持，清空目标参数，确保模型平滑过渡回默认状态
     if (!isHolding) {
       this.overlayTargetParams = {}
-    }
-  }
-
-  private tickProceduralLayer(now: number): void {
-    if (!this.model) return
-
-    const rawDt = this.proceduralLastTickAt > 0 ? now - this.proceduralLastTickAt : 16
-    this.proceduralLastTickAt = now
-    const dt = Math.min(rawDt, 50)
-
-    const overlayActive = Object.keys(this.overlayCurrentParams).length > 0
-    if (!overlayActive) return
-
-    // ── 眨眼状态机 ──────────────────────────────────────────
-    // phase 0: 待机倒计时
-    // phase 1: 闭眼（约 60ms 降到 -1）
-    // phase 2: 睁眼（约 100ms 回到 0）
-    const BLINK_CLOSE_MS = 60
-    const BLINK_OPEN_MS = 100
-
-    this.proceduralBlinkTimer += dt
-
-    if (this.proceduralBlinkPhase === 0) {
-      if (this.proceduralBlinkTimer >= this.proceduralNextBlinkIn) {
-        this.proceduralBlinkPhase = 1
-        this.proceduralBlinkTimer = 0
-      }
-    } else if (this.proceduralBlinkPhase === 1) {
-      // 闭眼：blinkValue 从 0 -> -1（压低 EyeOpen）
-      const progress = Math.min(1, this.proceduralBlinkTimer / BLINK_CLOSE_MS)
-      this.proceduralBlinkValue = -this.EASING_FUNCTIONS.easeIn(progress)
-      if (progress >= 1) {
-        this.proceduralBlinkPhase = 2
-        this.proceduralBlinkTimer = 0
-      }
-    } else if (this.proceduralBlinkPhase === 2) {
-      // 睁眼：blinkValue 从 -1 -> 0
-      const progress = Math.min(1, this.proceduralBlinkTimer / BLINK_OPEN_MS)
-      this.proceduralBlinkValue = -(1 - this.EASING_FUNCTIONS.easeOutCubic(progress))
-      if (progress >= 1) {
-        this.proceduralBlinkValue = 0
-        this.proceduralBlinkPhase = 0
-        this.proceduralBlinkTimer = 0
-        // 随机 2.5~5.5 秒后下次眨眼
-        this.proceduralNextBlinkIn = 2500 + Math.random() * 3000
-      }
-    }
-
-    // 将眨眼叠加到 overlay 写入的 EyeOpen 值上
-    if (this.proceduralBlinkValue !== 0) {
-      const curL = this.overlayCurrentParams['ParamEyeLOpen']
-      const curR = this.overlayCurrentParams['ParamEyeROpen']
-      if (curL !== undefined) {
-        this.setModelParameterValue('ParamEyeLOpen', Math.max(0, curL + this.proceduralBlinkValue))
-      }
-      if (curR !== undefined) {
-        this.setModelParameterValue('ParamEyeROpen', Math.max(0, curR + this.proceduralBlinkValue))
-      }
-    }
-
-    // ── 眼球微颤（saccade）────────────────────────────────────
-    // 两组不同频率的正弦叠加，模拟自然的眼球小幅抖动
-    const microX = Math.sin(now * 0.00133) * 0.025 + Math.sin(now * 0.00317) * 0.012
-    const microY = Math.cos(now * 0.00171) * 0.018 + Math.cos(now * 0.00289) * 0.009
-
-    const curX = this.overlayCurrentParams['ParamEyeBallX']
-    const curY = this.overlayCurrentParams['ParamEyeBallY']
-    if (curX !== undefined) {
-      this.setModelParameterValue('ParamEyeBallX', curX + microX)
-    }
-    if (curY !== undefined) {
-      this.setModelParameterValue('ParamEyeBallY', curY + microY)
     }
   }
 

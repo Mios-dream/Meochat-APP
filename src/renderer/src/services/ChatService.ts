@@ -782,40 +782,52 @@ class ChatService {
 
   /**
    * 按顺序应用动作片段，duration 作为每段持续时间
+   * @param sequence 动作片段数组
+   * @param audioDurationMs 音频总时长（毫秒），用于调整动作节奏
+   * @param token 当前动作序列令牌，用于中断过时的序列
    */
   private async playMotionSequence(
     sequence: MotionStep[],
     audioDurationMs: number,
     token: number
   ): Promise<void> {
+    // 如果 Live2DManager 不可用或序列为空，直接返回
     if (!this.live2DManager || sequence.length === 0) return
-
+    // 计算动作序列的总时长
     const motionTotalDuration = sequence.reduce((sum, step) => sum + step.durationMs, 0)
+    // 根据音频时长与动作总时长的比例计算缩放因子，确保动作节奏与音频匹配，同时避免过度压缩或拉伸
     const scaleFactor = Math.max(0.5, Math.min(2, audioDurationMs / motionTotalDuration))
-
+    // 累积参数，确保每帧都携带完整的参数集，未在当前帧更新的参数将沿用上一帧的值
     let carriedParams: Record<string, number> = {}
 
     for (let i = 0; i < sequence.length; i++) {
+      // 在每帧开始时检查令牌是否仍然有效，如果不匹配则中断序列播放
       const step = sequence[i]
       if (token !== this.motionSequenceToken) return
 
       const mergedParams = { ...carriedParams, ...step.parameters }
       carriedParams = mergedParams
+      // 根据缩放因子调整当前步骤的持续时间,得到缩放后的持续时间
       const scaledDuration = Math.floor(step.durationMs * scaleFactor)
-      const transitionMs = Math.min(
-        980,
-        Math.max(220, Math.floor(Math.min(scaledDuration - 30, scaledDuration * 0.88)))
-      )
-      const holdMs = scaledDuration + Math.min(220, Math.floor(scaledDuration * 0.24))
-
+      // 计算过渡时间，确保动作平滑变化
+      // 限制在 220-980ms 之间，优先使用持续时间的 88%
+      const transitionMs = Math.min(980, Math.max(220, Math.floor(scaledDuration * 0.88)))
+      // 计算保持时间，确保动作有足够的时间展示
+      // 最后一个动作保持3秒，其他动作基础持续时间加上额外的 24%，但额外部分不超过 220ms
+      const holdMs =
+        i === sequence.length - 1
+          ? 4000
+          : scaledDuration + Math.min(220, Math.floor(scaledDuration * 0.24))
+      // 应用当前帧的参数，使用 transitionMs 作为过渡时间，holdMs 作为保持时间，确保动作平滑过渡并且在当前帧持续足够长的时间
       this.live2DManager.applyMotionFrame(mergedParams, { transitionMs, holdMs })
-
+      // 计算等待时间，控制动作序列的节奏
+      // 最后一步等待完整持续时间，其他步骤等待 70% 的时间但不少于 100ms
       const waitMs =
         i === sequence.length - 1 ? scaledDuration : Math.max(100, Math.floor(scaledDuration * 0.7))
 
       await new Promise((resolve) => window.setTimeout(resolve, waitMs))
     }
-
+    // 序列播放完毕后，如果令牌仍然有效，则恢复模型到默认状态
     if (token === this.motionSequenceToken) {
       this.live2DManager.finishMotionSequence()
     }
