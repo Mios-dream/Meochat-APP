@@ -83,7 +83,7 @@ function handleFileProtocol(): void {
       log.error('读取app目录的文件时出错:', (error as Error).message)
       return new Response(null, { status: 404 }) // 返回 404 错误
     }
-
+  })
 }
 
 export { registerFileProtocol, handleFileProtocol }
