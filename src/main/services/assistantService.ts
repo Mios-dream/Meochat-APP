@@ -3,7 +3,7 @@ import axios from 'axios'
 import FormData from 'form-data'
 import AdmZip from 'adm-zip'
 import path from 'path'
-import { app, globalShortcut, BrowserWindow } from 'electron'
+import { globalShortcut, BrowserWindow } from 'electron'
 import { getConfig, setConfig } from '../config/configManager'
 import log from '../utils/logger'
 import {
@@ -13,64 +13,11 @@ import {
 } from '../../renderer/src/types/AssistantInfo'
 import { createChatBoxWindow } from '../windows/chatBoxWindow'
 import ImageMetadataExtractor from '../utils/imageMetadataExtractor'
-
-// 默认助手数据
-const DEFAULT_ASSISTANTS: AssistantInfo[] = [
-  {
-    name: '澪',
-    user: '阁下',
-    avatar: '',
-    birthday: '2022-03-15',
-    height: 160,
-    weight: 40,
-    description: `银发红瞳的可爱少女，经常穿着可爱的黑色长 裙，带着黑色的蝴蝶发饰。身份是澪之梦工作
-                室的头号看板娘，她自己好像也非常自豪这 件事（才没有）。性格天真可爱（是个笨蛋）
-                同时还是有些小腹黑？尽管澪大部分时候都是 活泼可爱的代名词，但有时候澪的眼中也会流
-                露出淡淡的悲伤。原因就连她自己也不知道， 这或许和她以前的经历有关？这位天真可爱的
-                女孩并不像看起来那么简单，她的身上还有更 多的秘密等待着阁下的探索.......`,
-    firstMeetTime: new Date('2022-03-15').getTime(),
-    love: 0,
-    personality: '天真可爱',
-    messageExamples: [],
-    extraDescription: '',
-    updatedAt: new Date('2022-03-15').getTime(),
-    assetsLastModified: new Date('2022-03-15').getTime(),
-    mask: '',
-    customPrompt: '',
-    startWith: [],
-    settings: {
-      enableLongMemory: true,
-      enableLongMemorySearchEnhance: true,
-      enableCoreMemory: true,
-      longMemoryThreshold: 0.38,
-      enableLoreBooks: true,
-      loreBooksThreshold: 0.5,
-      loreBooksDepth: 3,
-      enableEmotionSystem: false,
-      enableEmotionPersist: false,
-      contextLength: 40
-    },
-    gsvSetting: {
-      textLang: 'zh',
-      gptModelPath: 'models/【萝莉】女仆_Ver-1.4-e15.ckpt',
-      sovitsModelPath: 'models/【萝莉】女仆_Ver-1.4_e24_s504.pth',
-      refAudioPath: 'models/tmp/020.wav',
-      promptText: '嗯，谢谢您的夸奖，主人可以喜欢就好。',
-      promptLang: 'zh',
-      seed: -1,
-      topK: 30,
-      batchSize: 20,
-      extra: {
-        text_split_method: 'cut0'
-      },
-      extraRefAudio: {}
-    },
-    emotionSetting: {}
-  }
-]
+import { resolveAppDataDir } from '../utils/pathResolve'
 
 class AssistantService {
   private static instance: AssistantService
+  private readonly preferredStorageRoot: string
 
   // 助手列表
   private assistants: AssistantInfo[] = []
@@ -81,6 +28,18 @@ class AssistantService {
 
   private constructor() {
     this.assistants = []
+    this.preferredStorageRoot = resolveAppDataDir()
+  }
+
+  /**
+   * 助手根目录
+   */
+  private getAssistantsRootDir(): string {
+    const assistantsRoot = path.join(this.preferredStorageRoot, 'assistants')
+    if (!fs.existsSync(assistantsRoot)) {
+      fs.mkdirSync(assistantsRoot, { recursive: true })
+    }
+    return assistantsRoot
   }
 
   public static getInstance(): AssistantService {
@@ -96,9 +55,7 @@ class AssistantService {
    * @returns 助手目录路径
    */
   private ensureAssistantDirExists(assistantName: string): string {
-    // 获取应用安装目录
-    const appPath = app.getPath('userData')
-    const assistantDir = path.join(appPath, 'assistants', assistantName)
+    const assistantDir = path.join(this.getAssistantsRootDir(), assistantName)
 
     if (!fs.existsSync(assistantDir)) {
       fs.mkdirSync(assistantDir, { recursive: true })
@@ -131,21 +88,14 @@ class AssistantService {
    */
   public async loadAssistants(
     onProgress?: (assistantName: string, progress: number) => void
-  ): Promise<{ success: boolean; error?: string }> {
+  ): Promise<{ success: boolean; source: 'server' | 'local-cache'; error?: string }> {
     try {
       // 1. 首先尝试从服务器获取当前助手
       const serverCurrentAssistant = await this.getCurrentAssistantFromCloud()
 
       // 2. 加载所有助手数据
-      this.assistants = await this.loadAssistantsData(onProgress)
-
-      if (this.assistants.length === 0) {
-        this.assistants = DEFAULT_ASSISTANTS
-        // 保存默认助手到本地
-        for (const assistant of DEFAULT_ASSISTANTS) {
-          this.saveAssistantToLocal(assistant)
-        }
-      }
+      const loadResult = await this.loadAssistantsData(onProgress)
+      this.assistants = loadResult.assistants
 
       // 3. 设置当前助手：优先使用服务器返回的当前助手，如果没有则使用配置中的，最后使用第一个助手
       const savedAssistantName = getConfig('currentAssistant')
@@ -156,10 +106,10 @@ class AssistantService {
       } else if (this.assistants.length > 0) {
         await this.setCurrentAssistant(this.assistants[0].name)
       }
-      return { success: true }
+      return { success: true, source: loadResult.source }
     } catch (error) {
       log.error('加载助手数据失败:', error)
-      return { success: false, error: (error as Error).message }
+      return { success: false, source: 'local-cache', error: (error as Error).message }
     }
   }
 
@@ -265,7 +215,7 @@ class AssistantService {
     return new Promise((resolve, reject) => {
       try {
         // 定义下载和保存路径
-        const downloadsDir = path.join(app.getPath('userData'), 'cache')
+        const downloadsDir = path.join(this.preferredStorageRoot, 'cache')
         const tempZipPath = path.join(downloadsDir, `${assistantName}.zip`)
         const assistantDir = this.ensureAssistantDirExists(assistantName)
         const assetsDir = path.join(assistantDir, 'assets')
@@ -422,12 +372,7 @@ class AssistantService {
     onProgress?: (progress: number) => void
   ): Promise<{ success: boolean; error?: string }> {
     // 检查助手是否存在
-    const assistantInfoPath = path.join(
-      app.getPath('userData'),
-      'assistants',
-      assistant.name,
-      'info.json'
-    )
+    const assistantInfoPath = path.join(this.getAssistantsRootDir(), assistant.name, 'info.json')
     if (fs.existsSync(assistantInfoPath)) {
       log.warn(`Assistant ${assistant.name} already exists.`)
       return { success: false, error: '助手已存在' }
@@ -482,15 +427,17 @@ class AssistantService {
    */
   private async loadAssistantsData(
     onProgress?: (assistantName: string, progress: number) => void
-  ): Promise<AssistantInfo[]> {
+  ): Promise<{ assistants: AssistantInfo[]; source: 'server' | 'local-cache' }> {
     // 创建一个对象用于跟踪云端存在的助手
     const cloudAssistantMap = new Map<string, AssistantInfo>()
+    let source: 'server' | 'local-cache' = 'local-cache'
 
     try {
       // 从云端加载助手数据
       const url = `http://${getConfig('baseUrl')}/api/assistants`
       const response = await axios.get(url)
       const apiData = response.data
+      source = 'server'
 
       if (apiData.data && Array.isArray(apiData.data)) {
         // 将云端数据映射到Map中以便快速查找
@@ -499,7 +446,7 @@ class AssistantService {
         })
 
         // 从本地获取当前的助手数据
-        const assistantDir = path.join(app.getPath('userData'), 'assistants')
+        const assistantDir = this.getAssistantsRootDir()
         const localAssistants = new Map<string, AssistantInfo>()
 
         if (fs.existsSync(assistantDir)) {
@@ -566,7 +513,7 @@ class AssistantService {
         for (const [assistantName] of localAssistants.entries()) {
           if (!cloudAssistantMap.has(assistantName)) {
             // 删除本地助手数据
-            fs.rmSync(path.join(app.getPath('userData'), 'assistants', assistantName), {
+            fs.rmSync(path.join(this.getAssistantsRootDir(), assistantName), {
               recursive: true,
               force: true
             })
@@ -580,9 +527,9 @@ class AssistantService {
     }
 
     // 最终从本地获取所有助手数据
-    const assistantDir = path.join(app.getPath('userData'), 'assistants')
+    const assistantDir = this.getAssistantsRootDir()
     if (!fs.existsSync(assistantDir)) {
-      return []
+      return { assistants: [], source }
     }
 
     const assistantNames = fs.readdirSync(assistantDir)
@@ -602,7 +549,7 @@ class AssistantService {
       })
       .filter((info) => info !== null) // 过滤掉解析失败的助手
 
-    return assistants as AssistantInfo[]
+    return { assistants: assistants as AssistantInfo[], source }
   }
 
   /**

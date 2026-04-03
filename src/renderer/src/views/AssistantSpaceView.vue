@@ -20,7 +20,7 @@
         <div class="progress-container">
           <div id="love-icon"><font-awesome-icon icon="fa-solid fa-heart" /></div>
           <div class="progress-bar-background">
-            <div class="progress-bar-fill" :style="{ width: '50%' }"></div>
+            <div class="progress-bar-fill" :style="{ width: `${currentLove}%` }"></div>
           </div>
         </div>
         <div class="love-level">一级</div>
@@ -187,7 +187,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, Ref, watch } from 'vue'
+import { ref, onMounted, onUnmounted, Ref, watch, computed } from 'vue'
 import { ChatService } from '../services/ChatService'
 import { Live2DManager } from '../services/Live2dManager'
 import AssistantTips from '../components/AssistantTips.vue'
@@ -236,6 +236,8 @@ const chatService = ChatService.getInstance()
 const assistantManager = AssistantManager.getInstance()
 
 const currentAssistant: Ref<AssistantInfo | null> = ref(null)
+// 当前助手的好感度
+const currentLove = computed(() => currentAssistant.value?.love || 0) // 当前好感度值
 
 // 设置模型聚焦超时时间
 live2DManager.focus_timeout_ms = 500

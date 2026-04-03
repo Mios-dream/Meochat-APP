@@ -133,9 +133,15 @@ export interface MainWindowApi {
   initAssistant: () => Promise<{ success: boolean; error?: string }>
   /**
    * 从服务器加载所有助手数据
-   * @returns 助手信息数组
+   * @returns 助手信息、来源和当前助手
    */
-  loadAssistantData: () => Promise<AssistantInfo[]>
+  loadAssistantData: () => Promise<{
+    success: boolean
+    source: 'server' | 'local-cache'
+    error?: string
+    data: AssistantInfo[]
+    currentAssistant: AssistantInfo | null
+  }>
   /**
    * 添加助手，并上传助手资产到服务器
    * @param assistant 助手信息

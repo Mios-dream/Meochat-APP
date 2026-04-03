@@ -245,14 +245,13 @@ onMounted(async () => {
       })
     })
   })
+  await initAssistantModel()
 
   // 监听助手切换事件
   removeListener = window.api.onAssistantSwitched(async (assistant) => {
     // 当助手切换时，重新初始化模型
     switchModel(assistant.name)
   })
-
-  initAssistantModel()
 })
 
 onUnmounted(() => {

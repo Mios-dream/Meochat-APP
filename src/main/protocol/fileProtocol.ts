@@ -2,6 +2,7 @@ import { app, protocol } from 'electron'
 import fs from 'fs'
 import path from 'path'
 import log from '../utils/logger'
+import { resolveAppDataDir } from '../utils/pathResolve'
 
 // 一个辅助函数，用于处理不同操作系统的文件路径问题
 function convertPath(originalPath): string {
@@ -70,13 +71,19 @@ function handleFileProtocol(): void {
 
       const fullPath = process.platform === 'win32' ? convertPath(decodedUrl) : decodedUrl
 
-      const data = await fs.promises.readFile(path.join(app.getPath('userData'), fullPath)) // 异步读取文件内容
+      const assistantStorageRoot = resolveAppDataDir()
+      // console.log('Assistant Storage Root:', assistantStorageRoot)
+      const targetBaseDir =
+        fullPath.startsWith('assistants/') || fullPath.startsWith('/assistants/')
+          ? assistantStorageRoot
+          : app.getPath('userData')
+      const data = await fs.promises.readFile(path.join(targetBaseDir, fullPath)) // 异步读取文件内容
       return new Response(data) // 将文件内容作为响应返回
     } catch (error) {
       log.error('读取app目录的文件时出错:', (error as Error).message)
       return new Response(null, { status: 404 }) // 返回 404 错误
     }
-  })
+
 }
 
 export { registerFileProtocol, handleFileProtocol }

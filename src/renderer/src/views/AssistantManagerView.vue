@@ -27,7 +27,7 @@
             </div>
             <div id="assistant-love">
               <div class="head-img"></div>
-              <div class="name">澪</div>
+              <div class="name">{{ assistantInfo?.name }}</div>
               <div class="progress-container">
                 <div id="love-icon"><font-awesome-icon icon="fa-solid fa-heart" /></div>
                 <div class="progress-bar-background">
@@ -235,7 +235,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed, onUnmounted } from 'vue'
+import { ref, onMounted, computed, onUnmounted, onActivated } from 'vue'
 import { useConfigStore } from '../stores/useConfigStore'
 import ContextMenu from '../components/Toolbar.vue'
 import { AssistantInfo, AssistantManager } from '../services/assistantManager'
@@ -348,17 +348,26 @@ function handleEditCancel(): void {
 
 // 处理助手更新成功
 function handleAssistantUpdated(): void {
-  // 重新加载助手列表
-  assistantManager.loadAssistants()
-  assistantList.value = assistantManager.getAssistants()
-
-  // 如果当前正在编辑的助手是当前选中的助手，更新当前助手信息
-  if (editingAssistant.value && assistantInfo.value?.name === editingAssistant.value.name) {
-    assistantInfo.value = assistantManager.getCurrentAssistant()
-  }
+  refreshAssistants()
 
   // 重置编辑状态
   editingAssistant.value = null
+}
+
+// 刷新助手列表和当前助手信息
+async function refreshAssistants(): Promise<void> {
+  assistantListLoading.value = true
+
+  try {
+    await assistantManager.loadAssistants()
+    assistantList.value = assistantManager.getAssistants()
+    assistantInfo.value = assistantManager.getCurrentAssistant()
+  } catch {
+    assistantList.value = assistantManager.getAssistants()
+    assistantInfo.value = assistantManager.getCurrentAssistant()
+  } finally {
+    assistantListLoading.value = false
+  }
 }
 
 // 处理删除助手
@@ -461,19 +470,14 @@ onMounted(() => {
     isAssistantOpen.value = status
   })
 
-  // 加载助手数据
-  assistantManager.loadAssistants().then(() => {
-    assistantListLoading.value = false
-    assistantList.value = assistantManager.getAssistants()
-    const currentAssistant = assistantManager.getCurrentAssistant()
-    if (currentAssistant && assistantInfo.value?.name !== currentAssistant.name) {
-      assistantInfo.value = currentAssistant
-      selectAssistant(currentAssistant)
-    }
-  })
+  refreshAssistants()
 
   // 添加事件监听
   document.addEventListener('click', handleClickOutside)
+})
+
+onActivated(() => {
+  refreshAssistants()
 })
 
 onUnmounted(() => {
@@ -1001,6 +1005,14 @@ onUnmounted(() => {
   left: 120px;
   color: #fb7299;
   stroke: #fb7299;
+}
+
+.assistant-loading-tip {
+  position: absolute;
+  top: 13px;
+  left: 150px;
+  color: #fb7299;
+  font-size: 12px;
 }
 
 /* 选择方式对话框样式 */

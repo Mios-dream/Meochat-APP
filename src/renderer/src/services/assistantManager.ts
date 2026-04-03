@@ -1,6 +1,14 @@
 // 修改导入路径为相对路径
 import { AssistantAssets, AssistantInfo } from '../types/AssistantInfo'
 
+export type AssistantSyncSource = 'server' | 'local-cache'
+
+export interface AssistantLoadResult {
+  success: boolean
+  source: AssistantSyncSource
+  error?: string
+}
+
 class AssistantManager {
   private static instance: AssistantManager
 
@@ -40,10 +48,17 @@ class AssistantManager {
   /**
    * 从主进程加载最新助手数据
    */
-  public async loadAssistants(): Promise<void> {
-    // 使用preload中暴露的方法
-    const cloudAssistants = await window.api.loadAssistantData()
-    this.assistants = cloudAssistants || []
+  public async loadAssistants(): Promise<AssistantLoadResult> {
+    const result = await window.api.loadAssistantData()
+
+    this.assistants = result.data || []
+    this.currentAssistant = result.currentAssistant || null
+
+    return {
+      success: result.success,
+      source: result.source,
+      error: result.error
+    }
   }
 
   /**

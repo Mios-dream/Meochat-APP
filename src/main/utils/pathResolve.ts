@@ -1,6 +1,7 @@
 import { app } from 'electron'
 import path from 'path'
 import { fileURLToPath } from 'url'
+import fs from 'fs'
 
 /**
  * 获取渲染进程页面地址（开发 / 生产 统一）
@@ -34,4 +35,17 @@ function isDevelopment(): boolean {
   }
 }
 
-export { getAppUrl, getPreloadPath, isDevelopment }
+// 优先使用程序目录（安装版/便携版），不可写时回退到 userData
+function resolveAppDataDir(): string {
+  const appDataDir = path.join(path.dirname(app.getPath('exe')), 'appData')
+
+  try {
+    fs.mkdirSync(appDataDir, { recursive: true })
+    fs.accessSync(appDataDir, fs.constants.W_OK)
+    return appDataDir
+  } catch {
+    return app.getPath('userData')
+  }
+}
+
+export { getAppUrl, getPreloadPath, isDevelopment, resolveAppDataDir }

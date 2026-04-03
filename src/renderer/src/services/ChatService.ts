@@ -410,7 +410,7 @@ class ChatService {
     this.textAudioQueue = []
     this.pendingSentenceSync.clear()
     this.motionSequenceToken++
-    this.live2DManager?.finishMotionSequence()
+    this.live2DManager?.clearMotionFrame()
     this.clearHideMessageTimer()
   }
 
@@ -692,7 +692,7 @@ class ChatService {
       this.hideMessageTimer = setTimeout(() => {
         this.messageTips.hideMessage()
         this.hideMessageTimer = null
-        this.live2DManager?.finishMotionSequence()
+        this.live2DManager?.clearMotionFrame()
       }, 5000)
     } catch (error) {
       // 音频播放完毕后，设置3秒延迟隐藏消息,恢复模型到默认状态
@@ -700,7 +700,7 @@ class ChatService {
       this.hideMessageTimer = setTimeout(() => {
         this.messageTips.hideMessage()
         this.hideMessageTimer = null
-        this.live2DManager?.finishMotionSequence()
+        this.live2DManager?.clearMotionFrame()
       }, 5000)
       console.error('播放音频失败:', error)
     } finally {
@@ -829,7 +829,7 @@ class ChatService {
     }
     // 序列播放完毕后，如果令牌仍然有效，则恢复模型到默认状态
     if (token === this.motionSequenceToken) {
-      this.live2DManager.finishMotionSequence()
+      this.live2DManager.clearMotionFrame()
     }
   }
 

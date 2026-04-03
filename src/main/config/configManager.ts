@@ -1,7 +1,9 @@
 import Store, { Schema } from 'electron-store'
 import { ipcMain, BrowserWindow, app } from 'electron'
 import { MicaBrowserWindow } from 'mica-electron'
+
 import { AppConfig } from '../../renderer/src/types/appConfig'
+import { resolveAppDataDir } from '../utils/pathResolve'
 
 // 配置项的默认值
 const schema: Schema<AppConfig> = {
@@ -31,7 +33,12 @@ const schema: Schema<AppConfig> = {
   performanceMode: { type: 'string', default: 'balanced' }
 }
 
-const store = new Store({ schema })
+const appDataDir = resolveAppDataDir()
+
+const store = new Store({
+  schema,
+  cwd: appDataDir
+})
 
 function getConfig<K extends keyof AppConfig>(key: K): AppConfig[K] {
   return store.get(key) as AppConfig[K]

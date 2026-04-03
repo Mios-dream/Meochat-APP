@@ -6,9 +6,6 @@
         :id="id"
         :type="type"
         :value="localValue"
-        @input="handleInput"
-        @focus="isFocused = true"
-        @blur="handleBlur"
         :placeholder="placeholder"
         :disabled="disabled"
         :readonly="readonly"
@@ -16,8 +13,11 @@
         :class="{
           focused: isFocused,
           'has-error': hasError || localError,
-          'with-icon': $slots.icon,
+          'with-icon': $slots.icon
         }"
+        @input="handleInput"
+        @focus="isFocused = true"
+        @blur="handleBlur"
       />
       <div v-if="$slots.icon" class="input-icon">
         <slot name="icon"></slot>
@@ -38,7 +38,7 @@
 import { ref, watch } from 'vue'
 
 interface Props {
-  modelValue: string | number
+  modelValue?: string | number
   label?: string
   placeholder?: string
   type?: string
@@ -64,7 +64,7 @@ const props = withDefaults(defineProps<Props>(), {
   errorMessage: '',
   helperText: '',
   validator: undefined,
-  validationErrorMessage: '输入值无效',
+  validationErrorMessage: '输入值无效'
 })
 
 const emit = defineEmits<{
@@ -82,17 +82,17 @@ watch(
   () => props.modelValue,
   (newValue) => {
     localValue.value = newValue
-  },
+  }
 )
 
-const handleInput = (event: Event) => {
+const handleInput = (event: Event): void => {
   const target = event.target as HTMLInputElement
   localValue.value = target.value
   // 输入时清除本地错误
   localError.value = ''
 }
 
-const handleBlur = async () => {
+const handleBlur = async (): Promise<void> => {
   isFocused.value = false
   // 只有当值发生变化时才触发校验和更新
   if (localValue.value !== props.modelValue) {
@@ -111,7 +111,7 @@ const handleBlur = async () => {
           emit('update:modelValue', localValue.value)
           emit('validated', false)
         }
-      } catch (error) {
+      } catch {
         localError.value = '校验失败，请重试'
         emit('validated', false)
       } finally {
@@ -150,15 +150,12 @@ const handleBlur = async () => {
 
 .themed-input {
   width: 100%;
-  padding: 7px 20px;
-  font-size: 16px;
-  color: black;
-  background-color: #e9e7e95e;
-  /* background-color: white; */
-  border: 3px solid rgb(220, 220, 220);
-  border-radius: 10px;
-  transition: all 0.3s ease;
-  box-sizing: border-box;
+
+  padding: 10px 12px;
+  border: 2px solid #e0e0e0;
+  border-radius: 8px;
+  font-size: 14px;
+  transition: border-color 0.2s;
 }
 
 .themed-input::placeholder {
@@ -177,7 +174,7 @@ const handleBlur = async () => {
   outline: none;
   box-shadow: 0 0 15px #ffc0d663;
   border-color: #fb7299;
-  border: 3px solid #ffc0d6;
+  border: 2px solid #ffc0d6;
 }
 
 .themed-input:focus::placeholder {

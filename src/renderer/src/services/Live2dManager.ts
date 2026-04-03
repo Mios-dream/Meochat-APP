@@ -809,9 +809,6 @@ export class Live2DManager {
       // 1. 先执行动作参数覆盖层（pose 级别）
       this.tickMotionOverlay(performance.now())
 
-      // 2. 再叠加 Procedural 层（眨眼/微颤，优先级最高，不会被 overlay 压制）
-      // this.tickProceduralLayer(performance.now())
-
       // 3. 最后写入口型，确保语音驱动不被覆盖
       if (this.isSpeaking) {
         this.setModelParameterValue('ParamMouthOpenY', this.currentMouthOpenY)
@@ -915,21 +912,6 @@ export class Live2DManager {
     this.overlayTargetParams = {}
     this.overlayHoldUntil = 0
     this.overlayTransitionMs = null
-  }
-
-  /**
-   * 动作序列正常结束时调用（对应后端 done=true）。
-   * 与 clearMotionFrame 不同：overlayCurrentParams 保留当前值，
-   * tickMotionOverlay 会从当前真实位置平滑缓出到默认，不会突变。
-   */
-  public finishMotionSequence(): void {
-    console.log('Motion sequence finished')
-    // holdUntil 设为过去，触发 release 逻辑
-    // this.overlayHoldUntil = performance.now() + 1000
-    // // 清空目标，release 阶段 targetValue 为 0，current 从当前位置缓出
-    // this.overlayTargetParams = {}
-    // this.overlayTransitionMs = null
-    // 不动 overlayCurrentParams，保持当前插值位置作为 release 起点
   }
 
   /**

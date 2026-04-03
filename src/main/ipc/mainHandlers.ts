@@ -126,7 +126,14 @@ function setupAssistantServerIPC(): void {
    * 加载助手数据
    */
   ipcMain.handle('assistant:load-assistant-data', async () => {
-    return assistantService.getAssistants()
+    const result = await assistantService.loadAssistants()
+    return {
+      success: result.success,
+      source: result.source,
+      error: result.error,
+      data: assistantService.getAssistants(),
+      currentAssistant: assistantService.getCurrentAssistant()
+    }
   })
 
   /**

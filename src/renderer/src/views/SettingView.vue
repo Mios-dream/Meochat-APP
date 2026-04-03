@@ -18,7 +18,7 @@
             />
           </form>
           <div class="divider"></div>
-          <form class="setting-from">
+          <form class="setting-form">
             <div class="title">
               <label for="autoUpdate">自动更新</label>
               <div class="description">当有新版本发布时，会尝试自动更新</div>
@@ -29,7 +29,7 @@
             />
           </form>
           <div class="divider"></div>
-          <form class="setting-from">
+          <form class="setting-form">
             <div class="title">
               <label for="silentMode">静默模式</label>
               <div class="description">启动时不会自动打开主窗口</div>
@@ -40,7 +40,7 @@
             />
           </form>
           <div class="divider"></div>
-          <form class="setting-from">
+          <form class="setting-form">
             <div class="title">
               <label for="debugMode">debug模式</label>
               <div class="description">打开窗口时会显示控制台</div>
@@ -51,7 +51,7 @@
             />
           </form>
           <div class="divider"></div>
-          <form class="setting-from">
+          <form class="setting-form">
             <div class="title">
               <label for="themeColor">主题色</label>
               <div class="description">设置应用的主题颜色</div>
@@ -77,12 +77,12 @@
 
         <div class="setting-title">服务设置</div>
         <div class="setting-item">
-          <form class="setting-from">
+          <form class="setting-form">
             <div class="title">
               <label for="lock-assistant">服务器地址</label>
               <div class="description">连接到MeoChat的服务器地址</div>
             </div>
-            <div style="width: 300px; height: 40px">
+            <div style="width: 200px; height: 40px">
               <SimpleInput
                 :model-value="config.baseUrl"
                 :validator="validateServerAddress"
@@ -93,10 +93,25 @@
               />
             </div>
           </form>
+          <div class="divider"></div>
+          <form class="setting-form">
+            <div class="title">
+              <label for="server-config">服务器配置</label>
+              <div class="description">从服务端读取并编辑运行配置</div>
+            </div>
+            <button
+              class="update-button"
+              type="button"
+              :disabled="isLoadingServerConfig"
+              @click="openServerConfigDialog"
+            >
+              {{ isLoadingServerConfig ? '加载中...' : '编辑配置' }}
+            </button>
+          </form>
         </div>
         <div class="setting-title">关于项目</div>
         <div class="setting-item" style="margin-bottom: 50px">
-          <form class="setting-from">
+          <form class="setting-form">
             <div class="title">
               <label for="project-info">项目信息</label>
               <div class="description">MeoChat桌面助手客户端</div>
@@ -107,7 +122,7 @@
             </div>
           </form>
           <div class="divider"></div>
-          <form class="setting-from">
+          <form class="setting-form">
             <div class="title">
               <label for="version-info">版本信息</label>
               <div class="description">当前版本和更新信息</div>
@@ -136,6 +151,14 @@
       @close="showUpdateModal = false"
       @confirm="confirmUpdate"
     />
+
+    <ServerConfigDialog
+      v-model="showServerConfigDialog"
+      :config="serverConfigDraft"
+      :is-saving="isSavingServerConfig"
+      @close="showServerConfigDialog = false"
+      @submit="saveServerConfig"
+    />
   </div>
 </template>
 
@@ -143,8 +166,11 @@
 import ToggleSwitch from '../components/ToggleSwitch.vue'
 import SimpleInput from '../components/SimpleInput.vue'
 import UpdateModal from '../components/UpdateDialog.vue'
+import ServerConfigDialog from '../components/ServerConfigDialog.vue'
 import { useConfigStore } from '../stores/useConfigStore'
 import { NotificationService } from '../services/NotificationService'
+import { mergeServerConfig, normalizeServerConfig } from '../types/serverConfig'
+import type { ServerConfig } from '../types/serverConfig'
 import { storeToRefs } from 'pinia'
 import { ref, onMounted } from 'vue'
 
@@ -160,6 +186,10 @@ const releaseNotes = ref('')
 const showDownloadProgress = ref(false)
 const downloadProgress = ref(0)
 const notificationService = NotificationService.getInstance()
+const showServerConfigDialog = ref(false)
+const isLoadingServerConfig = ref(false)
+const isSavingServerConfig = ref(false)
+const serverConfigDraft = ref<ServerConfig | null>(null)
 
 const colorInputRef = ref<HTMLInputElement | null>(null)
 
@@ -176,6 +206,83 @@ function handleColorChange(event: Event): void {
 onMounted(async () => {
   currentVersion.value = await window.api.getCurrentVersion()
 })
+
+const buildApiUrl = (path: string): string => {
+  return `http://${config.value.baseUrl}${path}`
+}
+
+async function openServerConfigDialog(): Promise<void> {
+  if (!config.value.baseUrl) {
+    notificationService.warning({
+      title: '提示',
+      message: '请先配置服务器地址'
+    })
+    return
+  }
+
+  isLoadingServerConfig.value = true
+  try {
+    const response = await fetch(buildApiUrl('/api/get_config'), {
+      method: 'GET'
+    })
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`)
+    }
+
+    const data = await response.json()
+    serverConfigDraft.value = normalizeServerConfig(data)
+    showServerConfigDialog.value = true
+  } catch (error) {
+    console.error('获取服务器配置失败:', error)
+    notificationService.error({
+      title: '获取失败',
+      message: '无法获取服务器配置，请检查服务器连接'
+    })
+  } finally {
+    isLoadingServerConfig.value = false
+  }
+}
+
+async function saveServerConfig(updatedConfig: ServerConfig): Promise<void> {
+  isSavingServerConfig.value = true
+  try {
+    const response = await fetch(buildApiUrl('/api/update_config'), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ data: updatedConfig })
+    })
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`)
+    }
+
+    const result = await response.json()
+    if (result?.config && serverConfigDraft.value) {
+      serverConfigDraft.value = mergeServerConfig(
+        serverConfigDraft.value,
+        result.config as Record<string, unknown>
+      )
+    }
+
+    notificationService.success({
+      title: '保存成功',
+      message: result?.message || '配置更新成功'
+    })
+    showServerConfigDialog.value = false
+  } catch (error) {
+    console.error('保存服务器配置失败:', error)
+    notificationService.error({
+      title: '保存失败',
+      message: '配置更新失败，请稍后重试'
+    })
+  } finally {
+    isSavingServerConfig.value = false
+  }
+}
+
 // 打开项目
 const openProjectHomepage = (): void => {
   window.api.openExternal('https://github.com/Mios-dream/MoeChat')
@@ -324,7 +431,7 @@ function change<K extends keyof typeof config.value>(
   margin-top: 10px;
 }
 
-.setting-from {
+.setting-form {
   height: 40px;
   width: 100%;
   display: flex;
@@ -332,14 +439,14 @@ function change<K extends keyof typeof config.value>(
   justify-content: space-between;
 }
 
-.setting-from .title {
+.setting-form .title {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   justify-content: space-between;
 }
 
-.setting-from .title .description {
+.setting-form .title .description {
   font-size: 12px;
   color: gray;
 }
