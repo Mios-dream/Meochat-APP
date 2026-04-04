@@ -77,6 +77,12 @@ function setupChatBoxIPC(): void {
       win.webContents.send('chat-box:status-updated', data)
     })
   })
+
+  ipcMain.on('chat-box:wakeword-detected', (_event, data) => {
+    BrowserWindow.getAllWindows().forEach((win) => {
+      win.webContents.send('chat-box:wakeword-detected', data)
+    })
+  })
 }
 
 function setupAssistantIPC(): void {

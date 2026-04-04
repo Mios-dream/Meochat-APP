@@ -50,9 +50,12 @@ function setupAssistantServerIPC(): void {
   /**
    * 更新助手信息
    */
-  ipcMain.handle('assistant:update-assistant', async (_event, assistantData) => {
-    return await assistantService.updateAssistant(assistantData)
-  })
+  ipcMain.handle(
+    'assistant:update-assistant',
+    async (_event, assistantData, options?: { uploadAssets?: boolean }) => {
+      return await assistantService.updateAssistant(assistantData, options?.uploadAssets !== false)
+    }
+  )
 
   /**
    * 删除助手

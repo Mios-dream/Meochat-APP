@@ -1,6 +1,8 @@
 interface AssistantBaseInfo {
   // 助手名称
   name: string
+  // 助手别称
+  alias?: string
   // 对用户的称呼
   user?: string
   // 头像
@@ -77,6 +79,8 @@ interface AssistantSettings {
 interface AssistantInfo extends AssistantBaseInfo {
   // 助手名称
   name: string
+  // 助手别称
+  alias?: string
   // 对用户的称呼
   user: string
   // 头像

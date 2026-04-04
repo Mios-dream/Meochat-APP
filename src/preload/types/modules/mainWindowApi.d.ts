@@ -155,7 +155,10 @@ export interface MainWindowApi {
    * 更新助手信息，并上传助手资产到服务器
    * @param assistant 助手信息
    */
-  updateAssistant: (assistant: AssistantInfo) => Promise<{ success: boolean; error?: string }>
+  updateAssistant: (
+    assistant: AssistantInfo,
+    options?: { uploadAssets?: boolean }
+  ) => Promise<{ success: boolean; error?: string }>
   /**
    * 从服务器删除助手
    * @param name 助手名称

@@ -312,7 +312,8 @@ class AssistantService {
    * 更新助手信息，同步云端与本地数据
    */
   public async updateAssistant(
-    assistant: AssistantInfo
+    assistant: AssistantInfo,
+    shouldUploadAssets = true
   ): Promise<{ success: boolean; error?: string }> {
     try {
       // 确保必要的字段存在
@@ -331,10 +332,12 @@ class AssistantService {
 
       // 保存在本地
       this.saveAssistantToLocal(completeAssistant)
-      // 上传助手资产
-      const uploadResult = await this.uploadAssistantAssets(completeAssistant.name)
-      if (!uploadResult.success) {
-        return { success: false, error: `上传助手资产失败: ${uploadResult.error}` }
+      // 仅在资产变更时上传，避免每次保存都压缩大文件导致主进程卡顿
+      if (shouldUploadAssets) {
+        const uploadResult = await this.uploadAssistantAssets(completeAssistant.name)
+        if (!uploadResult.success) {
+          return { success: false, error: `上传助手资产失败: ${uploadResult.error}` }
+        }
       }
 
       // 更新内存中的助手数据

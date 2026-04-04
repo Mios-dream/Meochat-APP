@@ -24,7 +24,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed, Ref } from 'vue'
+import { ref, onMounted, onUnmounted, computed, Ref, watch } from 'vue'
 import { ChatService } from '../services/ChatService'
 import { Live2DManager } from '../services/Live2dManager'
 import AssistantTips from '../components/AssistantTips.vue'
@@ -33,6 +33,7 @@ import LoadingProgress from '../components/LoadingProgress.vue'
 import { useConfigStore } from '../stores/useConfigStore'
 import { storeToRefs } from 'pinia'
 import { InteractionSystem } from '../services/InteractionSystem/InteractionSystem'
+import { WakewordService } from '../services/WakewordService'
 
 const configStore = useConfigStore()
 const { config } = storeToRefs(configStore)
@@ -48,12 +49,13 @@ const loadingProgress = ref(0)
 const isTipsActive: Ref<boolean> = ref(false)
 // 当前消息
 const currentTip: Ref<string> = ref('')
-
+// 移除监听器
 let removeListener: () => void
 // 组件实例
 const live2DManager = Live2DManager.getInstance()
 const chatService = ChatService.getInstance()
 const interactionSystem = InteractionSystem.getInstance()
+const wakewordService = WakewordService.getInstance()
 
 // 计算属性
 const contextMenuItems = computed(() => [
@@ -61,6 +63,11 @@ const contextMenuItems = computed(() => [
     icon: isLocked.value ? 'fa-solid fa-lock' : 'fa-solid fa-unlock',
     text: isLocked.value ? '解锁位置' : '锁定位置',
     action: toggleLock
+  },
+  {
+    icon: config.value.quietMode ? 'fa-solid fa-volume-xmark' : 'fa-solid fa-volume-high',
+    text: config.value.quietMode ? '安静模式' : '安静模式',
+    action: toggleQuietMode
   },
   {
     icon: 'fa-solid fa-gear',
@@ -84,6 +91,14 @@ function toggleLock(): void {
 
 function openSettings(): void {
   window.api.maximizeApp()
+  hideContextMenu()
+}
+
+async function toggleQuietMode(): Promise<void> {
+  const nextMode = !config.value.quietMode
+  await configStore.updateConfig('quietMode', nextMode)
+  const message = nextMode ? '已开启安静模式，不再自动发起聊天' : '已关闭安静模式'
+  chatService.showTempMessage(message, 2000, 10)
   hideContextMenu()
 }
 
@@ -140,6 +155,37 @@ function showContextMenu(event: MouseEvent): void {
  */
 function hideContextMenu(): void {
   contextMenuVisible.value = false
+}
+
+function syncInteractionSystemState(): void {
+  if (config.value.quietMode) {
+    interactionSystem.stop()
+    return
+  }
+  interactionSystem.start()
+}
+
+async function syncWakewordState(): Promise<void> {
+  if (!config.value.autoChat || config.value.quietMode) {
+    await wakewordService.stop()
+    return
+  }
+
+  try {
+    await wakewordService.start(config.value.baseUrl)
+  } catch (error) {
+    console.error('启动语音唤醒失败:', error)
+    chatService.showTempMessage('语音唤醒启动失败，请检查麦克风权限', 3000, 10)
+  }
+}
+
+async function reconnectWakewordState(): Promise<void> {
+  try {
+    await wakewordService.stop()
+    await syncWakewordState()
+  } catch (error) {
+    console.error('助手切换后重连唤醒词失败:', error)
+  }
 }
 
 // 初始化助手模型
@@ -230,10 +276,31 @@ function startLoading(): void {
 
 onMounted(async () => {
   startLoading()
-  if (config.value.autoChat) {
-    console.log('自动聊天已启用')
+  syncInteractionSystemState()
+
+  wakewordService.setCallbacks({
+    onReady: () => {
+      console.log('Wakeword service ready')
+    },
+    onDetected: ({ keyword }) => {
+      console.log('检测到唤醒词:', keyword)
+      // chatService.showTempMessage(`检测到唤醒词：${keyword.trim() || '已唤醒'}`, 2000, 20)
+      window.api.openChatBox()
+      window.api.ipcRenderer.send('chat-box:wakeword-detected', {
+        keyword,
+        timestamp: Date.now()
+      })
+    },
+    onError: (message) => {
+      console.error('唤醒词服务错误:', message)
+    }
+  })
+
+  try {
+    await syncWakewordState()
+  } catch (error) {
+    console.error('同步唤醒词状态失败:', error)
   }
-  interactionSystem.start()
 
   // 监听来自ChatBox的消息
   window.api.ipcRenderer.on('chat-box:send-message', async (_, data) => {
@@ -250,15 +317,41 @@ onMounted(async () => {
   // 监听助手切换事件
   removeListener = window.api.onAssistantSwitched(async (assistant) => {
     // 当助手切换时，重新初始化模型
-    switchModel(assistant.name)
+    await switchModel(assistant.name)
+    // 切换助手后同步唤醒词状态
+    await reconnectWakewordState()
   })
 })
+
+watch(
+  () => config.value.quietMode,
+  async () => {
+    syncInteractionSystemState()
+    try {
+      await syncWakewordState()
+    } catch (error) {
+      console.error('安静模式切换后同步唤醒词状态失败:', error)
+    }
+  }
+)
+
+watch(
+  () => [config.value.autoChat, config.value.baseUrl],
+  async () => {
+    try {
+      await syncWakewordState()
+    } catch (error) {
+      console.error('配置变更后同步唤醒词状态失败:', error)
+    }
+  }
+)
 
 onUnmounted(() => {
   if (removeListener) {
     removeListener()
   }
   interactionSystem.stop()
+  wakewordService.stop()
 
   window.api.ipcRenderer.removeAllListeners('chat-box:send-message')
   live2DManager.destroy()
@@ -295,6 +388,6 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 2px dashed #a18cd1;
+  /* border: 2px dashed #a18cd1; */
 }
 </style>

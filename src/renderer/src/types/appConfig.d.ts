@@ -19,6 +19,8 @@ export interface AppConfig {
   silentMode: boolean
   // 是否开启空闲事件，空闲时间超过 idleTime 毫秒时会触发事件
   idleEvent: boolean
+  // 是否开启桌宠安静模式，开启后不会自动发起聊天
+  quietMode: boolean
   // 空闲时间阈值，单位毫秒
   idleTime: number
   // 助手是否开启

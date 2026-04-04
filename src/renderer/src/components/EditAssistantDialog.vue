@@ -89,6 +89,15 @@
 
                 <div class="form-row">
                   <div class="form-group">
+                    <label for="assistantAlias">别称</label>
+                    <input
+                      id="assistantAlias"
+                      v-model="formData.alias"
+                      type="text"
+                      placeholder="用,逗号分割"
+                    />
+                  </div>
+                  <div class="form-group">
                     <label for="assistantBirthday">生日</label>
                     <input
                       id="assistantBirthday"
@@ -264,7 +273,7 @@
               <form class="setting-from">
                 <div class="title">
                   <label for="gptModelPath">GPT模型</label>
-                  <div class="description">合成语音的GPT模型文件地址(模型为ckpt结尾)</div>
+                  <div class="description">合成语音的GPT模型文件地址(模型以pth结尾)</div>
                 </div>
                 <input
                   id="gptModelPath"
@@ -278,7 +287,7 @@
               <form class="setting-from">
                 <div class="title">
                   <label for="sovitsModelPath">SOVITS模型</label>
-                  <div class="description">合成语音的SOVITS模型文件地址(模型以pth结尾)</div>
+                  <div class="description">合成语音的SOVITS模型文件地址(模型为ckpt结尾)</div>
                 </div>
                 <input
                   id="sovitsModelPath"
@@ -287,60 +296,6 @@
                   placeholder="输入SOVITS模型文件地址..."
                   required
                 />
-              </form>
-
-              <div class="divider"></div>
-
-              <form class="setting-from">
-                <div class="title">
-                  <label for="seed">随机种子</label>
-                  <div class="description">控制语音生成的随机性，-1表示随机</div>
-                </div>
-                <input
-                  id="seed"
-                  v-model.number="formData.gsvSetting.seed"
-                  type="number"
-                  min="-1"
-                  placeholder="-1表示随机"
-                />
-              </form>
-              <div class="divider"></div>
-
-              <form class="setting-from">
-                <div class="title">
-                  <label for="topK">TopK值</label>
-                  <div class="description">控制语音生成的多样性</div>
-                </div>
-
-                <input id="topK" v-model.number="formData.gsvSetting.topK" type="number" min="1" />
-              </form>
-              <div class="divider"></div>
-              <form class="setting-from">
-                <div class="title">
-                  <label for="textLang">输出语音语言</label>
-                  <div class="description">设置助手的语音输出语言</div>
-                </div>
-                <select id="textLang" v-model="formData.gsvSetting.textLang" default-value="zh">
-                  <option value="zh">中文</option>
-                  <option value="en">英文</option>
-                  <option value="ja">日文</option>
-                </select>
-              </form>
-              <div class="divider"></div>
-              <form class="setting-from">
-                <div class="title">
-                  <label for="textLang">参考语音语言</label>
-                  <div class="description">设置语音合成的参考语音的语言</div>
-                </div>
-                <select
-                  id="refTextLang"
-                  v-model="formData.gsvSetting.promptLang"
-                  default-value="zh"
-                >
-                  <option value="zh">中文</option>
-                  <option value="en">英文</option>
-                  <option value="ja">日文</option>
-                </select>
               </form>
 
               <div class="divider"></div>
@@ -371,6 +326,34 @@
                   placeholder="输入参考文本..."
                   required
                 />
+              </form>
+              <div class="divider"></div>
+              <form class="setting-from">
+                <div class="title">
+                  <label for="textLang">输出语音语言</label>
+                  <div class="description">设置助手的语音输出语言</div>
+                </div>
+                <select id="textLang" v-model="formData.gsvSetting.textLang" default-value="zh">
+                  <option value="zh">中文</option>
+                  <option value="en">英文</option>
+                  <option value="ja">日文</option>
+                </select>
+              </form>
+              <div class="divider"></div>
+              <form class="setting-from">
+                <div class="title">
+                  <label for="textLang">参考语音语言</label>
+                  <div class="description">设置语音合成的参考语音的语言</div>
+                </div>
+                <select
+                  id="refTextLang"
+                  v-model="formData.gsvSetting.promptLang"
+                  default-value="zh"
+                >
+                  <option value="zh">中文</option>
+                  <option value="en">英文</option>
+                  <option value="ja">日文</option>
+                </select>
               </form>
             </div>
           </div>
@@ -557,6 +540,7 @@ const characterImageInput = ref<HTMLInputElement>()
 const live2dModelInput = ref<HTMLInputElement>()
 const selectedCharacterImages = ref<File[]>([])
 const selectedLive2dModel = ref<File | null>(null)
+const assetsDirty = ref(false)
 
 // 表单数据
 const formData = ref<AssistantInfo>(createNullAssistant())
@@ -576,6 +560,7 @@ const live2dModelInfo = ref({
 function createNullAssistant(): AssistantInfo {
   return {
     name: '',
+    alias: '',
     user: '',
     avatar: '',
     birthday: new Date().toISOString().split('T')[0],
@@ -641,6 +626,7 @@ function resetForm(): void {
   selectedFile.value = null
   selectedCharacterImages.value = []
   selectedLive2dModel.value = null
+  assetsDirty.value = false
   live2dModelInfo.value = {
     name: '',
     path: '',
@@ -696,6 +682,7 @@ watch(
             progress: 100
           }
         }
+        assetsDirty.value = false
       } else {
         // 设置默认值
         assistantAssets.value = {
@@ -712,6 +699,7 @@ watch(
           size: 0,
           progress: 0
         }
+        assetsDirty.value = false
       }
     } else {
       resetForm()
@@ -801,6 +789,7 @@ async function handleAvatarFileSelect(event: Event): Promise<void> {
 
     // 仅保存文件信息，不立即上传
     selectedFile.value = file
+    assetsDirty.value = true
   }
 }
 
@@ -812,6 +801,7 @@ const removeAvatar = (): void => {
   if (fileInput.value) {
     fileInput.value.value = ''
   }
+  assetsDirty.value = true
 }
 
 // 触发角色立绘上传
@@ -827,6 +817,7 @@ const handleCharacterImageSelect = async (event: Event): Promise<void> => {
   if (input.files && input.files.length > 0) {
     const files = Array.from(input.files)
     selectedCharacterImages.value = [...files]
+    assetsDirty.value = true
 
     // 只创建预览，不立即上传
     if (files.length > 0) {
@@ -843,6 +834,7 @@ const handleCharacterImageSelect = async (event: Event): Promise<void> => {
 // 移除角色立绘
 const removeCharacterImage = (): void => {
   assistantAssets.value.characterImages = ''
+  assetsDirty.value = true
 }
 
 // 触发Live2D模型上传
@@ -858,6 +850,7 @@ const handleLive2dModelSelect = async (event: Event): Promise<void> => {
   if (input.files && input.files[0]) {
     const file = input.files[0]
     selectedLive2dModel.value = file
+    assetsDirty.value = true
 
     // 更新模型信息，但不立即上传
     live2dModelInfo.value = {
@@ -884,6 +877,7 @@ const removeLive2dModel = (): void => {
   }
 
   selectedLive2dModel.value = null
+  assetsDirty.value = true
 }
 
 // 上传头像
@@ -1170,8 +1164,10 @@ const handleSubmit = async (): Promise<void> => {
         updatedAt: Date.now()
       }
 
-      // 更新助手信息
-      const updateResult = await assistantManager.updateAssistant(updatedAssistant)
+      const shouldUploadAssets = assetsDirty.value
+      const updateResult = await assistantManager.updateAssistant(updatedAssistant, {
+        uploadAssets: shouldUploadAssets
+      })
       if (updateResult.success) {
         notificationService.success({
           message: '助手信息更新成功'

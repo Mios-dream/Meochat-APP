@@ -165,10 +165,11 @@ class AssistantManager {
    * @param assistant 助手信息
    */
   public async updateAssistant(
-    assistant: AssistantInfo
+    assistant: AssistantInfo,
+    options?: { uploadAssets?: boolean }
   ): Promise<{ success: boolean; error?: string }> {
     // 使用preload中暴露的方法
-    const result = await window.api.updateAssistant(assistant)
+    const result = await window.api.updateAssistant(assistant, options)
     await this.loadAssistants()
     return result
   }

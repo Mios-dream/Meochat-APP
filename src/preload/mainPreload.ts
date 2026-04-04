@@ -80,7 +80,8 @@ contextBridge.exposeInMainWorld('api', {
   // 添加助手
   addAssistant: (assistant) => ipcRenderer.invoke('assistant:add-assistant', assistant),
   // 更新助手信息
-  updateAssistant: (assistant) => ipcRenderer.invoke('assistant:update-assistant', assistant),
+  updateAssistant: (assistant, options) =>
+    ipcRenderer.invoke('assistant:update-assistant', assistant, options),
   // 删除助手
   deleteAssistant: (name) => ipcRenderer.invoke('assistant:delete-assistant', name),
   // 上传助手资产进度

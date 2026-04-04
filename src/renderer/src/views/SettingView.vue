@@ -7,7 +7,7 @@
       <div class="setting-container">
         <div class="setting-title">基础设置</div>
         <div class="setting-item">
-          <form class="setting-from">
+          <form class="setting-form">
             <div class="title">
               <label for="autoStartOnBoot">开机启动</label>
               <div class="description">应用会在开机时自动启动</div>
@@ -411,6 +411,7 @@ function change<K extends keyof typeof config.value>(
   width: 100%;
   height: 100%;
   scrollbar-width: none;
+  margin-bottom: 100px;
 }
 
 .setting-title {

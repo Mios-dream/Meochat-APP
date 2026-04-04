@@ -81,12 +81,15 @@
         <div class="setting-title">助手设置</div>
         <div class="setting-item">
           <form class="setting-from">
-            <label for="lock-assistant">锁定助手</label>
+            <label for="lock-assistant">锁定助手位置</label>
             <ToggleSwitch v-model="isLocked" />
           </form>
           <div class="divider"></div>
           <form class="setting-from">
-            <label for="lock-assistant">是否启用桌面助手自动语音识别聊天</label>
+            <div class="title">
+              <label for="wakeword">语音唤醒</label>
+              <div class="description">呼唤助手名字时将自动启动聊天</div>
+            </div>
             <ToggleSwitch
               v-model="config.autoChat"
               @update:model-value="(v) => change('autoChat', v)"
@@ -105,12 +108,18 @@
           </form>
           <div class="divider"></div>
           <form class="setting-from">
-            <label for="app-speech-board">应用内台词板</label>
+            <div class="title">
+              <label for="app-speech-board">应用内台词板</label>
+              <div class="description">在应用内显示助手台词板</div>
+            </div>
             <ToggleSwitch v-model="isLocked" />
           </form>
           <div class="divider"></div>
           <form class="setting-from">
-            <label for="desktop-speech-board">桌面台词板</label>
+            <div class="title">
+              <label for="desktop-speech-board">桌面台词板</label>
+              <div class="description">在桌面显示助手台词板</div>
+            </div>
             <ToggleSwitch v-model="isLocked" />
           </form>
           <div class="divider"></div>
@@ -136,6 +145,17 @@
             <ToggleSwitch
               :model-value="config.idleEvent"
               @update:model-value="(v) => change('idleEvent', v)"
+            />
+          </form>
+          <div class="divider"></div>
+          <form class="setting-from">
+            <div class="title">
+              <label for="quiet-mode">安静模式</label>
+              <div class="description">开启后桌宠不会自动发起聊天</div>
+            </div>
+            <ToggleSwitch
+              :model-value="config.quietMode"
+              @update:model-value="(v) => change('quietMode', v)"
             />
           </form>
           <div class="divider"></div>

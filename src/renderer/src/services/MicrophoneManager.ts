@@ -89,8 +89,6 @@ class MicrophoneManager {
         sampleRate: this.targetSampleRate
       })
 
-      console.log(`AudioContext 采样率: ${this.audioContext.sampleRate}Hz`)
-
       // 初始化 AudioWorklet
       await this.initAudioWorklet(this.audioContext)
 

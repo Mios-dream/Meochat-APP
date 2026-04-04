@@ -88,18 +88,24 @@ async function handleVoiceInput(): Promise<void> {
   if (isRecording.value) {
     stopRecording()
   } else {
-    // 连接到 WebSocket 服务
-    micManager.connectToServer(wsUrl.value)
-    isRecording.value = true
-    // 开始录音
-    micManager
-      .startRecording()
-      .then(() => {
-        console.log('开始录音')
-      })
-      .catch((error) => {
-        console.error('录音启动失败:', error)
-      })
+    await startVoiceRecording()
+  }
+}
+
+async function startVoiceRecording(): Promise<void> {
+  if (loading.value || isRecording.value) {
+    return
+  }
+
+  micManager.connectToServer(wsUrl.value)
+  isRecording.value = true
+
+  try {
+    await micManager.startRecording()
+  } catch (error) {
+    isRecording.value = false
+    micManager.disconnect()
+    console.error('录音启动失败:', error)
   }
 }
 
@@ -125,11 +131,18 @@ onMounted(() => {
       }, 1000) // 延迟1秒开始下一次录音，给用户准备时间
     }
   })
+
+  window.api.ipcRenderer.on('chat-box:wakeword-detected', () => {
+    if (!loading.value) {
+      startVoiceRecording()
+    }
+  })
 })
 
 onUnmounted(() => {
   // 清理事件监听
   window.api.ipcRenderer.removeAllListeners('chat-box:status-updated')
+  window.api.ipcRenderer.removeAllListeners('chat-box:wakeword-detected')
   // 停止录音
   micManager.stopRecording()
 })

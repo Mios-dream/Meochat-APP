@@ -26,6 +26,8 @@ export class InteractionSystem {
   private isRunning = false
   // 是否启用调试事件
   private enableDebugEvents: boolean = false
+  // 处理器只注册一次，避免重复监听
+  private handlersRegistered = false
 
   static getInstance(): InteractionSystem {
     if (!InteractionSystem.instance) {
@@ -34,7 +36,7 @@ export class InteractionSystem {
     return InteractionSystem.instance
   }
 
-  constructor() {
+  private constructor() {
     // 初始化核心组件
     this.eventCenter = new EventCenter()
     this.contextManager = new ContextManager()
@@ -56,10 +58,15 @@ export class InteractionSystem {
 
   // 注册所有默认处理器
   registerHandlers(): void {
+    if (this.handlersRegistered) {
+      return
+    }
+
     this.eventSystem.registerHandler(new TimeEventHandler())
     this.eventSystem.registerHandler(new FestivalEventHandler())
     this.eventSystem.registerHandler(new IdleEventHandler())
     this.eventSystem.registerHandler(new Live2dEventHandler())
+    this.handlersRegistered = true
   }
 
   /**

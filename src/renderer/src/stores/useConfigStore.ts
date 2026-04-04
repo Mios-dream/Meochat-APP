@@ -13,6 +13,7 @@ export const useConfigStore = defineStore('config', () => {
     debugMode: false,
     silentMode: false,
     idleEvent: true,
+    quietMode: false,
     idleTime: 2,
     assistantEnabled: false,
     currentAssistant: '',

@@ -18,6 +18,7 @@ const schema: Schema<AppConfig> = {
   generateMotion: { type: 'boolean', default: false },
   autoChat: { type: 'boolean', default: false },
   idleEvent: { type: 'boolean', default: true },
+  quietMode: { type: 'boolean', default: false },
   idleTime: { type: 'number', default: 2 },
   // 助手是否开启
   assistantEnabled: { type: 'boolean', default: false },
