@@ -4,6 +4,7 @@ interface NotificationData {
   title: string
   message?: string
   duration?: number
+  key?: string
 }
 
 // 定义通知监听器类型
@@ -69,21 +70,25 @@ class NotificationService {
    * @param title 通知标题
    * @param message 通知内容
    * @param duration 显示时长（毫秒）
+   * @param key 可选的通知唯一标识
    */
   public info({
     title = 'Info',
     message,
-    duration = 5000
+    duration = 5000,
+    key
   }: {
     title?: string
     message?: string
     duration?: number
+    key?: string
   }): void {
     this.notify({
       type: 'info',
       title,
       message,
-      duration
+      duration,
+      key
     })
   }
 
@@ -96,17 +101,20 @@ class NotificationService {
   public success({
     title = 'Success',
     message,
-    duration = 5000
+    duration = 5000,
+    key
   }: {
     title?: string
     message?: string
     duration?: number
+    key?: string
   }): void {
     this.notify({
       type: 'success',
       title,
       message,
-      duration
+      duration,
+      key
     })
   }
 
@@ -119,17 +127,20 @@ class NotificationService {
   public warning({
     title = 'Warning',
     message,
-    duration = 5000
+    duration = 5000,
+    key
   }: {
     title?: string
     message?: string
     duration?: number
+    key?: string
   }): void {
     this.notify({
       type: 'warning',
       title,
       message,
-      duration
+      duration,
+      key
     })
   }
 
@@ -142,17 +153,20 @@ class NotificationService {
   public error({
     title = 'Error',
     message,
-    duration = 5000
+    duration = 5000,
+    key
   }: {
     title?: string
     message?: string
     duration?: number
+    key?: string
   }): void {
     this.notify({
       type: 'error',
       title,
       message,
-      duration
+      duration,
+      key
     })
   }
 }

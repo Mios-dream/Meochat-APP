@@ -124,21 +124,9 @@ class AssistantManager {
    * @param assistant 助手信息
    */
   public async addAssistant(assistant: AssistantInfo): Promise<boolean> {
-    // 设置上传进度监听器 - 使用preload中暴露的方法
-    const progressCallback = (data: { assistantName: string; progress: number }): void => {
-      console.log(`上传进度: ${data.progress}%`)
-      if (data.assistantName === assistant.name) {
-        // 这里可以触发一个事件，让UI组件更新进度条
-        console.log(`上传进度: ${data.progress}%`)
-      }
-    }
-
-    window.api.onUploadProgress(progressCallback)
-
     // 发送IPC消息保存助手数据 - 使用preload中暴露的方法
     const status = await window.api.addAssistant(assistant)
     await this.loadAssistants()
-    window.api.ipcRenderer.removeAllListeners('assistant:upload-progress')
 
     if (status.success) {
       return true
@@ -146,6 +134,12 @@ class AssistantManager {
       console.error('添加助手失败:', status.error)
       return false
     }
+  }
+
+  public onUploadProgress(
+    callback: (data: { assistantName: string; progress: number }) => void
+  ): () => void {
+    return window.api.onUploadProgress(callback)
   }
 
   public async deleteAssistant(name: string): Promise<{ success: boolean; message?: string }> {

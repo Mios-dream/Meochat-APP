@@ -34,6 +34,7 @@ import { NotificationService } from '../services/NotificationService'
 // 定义通知类型
 interface Notification {
   id: number
+  key?: string
   type: 'success' | 'info' | 'warning' | 'error'
   title: string
   message?: string
@@ -44,6 +45,7 @@ interface Notification {
 const notifications = ref<Notification[]>([])
 const notificationService = NotificationService.getInstance()
 let nextId = 1
+const notificationTimers = new Map<number, ReturnType<typeof setTimeout>>()
 
 // 获取对应类型的图标
 function getIconForType(type: string): string {
@@ -63,6 +65,18 @@ function getIconForType(type: string): string {
 
 // 添加通知
 function addNotification(notification: Omit<Notification, 'id' | 'index'>): void {
+  if (notification.key) {
+    const existing = notifications.value.find((item) => item.key === notification.key)
+    if (existing) {
+      existing.type = notification.type
+      existing.title = notification.title
+      existing.message = notification.message
+      existing.duration = notification.duration
+      setupAutoClose(existing.id, notification.duration)
+      return
+    }
+  }
+
   // 限制最多显示3条通知
   if (notifications.value.length >= 3) {
     // 移除最旧的通知
@@ -80,16 +94,36 @@ function addNotification(notification: Omit<Notification, 'id' | 'index'>): void
   // 更新所有通知的索引
   updateNotificationsIndex()
 
-  // 设置自动关闭定时器
-  if (notification.duration > 0) {
-    setTimeout(() => {
-      removeNotification(newNotification.id)
-    }, notification.duration)
+  setupAutoClose(newNotification.id, notification.duration)
+}
+
+function setupAutoClose(id: number, duration: number): void {
+  const existingTimer = notificationTimers.get(id)
+  if (existingTimer) {
+    clearTimeout(existingTimer)
+    notificationTimers.delete(id)
   }
+
+  if (duration <= 0) {
+    return
+  }
+
+  const timer = setTimeout(() => {
+    notificationTimers.delete(id)
+    removeNotification(id)
+  }, duration)
+
+  notificationTimers.set(id, timer)
 }
 
 // 移除通知
 function removeNotification(id: number): void {
+  const existingTimer = notificationTimers.get(id)
+  if (existingTimer) {
+    clearTimeout(existingTimer)
+    notificationTimers.delete(id)
+  }
+
   const index = notifications.value.findIndex((n) => n.id === id)
   if (index !== -1) {
     notifications.value.splice(index, 1)

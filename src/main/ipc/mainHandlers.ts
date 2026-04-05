@@ -52,8 +52,17 @@ function setupAssistantServerIPC(): void {
    */
   ipcMain.handle(
     'assistant:update-assistant',
-    async (_event, assistantData, options?: { uploadAssets?: boolean }) => {
-      return await assistantService.updateAssistant(assistantData, options?.uploadAssets !== false)
+    async (event, assistantData, options?: { uploadAssets?: boolean }) => {
+      return await assistantService.updateAssistant(
+        assistantData,
+        options?.uploadAssets !== false,
+        (progress) => {
+          event.sender.send('assistant:upload-progress', {
+            assistantName: assistantData.name,
+            progress
+          })
+        }
+      )
     }
   )
 

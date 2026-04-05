@@ -503,6 +503,7 @@ const emit = defineEmits<Emits>()
 
 const assistantManager = AssistantManager.getInstance()
 const notificationService = NotificationService.getInstance()
+const uploadNotificationKey = 'assistant-assets-upload-progress'
 
 // 选项卡配置
 const tabs = [
@@ -1117,6 +1118,8 @@ const handleSubmit = async (): Promise<void> => {
     return
   }
 
+  let stopUploadProgressListener: (() => void) | null = null
+
   try {
     // 设置提交状态为true，显示加载动画
     isSubmitting.value = true
@@ -1156,6 +1159,32 @@ const handleSubmit = async (): Promise<void> => {
     // 将响应式数据转换为普通JavaScript对象
     const plainProcessedFormData = JSON.parse(JSON.stringify(processedFormData))
 
+    const currentAssistantName = formData.value.name
+    const shouldTrackUploadProgress = !isEditMode || assetsDirty.value
+    if (shouldTrackUploadProgress) {
+      notificationService.info({
+        key: uploadNotificationKey,
+        title: '正在上传助手资产',
+        message: '准备上传 0%',
+        duration: 0
+      })
+
+      stopUploadProgressListener = assistantManager.onUploadProgress(
+        ({ assistantName, progress }) => {
+          if (assistantName !== currentAssistantName) {
+            return
+          }
+
+          notificationService.info({
+            key: uploadNotificationKey,
+            title: '正在上传助手资产',
+            message: `上传进度 ${progress}%`,
+            duration: 0
+          })
+        }
+      )
+    }
+
     if (isEditMode && props.editingAssistant) {
       // 编辑模式：更新助手信息
       const updatedAssistant: AssistantInfo = {
@@ -1168,7 +1197,21 @@ const handleSubmit = async (): Promise<void> => {
       const updateResult = await assistantManager.updateAssistant(updatedAssistant, {
         uploadAssets: shouldUploadAssets
       })
+
+      if (stopUploadProgressListener) {
+        stopUploadProgressListener()
+        stopUploadProgressListener = null
+      }
+
       if (updateResult.success) {
+        if (shouldTrackUploadProgress) {
+          notificationService.success({
+            key: uploadNotificationKey,
+            title: '助手资产上传完成',
+            message: '上传进度 100%',
+            duration: 1500
+          })
+        }
         notificationService.success({
           message: '助手信息更新成功'
         })
@@ -1176,6 +1219,14 @@ const handleSubmit = async (): Promise<void> => {
         // 关闭对话框并重置表单
         emit('update:modelValue', false)
       } else {
+        if (shouldTrackUploadProgress) {
+          notificationService.error({
+            key: uploadNotificationKey,
+            title: '助手资产上传失败',
+            message: updateResult.error || '上传失败',
+            duration: 3000
+          })
+        }
         notificationService.error({
           message: `更新助手失败: ${updateResult.error}`
         })
@@ -1192,20 +1243,51 @@ const handleSubmit = async (): Promise<void> => {
 
       // 添加新助手
       const addStatus = await assistantManager.addAssistant(assistantInfo)
+
+      if (stopUploadProgressListener) {
+        stopUploadProgressListener()
+        stopUploadProgressListener = null
+      }
+
       if (addStatus) {
+        if (shouldTrackUploadProgress) {
+          notificationService.success({
+            key: uploadNotificationKey,
+            title: '助手资产上传完成',
+            message: '上传进度 100%',
+            duration: 1500
+          })
+        }
         notificationService.success({
           message: '助手添加成功'
         })
         emit('success')
         // 关闭对话框并重置表单
         emit('update:modelValue', false)
+      } else if (shouldTrackUploadProgress) {
+        notificationService.error({
+          key: uploadNotificationKey,
+          title: '助手资产上传失败',
+          message: '上传失败，请稍后重试',
+          duration: 3000
+        })
       }
     }
   } catch (error) {
     // 获取详细的错误信息
     const errorMessage = error instanceof Error ? error.message : '操作失败'
+    notificationService.error({
+      key: uploadNotificationKey,
+      title: '助手资产上传失败',
+      message: errorMessage,
+      duration: 3000
+    })
     console.error(isEditMode ? '更新助手失败:' : '添加助手失败:', errorMessage)
   } finally {
+    if (stopUploadProgressListener) {
+      stopUploadProgressListener()
+      stopUploadProgressListener = null
+    }
     // 无论成功或失败，都将提交状态设为false
     isSubmitting.value = false
   }

@@ -168,7 +168,9 @@ export interface MainWindowApi {
   /**
    * 监听助手资产上传进度
    */
-  onUploadProgress: (callback: (data: { assistantName: string; progress: number }) => void) => void
+  onUploadProgress: (
+    callback: (data: { assistantName: string; progress: number }) => void
+  ) => () => void
 
   /**
    * 检查助手资产是否需要更新

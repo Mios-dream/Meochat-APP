@@ -3,6 +3,7 @@ import axios from 'axios'
 import FormData from 'form-data'
 import AdmZip from 'adm-zip'
 import path from 'path'
+import os from 'os'
 import { globalShortcut, BrowserWindow } from 'electron'
 import { getConfig, setConfig } from '../config/configManager'
 import log from '../utils/logger'
@@ -313,7 +314,8 @@ class AssistantService {
    */
   public async updateAssistant(
     assistant: AssistantInfo,
-    shouldUploadAssets = true
+    shouldUploadAssets = true,
+    onProgress?: (progress: number) => void
   ): Promise<{ success: boolean; error?: string }> {
     try {
       // 确保必要的字段存在
@@ -334,7 +336,7 @@ class AssistantService {
       this.saveAssistantToLocal(completeAssistant)
       // 仅在资产变更时上传，避免每次保存都压缩大文件导致主进程卡顿
       if (shouldUploadAssets) {
-        const uploadResult = await this.uploadAssistantAssets(completeAssistant.name)
+        const uploadResult = await this.uploadAssistantAssets(completeAssistant.name, onProgress)
         if (!uploadResult.success) {
           return { success: false, error: `上传助手资产失败: ${uploadResult.error}` }
         }
@@ -562,41 +564,102 @@ class AssistantService {
     assistantName: string,
     onProgress?: (progress: number) => void
   ): Promise<{ success: false; error: string } | { success: true }> {
+    // 检查助手目录和资产目录是否存在
     const assistantDir = this.ensureAssistantDirExists(assistantName)
     const assetsDir = path.join(assistantDir, 'assets')
 
     if (!fs.existsSync(assetsDir)) {
-      log.warn(`No assets directory found for assistant ${assistantName}`)
-      return { success: false, error: 'No assets directory found' }
+      log.warn(`没有找到助手 ${assistantName} 的资产目录`)
+      return { success: false, error: '没有找到助手资产目录' }
     }
+
+    // Windows 下部分目录或含特殊字符路径可能在 chmod 时触发 EPERM，改用系统临时目录与 ASCII 文件名
+    const tempZipPath = path.join(
+      os.tmpdir(),
+      `assistant_assets_upload_${Date.now()}_${Math.random().toString(16).slice(2)}.zip`
+    )
+
     try {
-      // 压缩资产文件夹
+      // 使用临时文件而非内存 Buffer，降低大文件上传时内存峰值与阻塞风险
       const zip = new AdmZip()
       zip.addLocalFolder(assetsDir)
-      const zipBuffer = zip.toBuffer()
+      await zip.writeZipPromise(tempZipPath, { overwrite: true })
+
+      const zipStat = fs.statSync(tempZipPath)
+      const zipSize = zipStat.size
+
+      log.info(
+        `[AssistantUpload] start assistant=${assistantName}, zipSizeMB=${(zipSize / 1024 / 1024).toFixed(2)}`
+      )
+
       // 上传到云端
       const url = `http://${getConfig('baseUrl')}/api/assistant/assets/upload`
+      const maxRetry = 1
 
-      const formData = new FormData()
-      formData.append('name', assistantName) // 替换为实际的助手名称
-      formData.append('assets_zip', zipBuffer, {
-        filename: `${assistantName}_assets.zip`
-      })
+      for (let attempt = 0; attempt <= maxRetry; attempt++) {
+        try {
+          const formData = new FormData()
+          formData.append('name', assistantName)
+          formData.append('assets_zip', fs.createReadStream(tempZipPath), {
+            filename: `${assistantName}_assets.zip`,
+            knownLength: zipSize,
+            contentType: 'application/zip'
+          })
 
-      const headers = formData.getHeaders()
+          const headers = formData.getHeaders()
+          const contentLength = await new Promise<number | null>((resolve) => {
+            formData.getLength((err, length) => {
+              if (err) {
+                resolve(null)
+                return
+              }
+              resolve(length)
+            })
+          })
 
-      await axios.post(url, formData, {
-        headers,
-        onUploadProgress: (progressEvent) => {
-          if (progressEvent.total && onProgress) {
-            const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total)
-            onProgress(progress)
+          if (contentLength !== null) {
+            headers['Content-Length'] = String(contentLength)
           }
+
+          await axios.post(url, formData, {
+            headers,
+            timeout: 0,
+            maxBodyLength: Infinity,
+            maxContentLength: Infinity,
+            onUploadProgress: (progressEvent) => {
+              if (progressEvent.total && onProgress) {
+                const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total)
+                onProgress(progress)
+              }
+            }
+          })
+
+          log.info(`[AssistantUpload] success assistant=${assistantName}`)
+          return { success: true }
+        } catch (error) {
+          const maybeError = error as { code?: string; message?: string }
+          const message = maybeError.message || ''
+          const isConnectionAbort =
+            maybeError.code === 'ECONNABORTED' || message.includes('ECONNABORTED')
+
+          if (isConnectionAbort && attempt < maxRetry) {
+            log.warn(
+              `[AssistantUpload] ECONNABORTED, retrying assistant=${assistantName}, attempt=${attempt + 1}`
+            )
+            continue
+          }
+
+          return { success: false, error: message || '上传失败' }
         }
-      })
-      return { success: true }
+      }
+
+      return { success: false, error: '上传失败' }
     } catch (error) {
       return { success: false, error: (error as Error).message }
+    } finally {
+      if (fs.existsSync(tempZipPath)) {
+        fs.rmSync(tempZipPath, { force: true })
+      }
     }
   }
 

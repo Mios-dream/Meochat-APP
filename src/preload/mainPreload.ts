@@ -85,8 +85,17 @@ contextBridge.exposeInMainWorld('api', {
   // 删除助手
   deleteAssistant: (name) => ipcRenderer.invoke('assistant:delete-assistant', name),
   // 上传助手资产进度
-  onUploadProgress: (callback) =>
-    ipcRenderer.on('assistant:upload-progress', (_, percent) => callback(percent)),
+  onUploadProgress: (callback) => {
+    const listener = (
+      _,
+      data: {
+        assistantName: string
+        progress: number
+      }
+    ): void => callback(data)
+    ipcRenderer.on('assistant:upload-progress', listener)
+    return () => ipcRenderer.removeListener('assistant:upload-progress', listener)
+  },
   // 检查助手资产是否需要更新
   isNeedsUpdate: (assistant) => ipcRenderer.invoke('assistant:need-update', assistant),
   // 获取当前助手信息
