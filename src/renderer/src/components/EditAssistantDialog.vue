@@ -127,6 +127,7 @@
             <textarea
               id="assistantDescription"
               v-model="formData.description"
+              class="simple-textarea"
               placeholder="请输入助手的详细描述"
               rows="5"
             ></textarea>
@@ -147,6 +148,7 @@
             <textarea
               id="extraDescription"
               v-model="formData.extraDescription"
+              class="simple-textarea"
               placeholder="可以添加一些额外的背景故事或特征描述"
               rows="4"
             ></textarea>
@@ -157,6 +159,7 @@
             <textarea
               id="mask"
               v-model="formData.mask"
+              class="simple-textarea"
               placeholder="用于在提示词中填充用户的信息，让助手更了解用户"
               rows="3"
             ></textarea>
@@ -167,6 +170,7 @@
             <textarea
               id="customPrompt"
               v-model="formData.customPrompt"
+              class="simple-textarea"
               placeholder="可以添加自定义的提示词，将不使用模板创建助手"
               rows="4"
             ></textarea>
@@ -182,6 +186,7 @@
               >
                 <textarea
                   v-model="formData.messageExamples[index]"
+                  class="simple-textarea"
                   placeholder="输入对话案例..."
                   rows="2"
                 ></textarea>
@@ -205,6 +210,7 @@
               >
                 <textarea
                   v-model="formData.startWith[index]"
+                  class="simple-textarea"
                   placeholder="输入开场白..."
                   rows="2"
                 ></textarea>
@@ -663,7 +669,7 @@ watch(
       // 如果有头像，设置预览
       if (newAssistant.avatar) {
         // 尝试使用 app-resource 协议加载头像
-        previewImage.value = `app-resource://${newAssistant.avatar}`
+        previewImage.value = `app-resource://${newAssistant.avatar}?t=${Date.now()}`
       } else {
         previewImage.value = ''
       }
@@ -1312,6 +1318,11 @@ const handleCancel = (): void => {
   border-radius: 15px;
   overflow-y: auto;
   scrollbar-width: none;
+}
+
+.simple-textarea {
+  scrollbar-width: none;
+  field-sizing: content;
 }
 
 .add-assistant-title {

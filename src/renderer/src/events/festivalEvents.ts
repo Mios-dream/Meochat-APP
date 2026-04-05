@@ -145,7 +145,7 @@ class FestivalEventHandler implements IEventHandler {
     // 构建提示词
     const prompt = this.buildPrompt(personality, '节日祝福', festivalName, festivalDescription)
 
-    return await LLMRequest([{ role: 'system', content: prompt }])
+    return await LLMRequest([{ role: 'user', content: prompt }])
   }
 
   /**

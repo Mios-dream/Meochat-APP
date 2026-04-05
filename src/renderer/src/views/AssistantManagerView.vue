@@ -138,7 +138,7 @@
               :style="
                 assistant.avatar
                   ? {
-                      backgroundImage: `url(${'app-resource://' + assistant.avatar})`
+                      backgroundImage: `url(${'app-resource://' + assistant.avatar}?t=${Date.now()})`
                     }
                   : {}
               "

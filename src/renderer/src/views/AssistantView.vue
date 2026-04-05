@@ -103,8 +103,8 @@ async function toggleQuietMode(): Promise<void> {
 }
 
 function closeAssistant(): void {
-  window.api.closeAssistant()
   hideContextMenu()
+  window.api.closeAssistant()
 }
 
 function handleMouseDown(event: MouseEvent): void {
@@ -157,6 +157,9 @@ function hideContextMenu(): void {
   contextMenuVisible.value = false
 }
 
+/**
+ * 切换交互系统状态
+ */
 function syncInteractionSystemState(): void {
   if (config.value.quietMode) {
     interactionSystem.stop()
@@ -165,6 +168,9 @@ function syncInteractionSystemState(): void {
   interactionSystem.start()
 }
 
+/**
+ * 切换语音唤醒状态
+ */
 async function syncWakewordState(): Promise<void> {
   if (!config.value.autoChat || config.value.quietMode) {
     await wakewordService.stop()
@@ -238,6 +244,9 @@ async function switchModel(assistantName: string): Promise<void> {
   }
 }
 
+/**
+ * 加载完成，隐藏加载进度
+ */
 function loadingCompleted(): void {
   loadingProgress.value = 100
   // 隐藏加载进度
@@ -255,6 +264,19 @@ function loadingCompleted(): void {
     }
   }, 500)
 }
+
+/**
+ * 处理唤醒词检测到的事件
+ * @param keyword
+ */
+async function handleWakewordDetected(keyword: string): Promise<void> {
+  window.api.openChatBox()
+  window.api.ipcRenderer.send('chat-box:wakeword-detected', keyword)
+}
+
+/**
+ * 启动加载进度
+ */
 function startLoading(): void {
   loadingProgress.value = 0
   const progressElement = document.getElementById('loading-container')
@@ -283,13 +305,7 @@ onMounted(async () => {
       console.log('Wakeword service ready')
     },
     onDetected: ({ keyword }) => {
-      console.log('检测到唤醒词:', keyword)
-      // chatService.showTempMessage(`检测到唤醒词：${keyword.trim() || '已唤醒'}`, 2000, 20)
-      window.api.openChatBox()
-      window.api.ipcRenderer.send('chat-box:wakeword-detected', {
-        keyword,
-        timestamp: Date.now()
-      })
+      handleWakewordDetected(keyword)
     },
     onError: (message) => {
       console.error('唤醒词服务错误:', message)

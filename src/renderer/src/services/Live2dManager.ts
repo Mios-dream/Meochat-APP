@@ -72,6 +72,9 @@ export class Live2DManager {
   // 当前叠加层过渡时长，单位 ms，null 表示使用默认值
   private overlayTransitionMs: number | null = null
 
+  // Cubism 默认 maskBufferCount=1，复杂模型可能超过上限（36）
+  private readonly maskBufferCount = 2
+
   // 当前口型开合度，用于语音驱动口型时的平滑过渡
   private currentMouthOpenY = 0
   // motionManager.update 原始方法与钩子状态
@@ -207,6 +210,8 @@ export class Live2DManager {
       ticker: PIXI.Ticker.shared,
       autoInteract: false
     })
+
+    this.applyMaskBufferCount()
 
     this.installMotionManagerHook()
 
@@ -399,6 +404,8 @@ export class Live2DManager {
       autoInteract: false
     })
 
+    this.applyMaskBufferCount()
+
     // 模型切换后重置语音/动作覆盖状态，避免沿用旧模型参数状态
     this.isSpeaking = false
     this.currentMouthOpenY = 0
@@ -417,6 +424,28 @@ export class Live2DManager {
 
     // 重置模型变换
     this.resetModelTransform()
+  }
+
+  /**
+   * 提升 Cubism 渲染器 maskBufferCount，缓解复杂模型的遮罩数量限制。
+   */
+  private applyMaskBufferCount(): void {
+    if (!this.model) {
+      return
+    }
+
+    try {
+      const internalModel = this.model.internalModel as {
+        coreModel?: unknown
+        renderer?: { initialize?: (coreModel: unknown, maskBufferCount?: number) => void }
+      }
+
+      if (internalModel?.renderer?.initialize && internalModel?.coreModel) {
+        internalModel.renderer.initialize(internalModel.coreModel, this.maskBufferCount)
+      }
+    } catch (error) {
+      console.warn('设置Live2D遮罩缓冲数量失败:', error)
+    }
   }
 
   /**

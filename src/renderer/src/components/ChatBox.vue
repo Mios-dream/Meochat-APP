@@ -43,13 +43,21 @@ const inputValue = ref('')
 const loading = ref(false)
 // 录音状态
 const isRecording = ref(false)
+const voiceIdleTimeoutMs = 10000
+let voiceIdleTimer: ReturnType<typeof setTimeout> | null = null
 
 // 创建麦克风管理器实例
 const micManager = new MicrophoneManager()
 
 // 设置识别结果回调
 micManager.setRecognitionCallback((data: string) => {
-  inputValue.value = data
+  const recognizedText = data.trim()
+  if (!recognizedText) {
+    return
+  }
+
+  clearVoiceIdleTimer()
+  inputValue.value = recognizedText
   // 停止录音
   micManager.stopRecording()
   // 提交消息
@@ -62,11 +70,30 @@ const wsUrl = computed(() => `ws://${config.value.baseUrl}/api/asr_ws`)
  * 停止录音
  */
 function stopRecording(): void {
+  clearVoiceIdleTimer()
   // 停止录音并断开连接
   micManager.stopRecording()
   micManager.disconnect()
   isRecording.value = false
   console.log('停止录音')
+}
+
+function clearVoiceIdleTimer(): void {
+  if (voiceIdleTimer) {
+    clearTimeout(voiceIdleTimer)
+    voiceIdleTimer = null
+  }
+}
+
+function scheduleVoiceIdleTimeout(): void {
+  clearVoiceIdleTimer()
+  voiceIdleTimer = setTimeout(() => {
+    if (!isRecording.value || loading.value) {
+      return
+    }
+
+    stopRecording()
+  }, voiceIdleTimeoutMs)
 }
 
 /**
@@ -102,8 +129,10 @@ async function startVoiceRecording(): Promise<void> {
 
   try {
     await micManager.startRecording()
+    scheduleVoiceIdleTimeout()
   } catch (error) {
     isRecording.value = false
+    clearVoiceIdleTimer()
     micManager.disconnect()
     console.error('录音启动失败:', error)
   }
@@ -126,16 +155,23 @@ onMounted(() => {
     if (oldLoading && !loading.value && isRecording.value) {
       setTimeout(() => {
         if (isRecording.value) {
-          micManager.startRecording()
+          micManager
+            .startRecording()
+            .then(() => {
+              scheduleVoiceIdleTimeout()
+            })
+            .catch((error) => {
+              stopRecording()
+              console.error('自动开始录音失败:', error)
+            })
         }
       }, 1000) // 延迟1秒开始下一次录音，给用户准备时间
     }
   })
-
-  window.api.ipcRenderer.on('chat-box:wakeword-detected', () => {
-    if (!loading.value) {
-      startVoiceRecording()
-    }
+  // 监听语音唤醒事件
+  window.api.ipcRenderer.on('chat-box:wakeword-detected', (_, wakeword) => {
+    loading.value = true // 设置加载状态
+    window.api.ipcRenderer.send('chat-box:send-message', { text: wakeword })
   })
 })
 
@@ -143,6 +179,7 @@ onUnmounted(() => {
   // 清理事件监听
   window.api.ipcRenderer.removeAllListeners('chat-box:status-updated')
   window.api.ipcRenderer.removeAllListeners('chat-box:wakeword-detected')
+  clearVoiceIdleTimer()
   // 停止录音
   micManager.stopRecording()
 })

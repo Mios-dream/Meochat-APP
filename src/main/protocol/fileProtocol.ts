@@ -5,13 +5,29 @@ import log from '../utils/logger'
 import { resolveAppDataDir } from '../utils/pathResolve'
 
 // 一个辅助函数，用于处理不同操作系统的文件路径问题
-function convertPath(originalPath): string {
+function convertPath(originalPath: string): string {
   const match = originalPath.match(/^\/([a-zA-Z])\/(.*)$/)
   if (match) {
     // 为 Windows 系统转换路径格式
     return `${match[1]}:/${match[2]}`
   } else {
     return originalPath // 其他系统直接使用原始路径
+  }
+}
+
+// 从自定义协议 URL 中提取纯路径，忽略查询参数和哈希
+function extractResourcePath(requestUrl: string): string {
+  try {
+    const parsedUrl = new URL(requestUrl)
+    const hostPart = parsedUrl.host || ''
+    const pathnamePart = parsedUrl.pathname || ''
+    const combinedPath = hostPart ? `${hostPart}${pathnamePart}` : pathnamePart
+    return decodeURIComponent(combinedPath)
+  } catch {
+    // URL 解析失败时回退到字符串切割，避免请求完全失败
+    const noHash = requestUrl.split('#')[0] || requestUrl
+    const noQuery = noHash.split('?')[0] || noHash
+    return decodeURIComponent(noQuery.replace(/^[a-zA-Z-]+:\/\/?/, ''))
   }
 }
 
@@ -48,9 +64,7 @@ function handleFileProtocol(): void {
   // 处理本地资源请求
   protocol.handle('local-resource', async (request) => {
     try {
-      const decodedUrl = decodeURIComponent(
-        request.url.replace(new RegExp(`^local-resource:/`, 'i'), '')
-      )
+      const decodedUrl = extractResourcePath(request.url)
 
       const fullPath = process.platform === 'win32' ? convertPath(decodedUrl) : decodedUrl
 
@@ -65,9 +79,7 @@ function handleFileProtocol(): void {
   // 处理app资源请求
   protocol.handle('app-resource', async (request) => {
     try {
-      const decodedUrl = decodeURIComponent(
-        request.url.replace(new RegExp(`^app-resource:/`, 'i'), '')
-      )
+      const decodedUrl = extractResourcePath(request.url)
 
       const fullPath = process.platform === 'win32' ? convertPath(decodedUrl) : decodedUrl
 

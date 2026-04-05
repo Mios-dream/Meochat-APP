@@ -219,10 +219,7 @@ export class IdleEventHandler implements IEventHandler {
   ): Promise<string | null> {
     // 构建提示词
     const prompt = this.buildPrompt(eventType, eventDescription, userStatus, context.lastMessage)
-
-    // console.log('prompt:', [{ role: 'system', content: prompt }])
-
-    return await LLMRequest([{ role: 'system', content: prompt }])
+    return await LLMRequest([{ role: 'user', content: prompt }])
   }
 
   /**

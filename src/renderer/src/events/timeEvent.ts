@@ -110,7 +110,7 @@ export class TimeEventHandler implements IEventHandler {
     // 构建提示词
     const prompt = this.buildPrompt(personality, eventType, timeDescription, userStatus)
 
-    return await LLMRequest([{ role: 'system', content: prompt }])
+    return await LLMRequest([{ role: 'user', content: prompt }])
   }
 
   /**
