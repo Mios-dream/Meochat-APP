@@ -29,19 +29,19 @@ export class Live2DManager {
   // 聚焦的状态,是否可以聚焦
   private isFocusEnabled = false
   // 聚焦超时定时器
-  private focusTimeout: NodeJS.Timeout | null = null
+  private focusTimeout: number | null = null
   // 聚焦超时,用于全局
   public focus_timeout_ms = 5000 // 5秒无点击后取消聚焦
   // 用于控制忽略状态。是否点击的空白区域
   private ignoreState = false
   // 恢复模型状态的定时器
-  private restoreTimer: NodeJS.Timeout | null = null
+  private restoreTimer: number | null = null
 
   // 用于画布内鼠标跟踪
   // 鼠标点击和长按状态
   private isMousePressed = false
   // 鼠标按下的定时器
-  private mousePressTimer: NodeJS.Timeout | null = null
+  private mousePressTimer: number | null = null
   // 鼠标长按触发时间
   private longPressDuration = 100 // 长按触发时间（毫秒）
   // 拖动相关
@@ -115,13 +115,13 @@ export class Live2DManager {
     // 眼睛开合 —— 释放时应该回到睁开状态（1），而不是闭合（0）
     ParamEyeLOpen: {
       transitionMs: 130,
-      easing: 'easeOutCubic',
+      easing: 'easeInCubic',
       releaseMs: 700,
       releaseTargetValue: 1
     },
     ParamEyeROpen: {
       transitionMs: 130,
-      easing: 'easeOutCubic',
+      easing: 'easeInCubic',
       releaseMs: 700,
       releaseTargetValue: 1
     }
@@ -134,8 +134,8 @@ export class Live2DManager {
     releaseTargetValue: number
   } = {
     transitionMs: 220,
-    easing: 'easeOutCubic',
-    releaseMs: 700,
+    easing: 'linear',
+    releaseMs: 1000,
     releaseTargetValue: 0
   }
 

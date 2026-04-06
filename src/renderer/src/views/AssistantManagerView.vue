@@ -26,7 +26,12 @@
               </div>
             </div>
             <div id="assistant-love">
-              <div class="head-img"></div>
+              <div
+                class="head-img"
+                :style="{
+                  backgroundImage: `url(${assistantInfo?.avatar ? 'app-resource://' + assistantInfo?.avatar : '../assets/images/assistant_avatar_small.png'})`
+                }"
+              ></div>
               <div class="name">{{ assistantInfo?.name }}</div>
               <div class="progress-container">
                 <div id="love-icon"><font-awesome-icon icon="fa-solid fa-heart" /></div>
@@ -575,8 +580,7 @@ onUnmounted(() => {
   border-radius: 10px;
   background-color: #ffcddec9;
   margin-bottom: 3px;
-  background-image: url('../assets/images/assistant_avatar_small.png');
-  background-size: 70% auto;
+  background-size: 100% auto;
   background-repeat: no-repeat;
   background-position: 50% 30%;
 }

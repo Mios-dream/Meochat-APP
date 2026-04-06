@@ -15,7 +15,12 @@
     </div>
     <div id="toolbar-left-top">
       <div id="assistant-love">
-        <div class="head-img"></div>
+        <div
+          class="head-img"
+          :style="{
+            backgroundImage: `url(${currentAssistant?.avatar ? 'app-resource://' + currentAssistant?.avatar : '../assets/images/assistant_avatar_small.png'})`
+          }"
+        ></div>
         <div class="name">{{ currentAssistant?.name }}</div>
         <div class="progress-container">
           <div id="love-icon"><font-awesome-icon icon="fa-solid fa-heart" /></div>
@@ -931,7 +936,6 @@ async function saveShortcut(shortcut: string): Promise<void> {
   border-radius: 10px;
   background-color: #ffcddec9;
   margin-bottom: 3px;
-  background-image: url('../assets/images/assistant_avatar_small.png');
   background-size: 70px;
   background-position: center;
 }
