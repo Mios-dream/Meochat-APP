@@ -215,6 +215,22 @@ export interface MainWindowApi {
   ) => Promise<{ success: true; path: string } | { success: false; error: string }>
 
   /**
+   * 保存助手通用资源文件
+   * @param fileData 文件数据
+   * @param assistantName 助手名称
+   * @param subDir 目标子目录（assets 下）
+   * @param fileName 文件名（含后缀）
+   * @param oldRelativePath 旧资源相对路径，用于替换后删除旧文件
+   */
+  saveAssistantResourceFile: (
+    fileData: ArrayBuffer,
+    assistantName: string,
+    subDir: string,
+    fileName: string,
+    oldRelativePath?: string
+  ) => Promise<{ success: true; path: string } | { success: false; error: string }>
+
+  /**
    * 获取助手资产
    * @param assistantName 助手名称
    */

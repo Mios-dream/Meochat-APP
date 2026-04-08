@@ -731,6 +731,74 @@ class AssistantService {
   }
 
   /**
+   * 保存助手通用资源文件到指定资产目录，并在替换时删除旧文件
+   */
+  public async saveAssistantResourceFile(
+    fileData: Buffer | ArrayBuffer,
+    assistantName: string,
+    subDir: string,
+    fileName: string,
+    oldRelativePath?: string
+  ): Promise<{ success: true; path: string } | { success: false; error: string }> {
+    try {
+      if (!assistantName?.trim()) {
+        return { success: false, error: '助手名称不能为空' }
+      }
+
+      const normalizedSubDir = subDir.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
+      if (!normalizedSubDir || normalizedSubDir.includes('..')) {
+        return { success: false, error: '无效的资源目录' }
+      }
+
+      const safeFileName = path.basename(fileName)
+      if (!safeFileName || safeFileName.includes('..')) {
+        return { success: false, error: '无效的文件名' }
+      }
+
+      const assistantDir = this.ensureAssistantDirExists(assistantName)
+      const targetDir = path.join(assistantDir, 'assets', normalizedSubDir)
+      if (!fs.existsSync(targetDir)) {
+        fs.mkdirSync(targetDir, { recursive: true })
+      }
+
+      const targetPath = path.join(targetDir, safeFileName)
+      const bufferData = Buffer.isBuffer(fileData) ? fileData : Buffer.from(fileData)
+      fs.writeFileSync(targetPath, bufferData)
+
+      const relativePath = path.posix.join(
+        'assistants',
+        assistantName,
+        'assets',
+        ...normalizedSubDir.split('/').filter(Boolean),
+        safeFileName
+      )
+
+      const oldPathClean = oldRelativePath
+        ?.replace(/^app-resource:\/\//, '')
+        .split('?')[0]
+        .replace(/\\/g, '/')
+
+      if (oldPathClean && oldPathClean !== relativePath) {
+        const assistantAssetsPrefix = `assistants/${assistantName}/assets/`
+        if (oldPathClean.startsWith(assistantAssetsPrefix) && !oldPathClean.includes('..')) {
+          const oldAbsolutePath = path.join(
+            this.getAssistantsRootDir(),
+            oldPathClean.replace(/^assistants\//, '')
+          )
+          if (fs.existsSync(oldAbsolutePath) && fs.statSync(oldAbsolutePath).isFile()) {
+            fs.unlinkSync(oldAbsolutePath)
+          }
+        }
+      }
+
+      return { success: true, path: relativePath }
+    } catch (error) {
+      log.error('保存助手资源文件失败:', error)
+      return { success: false, error: (error as Error).message }
+    }
+  }
+
+  /**
    * 加载助手资产配置
    */
   public async loadAssistantAssets(

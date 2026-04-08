@@ -281,13 +281,28 @@
                   <label for="gptModelPath">GPT模型</label>
                   <div class="description">合成语音的GPT模型文件地址(模型以pth结尾)</div>
                 </div>
-                <input
-                  id="gptModelPath"
-                  v-model="formData.gsvSetting.gptModelPath"
-                  type="text"
-                  placeholder="输入GPT模型文件地址..."
-                  required
-                />
+                <div class="voice-file-picker">
+                  <input
+                    id="gptModelPath"
+                    :value="
+                      displayVoiceFileName(formData.gsvSetting.gptModelPath, selectedGptModelFile)
+                    "
+                    type="text"
+                    placeholder="请选择GPT模型文件..."
+                    readonly
+                    required
+                  />
+                  <button type="button" class="file-picker-btn" @click="triggerGptModelSelect">
+                    选择文件
+                  </button>
+                  <input
+                    ref="gptModelInput"
+                    type="file"
+                    accept=".pth"
+                    style="display: none"
+                    @change="handleGptModelSelect"
+                  />
+                </div>
               </form>
               <div class="divider"></div>
               <form class="setting-from">
@@ -295,13 +310,31 @@
                   <label for="sovitsModelPath">SOVITS模型</label>
                   <div class="description">合成语音的SOVITS模型文件地址(模型为ckpt结尾)</div>
                 </div>
-                <input
-                  id="sovitsModelPath"
-                  v-model="formData.gsvSetting.sovitsModelPath"
-                  type="text"
-                  placeholder="输入SOVITS模型文件地址..."
-                  required
-                />
+                <div class="voice-file-picker">
+                  <input
+                    id="sovitsModelPath"
+                    :value="
+                      displayVoiceFileName(
+                        formData.gsvSetting.sovitsModelPath,
+                        selectedSovitsModelFile
+                      )
+                    "
+                    type="text"
+                    placeholder="请选择SOVITS模型文件..."
+                    readonly
+                    required
+                  />
+                  <button type="button" class="file-picker-btn" @click="triggerSovitsModelSelect">
+                    选择文件
+                  </button>
+                  <input
+                    ref="sovitsModelInput"
+                    type="file"
+                    accept=".ckpt"
+                    style="display: none"
+                    @change="handleSovitsModelSelect"
+                  />
+                </div>
               </form>
 
               <div class="divider"></div>
@@ -310,13 +343,28 @@
                   <label for="refAudioPath">参考音频</label>
                   <div class="description">用于合成语音的参考音频文件地址</div>
                 </div>
-                <input
-                  id="refAudioPath"
-                  v-model="formData.gsvSetting.refAudioPath"
-                  type="text"
-                  placeholder="输入参考音频文件地址..."
-                  required
-                />
+                <div class="voice-file-picker">
+                  <input
+                    id="refAudioPath"
+                    :value="
+                      displayVoiceFileName(formData.gsvSetting.refAudioPath, selectedRefAudioFile)
+                    "
+                    type="text"
+                    placeholder="请选择参考音频文件..."
+                    readonly
+                    required
+                  />
+                  <button type="button" class="file-picker-btn" @click="triggerRefAudioSelect">
+                    选择文件
+                  </button>
+                  <input
+                    ref="refAudioInput"
+                    type="file"
+                    accept="audio/*,.wav,.mp3,.flac,.ogg,.m4a"
+                    style="display: none"
+                    @change="handleRefAudioSelect"
+                  />
+                </div>
               </form>
               <div class="divider"></div>
 
@@ -547,6 +595,17 @@ const characterImageInput = ref<HTMLInputElement>()
 const live2dModelInput = ref<HTMLInputElement>()
 const selectedCharacterImages = ref<File[]>([])
 const selectedLive2dModel = ref<File | null>(null)
+const gptModelInput = ref<HTMLInputElement>()
+const sovitsModelInput = ref<HTMLInputElement>()
+const refAudioInput = ref<HTMLInputElement>()
+const selectedGptModelFile = ref<File | null>(null)
+const selectedSovitsModelFile = ref<File | null>(null)
+const selectedRefAudioFile = ref<File | null>(null)
+const originalVoicePaths = ref({
+  gptModelPath: '',
+  sovitsModelPath: '',
+  refAudioPath: ''
+})
 const assetsDirty = ref(false)
 
 // 表单数据
@@ -633,6 +692,14 @@ function resetForm(): void {
   selectedFile.value = null
   selectedCharacterImages.value = []
   selectedLive2dModel.value = null
+  selectedGptModelFile.value = null
+  selectedSovitsModelFile.value = null
+  selectedRefAudioFile.value = null
+  originalVoicePaths.value = {
+    gptModelPath: '',
+    sovitsModelPath: '',
+    refAudioPath: ''
+  }
   assetsDirty.value = false
   live2dModelInfo.value = {
     name: '',
@@ -648,6 +715,15 @@ function resetForm(): void {
   }
   if (live2dModelInput.value) {
     live2dModelInput.value.value = ''
+  }
+  if (gptModelInput.value) {
+    gptModelInput.value.value = ''
+  }
+  if (sovitsModelInput.value) {
+    sovitsModelInput.value.value = ''
+  }
+  if (refAudioInput.value) {
+    refAudioInput.value.value = ''
   }
 }
 
@@ -665,6 +741,26 @@ watch(
         startWith: [...(newAssistant.startWith || [])],
         messageExamples: [...(newAssistant.messageExamples || [])]
       }
+      originalVoicePaths.value = {
+        gptModelPath: normalizeStoredResourcePath(
+          newAssistant.name,
+          'models',
+          newAssistant.gsvSetting?.gptModelPath || ''
+        ),
+        sovitsModelPath: normalizeStoredResourcePath(
+          newAssistant.name,
+          'models',
+          newAssistant.gsvSetting?.sovitsModelPath || ''
+        ),
+        refAudioPath: normalizeStoredResourcePath(
+          newAssistant.name,
+          'voice',
+          newAssistant.gsvSetting?.refAudioPath || ''
+        )
+      }
+      selectedGptModelFile.value = null
+      selectedSovitsModelFile.value = null
+      selectedRefAudioFile.value = null
 
       // 如果有头像，设置预览
       if (newAssistant.avatar) {
@@ -772,6 +868,191 @@ function readFileAsBuffer(file: File): Promise<ArrayBuffer> {
     reader.onerror = reject
     reader.readAsArrayBuffer(file)
   })
+}
+
+const extractDisplayFileName = (filePath: string): string => {
+  if (!filePath) {
+    return ''
+  }
+  const normalizedPath = filePath.replace(/^app-resource:\/\//, '').split('?')[0]
+  const parts = normalizedPath.split('/').filter(Boolean)
+  return parts[parts.length - 1] || ''
+}
+
+const getFileExtension = (fileName: string): string => {
+  const dotIndex = fileName.lastIndexOf('.')
+  if (dotIndex < 0) {
+    return ''
+  }
+  return fileName.slice(dotIndex)
+}
+
+const normalizeStoredResourcePath = (
+  assistantName: string,
+  subDir: string,
+  storedPath: string
+): string => {
+  if (!storedPath) {
+    return ''
+  }
+
+  const cleaned = storedPath.replace(/^app-resource:\/\//, '').split('?')[0]
+  if (cleaned.startsWith('assistants/')) {
+    return cleaned
+  }
+
+  const fileName = extractDisplayFileName(cleaned)
+  if (!fileName) {
+    return ''
+  }
+
+  return `assistants/${assistantName}/assets/${subDir}/${fileName}`
+}
+
+const displayVoiceFileName = (savedPath: string, selectedFile: File | null): string => {
+  if (selectedFile) {
+    return selectedFile.name
+  }
+  return extractDisplayFileName(savedPath)
+}
+
+const triggerGptModelSelect = (): void => {
+  if (!isSubmitting.value) {
+    gptModelInput.value?.click()
+  }
+}
+
+const triggerSovitsModelSelect = (): void => {
+  if (!isSubmitting.value) {
+    sovitsModelInput.value?.click()
+  }
+}
+
+const triggerRefAudioSelect = (): void => {
+  if (!isSubmitting.value) {
+    refAudioInput.value?.click()
+  }
+}
+
+const handleGptModelSelect = (event: Event): void => {
+  const input = event.target as HTMLInputElement
+  if (input.files && input.files[0]) {
+    selectedGptModelFile.value = input.files[0]
+    formData.value.gsvSetting.gptModelPath = input.files[0].name
+    assetsDirty.value = true
+  }
+}
+
+const handleSovitsModelSelect = (event: Event): void => {
+  const input = event.target as HTMLInputElement
+  if (input.files && input.files[0]) {
+    selectedSovitsModelFile.value = input.files[0]
+    formData.value.gsvSetting.sovitsModelPath = input.files[0].name
+    assetsDirty.value = true
+  }
+}
+
+const handleRefAudioSelect = (event: Event): void => {
+  const input = event.target as HTMLInputElement
+  if (input.files && input.files[0]) {
+    const file = input.files[0]
+    selectedRefAudioFile.value = file
+    const extension = getFileExtension(file.name)
+    formData.value.gsvSetting.refAudioPath = `audio${extension}`
+    assetsDirty.value = true
+  }
+}
+
+const uploadVoiceResources = async (): Promise<boolean> => {
+  if (!formData.value.name) {
+    return false
+  }
+
+  try {
+    const assistantName = formData.value.name
+
+    const saveResourceFile = async (
+      buffer: ArrayBuffer,
+      subDir: string,
+      fileName: string,
+      oldRelativePath?: string
+    ): Promise<{ success: true; path: string } | { success: false; error: string }> => {
+      if (typeof window.api.saveAssistantResourceFile === 'function') {
+        return await window.api.saveAssistantResourceFile(
+          buffer,
+          assistantName,
+          subDir,
+          fileName,
+          oldRelativePath
+        )
+      }
+
+      // 兼容旧 preload：通过 ipcRenderer 直接调用对象参数版本
+      return await window.api.ipcRenderer.invoke('assistant:save-resource-file', {
+        fileData: buffer,
+        assistantName,
+        subDir,
+        fileName,
+        oldRelativePath
+      })
+    }
+
+    if (selectedGptModelFile.value) {
+      const buffer = await readFileAsBuffer(selectedGptModelFile.value)
+      const saveResult = await saveResourceFile(
+        buffer,
+        'models',
+        selectedGptModelFile.value.name,
+        originalVoicePaths.value.gptModelPath
+      )
+      if (!saveResult.success) {
+        console.error('GPT模型上传失败:', saveResult.error)
+        return false
+      }
+      formData.value.gsvSetting.gptModelPath = selectedGptModelFile.value.name
+      originalVoicePaths.value.gptModelPath = saveResult.path
+    }
+
+    if (selectedSovitsModelFile.value) {
+      const buffer = await readFileAsBuffer(selectedSovitsModelFile.value)
+      const saveResult = await saveResourceFile(
+        buffer,
+        'models',
+        selectedSovitsModelFile.value.name,
+        originalVoicePaths.value.sovitsModelPath
+      )
+      if (!saveResult.success) {
+        console.error('SOVITS模型上传失败:', saveResult.error)
+        return false
+      }
+      formData.value.gsvSetting.sovitsModelPath = selectedSovitsModelFile.value.name
+      originalVoicePaths.value.sovitsModelPath = saveResult.path
+    }
+
+    if (selectedRefAudioFile.value) {
+      const buffer = await readFileAsBuffer(selectedRefAudioFile.value)
+      const extension = getFileExtension(selectedRefAudioFile.value.name)
+      const targetAudioFileName = `audio${extension}`
+      const saveResult = await saveResourceFile(
+        buffer,
+        'voice',
+        targetAudioFileName,
+        originalVoicePaths.value.refAudioPath
+      )
+      if (!saveResult.success) {
+        console.error('参考音频上传失败:', saveResult.error)
+        return false
+      }
+      formData.value.gsvSetting.refAudioPath = targetAudioFileName
+      originalVoicePaths.value.refAudioPath = saveResult.path
+    }
+
+    return true
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : '操作失败'
+    console.error('语音资源上传异常:', errorMessage)
+    return false
+  }
 }
 // 具体逻辑
 // 触发头像文件选择
@@ -1085,6 +1366,12 @@ const validateForm = (): boolean => {
   }
 
   // 检查语音设置中的必填字段
+  if (!formData.value.gsvSetting.gptModelPath?.trim()) {
+    missingFields.push('GPT模型')
+  }
+  if (!formData.value.gsvSetting.sovitsModelPath?.trim()) {
+    missingFields.push('SOVITS模型')
+  }
   if (!formData.value.gsvSetting.refAudioPath?.trim()) {
     missingFields.push('参考音频')
   }
@@ -1097,7 +1384,7 @@ const validateForm = (): boolean => {
   }
 
   // 检查文本设置中的必填字段
-  if (!formData.value.gsvSetting.textLang?.trim()) {
+  if (!formData.value.gsvSetting.promptLang?.trim()) {
     missingFields.push('参考语音语言')
   }
 
@@ -1151,7 +1438,13 @@ const handleSubmit = async (): Promise<void> => {
       return
     }
 
-    // 4. 保存资产配置
+    // 4. 上传语音资源（GPT/SOVITS/参考音频）
+    if (!(await uploadVoiceResources())) {
+      console.error('语音资源上传失败，取消提交')
+      return
+    }
+
+    // 5. 保存资产配置
     if (!(await saveAssistantAssets())) {
       console.error('保存资产配置失败，取消提交')
       return
@@ -1160,6 +1453,13 @@ const handleSubmit = async (): Promise<void> => {
     // 处理日期格式
     const processedFormData = {
       ...formData.value,
+      gsvSetting: {
+        ...formData.value.gsvSetting,
+        // 服务端会拼接资源根目录，这里只保留文件名
+        gptModelPath: extractDisplayFileName(formData.value.gsvSetting.gptModelPath),
+        sovitsModelPath: extractDisplayFileName(formData.value.gsvSetting.sovitsModelPath),
+        refAudioPath: extractDisplayFileName(formData.value.gsvSetting.refAudioPath)
+      },
       birthday: new Date(formData.value.birthday).toISOString().split('T')[0]
     }
     // 将响应式数据转换为普通JavaScript对象
@@ -1446,6 +1746,35 @@ const handleCancel = (): void => {
 .setting-from select:focus {
   outline: none;
   border-color: #fb7299;
+}
+
+.voice-file-picker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 260px;
+}
+
+.voice-file-picker input {
+  flex: 1;
+  min-width: 0;
+  max-width: 280px;
+}
+
+.file-picker-btn {
+  padding: 8px 12px;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  background: #fff;
+  color: #666;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.file-picker-btn:hover {
+  border-color: #fb7299;
+  color: #fb7299;
 }
 
 /* 头像上传区域样式 */

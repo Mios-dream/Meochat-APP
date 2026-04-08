@@ -89,6 +89,56 @@ function setupAssistantServerIPC(): void {
   )
 
   /**
+   * 保存助手通用资源文件
+   */
+  ipcMain.handle(
+    'assistant:save-resource-file',
+    async (
+      _event,
+      fileDataOrPayload:
+        | Buffer
+        | ArrayBuffer
+        | {
+            fileData: Buffer | ArrayBuffer
+            assistantName: string
+            subDir: string
+            fileName: string
+            oldRelativePath?: string
+          },
+      assistantNameArg?: string,
+      subDirArg?: string,
+      fileNameArg?: string,
+      oldRelativePathArg?: string
+    ): Promise<{ success: true; path: string } | { success: false; error: string }> => {
+      const isPayloadObject =
+        typeof fileDataOrPayload === 'object' &&
+        fileDataOrPayload !== null &&
+        'fileData' in fileDataOrPayload &&
+        'assistantName' in fileDataOrPayload
+
+      const fileData = isPayloadObject
+        ? (fileDataOrPayload.fileData as Buffer | ArrayBuffer)
+        : (fileDataOrPayload as Buffer | ArrayBuffer)
+      const assistantName = isPayloadObject
+        ? fileDataOrPayload.assistantName
+        : (assistantNameArg as string)
+      const subDir = isPayloadObject ? fileDataOrPayload.subDir : (subDirArg as string)
+      const fileName = isPayloadObject ? fileDataOrPayload.fileName : (fileNameArg as string)
+      const oldRelativePath = isPayloadObject
+        ? fileDataOrPayload.oldRelativePath
+        : oldRelativePathArg
+
+      return await assistantService.saveAssistantResourceFile(
+        fileData,
+        assistantName,
+        subDir,
+        fileName,
+        oldRelativePath
+      )
+    }
+  )
+
+  /**
    * 获取助手资产配置
    */
   ipcMain.handle('assistant:get-assets', async (_event, assistantName: string) => {

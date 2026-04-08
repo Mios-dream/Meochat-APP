@@ -42,6 +42,15 @@ const globalAPI = {
     ipcRenderer.on('assistant:update', listener)
     return () => ipcRenderer.removeListener('assistant:update', listener)
   },
+  // 助手通用资源文件上传API
+  saveAssistantResourceFile: (fileData, assistantName, subDir, fileName, oldRelativePath) =>
+    ipcRenderer.invoke('assistant:save-resource-file', {
+      fileData,
+      assistantName,
+      subDir,
+      fileName,
+      oldRelativePath
+    }),
   // 系统资源相关API
   getSystemResources: () => ipcRenderer.invoke('system:get-resources'),
   setPerformanceMode: (mode: 'high' | 'balanced' | 'eco') =>

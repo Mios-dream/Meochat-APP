@@ -113,6 +113,16 @@ contextBridge.exposeInMainWorld('api', {
   // 助手图片上传API
   saveAssistantImageFile: (fileData, assistantName, fileName) =>
     ipcRenderer.invoke('assistant:save-image-file', fileData, assistantName, fileName),
+  // 助手通用资源文件上传API
+  saveAssistantResourceFile: (fileData, assistantName, subDir, fileName, oldRelativePath) =>
+    ipcRenderer.invoke(
+      'assistant:save-resource-file',
+      fileData,
+      assistantName,
+      subDir,
+      fileName,
+      oldRelativePath
+    ),
   // 从角色卡片导入助手信息
   importAssistantFromCard: (imagePath) =>
     ipcRenderer.invoke('assistant:import-from-card', imagePath)
