@@ -57,6 +57,8 @@ export class Live2DManager {
   private isLocked = false
   // 音量控制属性
   private volume: number = 1.0 // 0.0 to 1.0
+  // 当前语音播放的增益节点，用于在播放中动态调整音量
+  private activeGainNode: GainNode | null = null
   // 语音播放状态，用于避免动作帧覆盖口型参数
   private isSpeaking = false
   // 动作帧默认保持时长
@@ -737,6 +739,10 @@ export class Live2DManager {
    */
   public setVolume(volume: number): void {
     this.volume = Math.max(0, Math.min(1, volume))
+
+    if (this.activeGainNode && this.audioContext) {
+      this.activeGainNode.gain.setValueAtTime(this.volume, this.audioContext.currentTime)
+    }
   }
 
   /**
@@ -1022,6 +1028,7 @@ export class Live2DManager {
             const gainNode = this.audioContext!.createGain()
             // 设置音量
             gainNode.gain.value = Math.max(0, Math.min(1, volume))
+            this.activeGainNode = gainNode
 
             source.buffer = audioBuffer
             source.connect(gainNode)
@@ -1038,6 +1045,7 @@ export class Live2DManager {
               this.currentMouthOpenY = 0
               this.setModelParameterValue('ParamMouthOpenY', 0)
               this.isSpeaking = false
+              this.activeGainNode = null
 
               resolve()
             }
@@ -1059,10 +1067,12 @@ export class Live2DManager {
           })
           .catch((error) => {
             this.isSpeaking = false
+            this.activeGainNode = null
             reject(error)
           })
       } catch (error) {
         this.isSpeaking = false
+        this.activeGainNode = null
         reject(error)
       }
     })

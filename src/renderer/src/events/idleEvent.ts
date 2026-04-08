@@ -8,7 +8,7 @@ import { LLMRequest } from '../utils/LLMRequest'
 
 // 空闲事件模块
 export class IdleEventModule extends EventModule {
-  private idleEventsTimer: NodeJS.Timeout | null = null
+  private idleEventsTimer: number | null = null
 
   start(): void {
     const configStore = useConfigStore()
@@ -97,6 +97,19 @@ export class IdleEventHandler implements IEventHandler {
   eventType = 'idle'
   private assistantManager: AssistantManager
 
+  chatTheme = [
+    '与用户互动，例如：想被摸摸头，主动捏捏用户的脸等',
+    '分享角色故事',
+    '询问用户关于当前情境的问题',
+    '表达对用户的关心和问候',
+    '分享有趣的二次元相关的知识或话题',
+    '提议一起做某件事（如听音乐、玩游戏等）',
+    '表达对未来的期待或小目标',
+    '天气或季节相关的对话',
+    '美食或兴趣爱好相关的话题',
+    '回忆过去的美好时光',
+    '其他'
+  ]
   // 系统提示词模板（移动到类内部）
   private systemPrompt: string = `
   你是一个桌面助手，需要根据当前情境生成自然、亲切的主动对话。
@@ -114,6 +127,8 @@ export class IdleEventHandler implements IEventHandler {
   - 其他
 
   但注意，不要和上一次对话内容或主题重复。
+
+  本次选择的对话主题是：{{chatTheme}}，请根据这个主题和用户的状态生成对话。
 
   **角色昵称**：{{name}}
   **助手人设**：{{personality}}
@@ -252,5 +267,9 @@ export class IdleEventHandler implements IEventHandler {
       .replaceAll('{{eventDescription}}', eventDescription)
       .replaceAll('{{userStatus}}', userStatus)
       .replaceAll('{{lastMessage}}', lastMessage || '无')
+      .replaceAll(
+        '{{chatTheme}}',
+        this.chatTheme[Math.floor(Math.random() * this.chatTheme.length)]
+      )
   }
 }

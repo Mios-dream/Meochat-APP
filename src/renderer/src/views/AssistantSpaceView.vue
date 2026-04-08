@@ -52,7 +52,9 @@
             <h2>聊天历史</h2>
           </div>
           <div class="modal-body">
-            <div v-if="chatHistory.length === 0" class="no-history">暂无聊天历史</div>
+            <div v-if="historyLoading" class="no-history">正在加载聊天历史...</div>
+            <div v-else-if="historyError" class="no-history">{{ historyError }}</div>
+            <div v-else-if="chatHistory.length === 0" class="no-history">暂无聊天历史</div>
             <div v-else class="history-list">
               <div v-for="(message, index) in chatHistory" :key="index">
                 <div v-if="message.role === 'assistant'" class="message-item">
@@ -67,12 +69,12 @@
                       <div class="assistant-name">{{ currentAssistant?.name }}</div>
                       <div class="message-time">{{ formatTime(message.timestamp) }}</div>
                     </div>
-                    <div :class="['message-text', message.role]">{{ message.content }}</div>
+                    <MessageContent :content="message.content" :role="message.role" />
                   </div>
                 </div>
                 <div v-else>
                   <div class="message-content">
-                    <div :class="['message-text', message.role]">{{ message.content }}</div>
+                    <MessageContent :content="message.content" :role="message.role" />
                   </div>
                 </div>
               </div>
@@ -131,7 +133,7 @@
           <form class="setting-from">
             <label for="assistant-volume">助手音量</label>
             <div style="width: 200px">
-              <VolumeSlider v-model="volume" label="" :min="0" :max="100" :step="10" unit="" />
+              <VolumeSlider v-model="volume" label="" :min="0" :max="100" :step="1" unit="" />
             </div>
           </form>
           <div class="divider"></div>
@@ -225,6 +227,7 @@ import { useConfigStore } from '../stores/useConfigStore'
 import { storeToRefs } from 'pinia'
 import { AssistantInfo, AssistantManager } from '../services/assistantManager'
 import ChatBox from '../components/ChatBox.vue'
+import MessageContent from '../components/MessageContent.vue'
 
 const configStore = useConfigStore()
 const { config } = storeToRefs(configStore)
@@ -241,14 +244,18 @@ const isVisible = ref(false)
 // 是否显示设置菜单
 const isVisibleSetting = ref(false)
 // 音量
-const volume = ref(50)
+const volume = ref(80)
 
 // 模型设置
 const isLocked = ref(true)
 
 // 聊天历史
 const showHistoryModal = ref(false)
-const chatHistory = ref<Array<{ role: string; content: string; timestamp: Date }>>([])
+const chatHistory = ref<
+  Array<{ role: 'user' | 'assistant'; content: string; timestamp: Date | null }>
+>([])
+const historyLoading = ref(false)
+const historyError = ref('')
 
 // 聊天快捷键
 const chatShortcut = ref('')
@@ -263,6 +270,40 @@ const assistantManager = AssistantManager.getInstance()
 const currentAssistant: Ref<AssistantInfo | null> = ref(null)
 // 当前助手的好感度
 const currentLove = computed(() => currentAssistant.value?.love || 0) // 当前好感度值
+
+// 将任意数值限制在0到1之间
+function clampVolume(value: number): number {
+  return Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0))
+}
+
+/**
+ *  将存储的音量值规范化为 0.0-1.0 范围，兼容旧配置格式
+ * @param value
+ */
+function normalizeStoredVolume(value: number): number {
+  if (!Number.isFinite(value)) {
+    return 0.8
+  }
+  return clampVolume(value)
+}
+
+/**
+ * 将 0.0-1.0 的标准化值转换为 0-100 的百分比值
+ * @param value - 标准化值（0.0-1.0）
+ * @returns 百分比值（0-100）
+ */
+function normalizedToPercent(value: number): number {
+  return Math.round(normalizeStoredVolume(value) * 100)
+}
+
+/**
+ * 将 0-100 的百分比值转换为 0.0-1.0 的标准化值
+ * @param value - 百分比值（0-100）
+ * @returns 标准化值（0.0-1.0）
+ */
+function percentToNormalized(value: number): number {
+  return clampVolume(value / 100)
+}
 
 // 设置模型聚焦超时时间
 live2DManager.focus_timeout_ms = 500
@@ -320,13 +361,16 @@ onMounted(async () => {
 
   // 监听来自ChatBox的消息
   window.api.ipcRenderer.on('chat-box:send-message', async (_, data) => {
-    // 调用ChatService处理消息
-    chatService.chat(data.text).then(() => {
-      // 发送状态更新给ChatBox
+    try {
+      // 调用 ChatService 处理消息，并等待语音/动作播放完成后再解锁输入
+      await chatService.chat(data.text)
+      await chatService.waitForReplyPlaybackComplete()
+    } finally {
+      // 发送状态更新给 ChatBox
       window.api.ipcRenderer.send('chat-box:update-status', {
         loading: false
       })
-    })
+    }
   })
 })
 
@@ -364,10 +408,31 @@ watch(isLocked, (newValue) => {
 // 监听音量变化
 watch(volume, (newVolume) => {
   // 将 0-100 范围转换为 0.0-1.0 范围
-  const normalizedVolume = newVolume / 100
+  const normalizedVolume = percentToNormalized(newVolume)
   chatService.setVolume(normalizedVolume)
-  configStore.updateConfig('volume', normalizedVolume)
+  if (Math.abs(normalizeStoredVolume(config.value.volume) - normalizedVolume) > 0.0001) {
+    void configStore.updateConfig('volume', normalizedVolume)
+  }
 })
+
+watch(
+  () => config.value.volume,
+  (rawVolume) => {
+    const normalizedVolume = normalizeStoredVolume(rawVolume)
+    const sliderValue = normalizedToPercent(normalizedVolume)
+    if (volume.value !== sliderValue) {
+      volume.value = sliderValue
+    }
+
+    chatService.setVolume(normalizedVolume)
+
+    // 将旧格式体积值回写为标准 0-1，避免后续继续出现显示/设置不同步
+    if (Math.abs(rawVolume - normalizedVolume) > 0.0001) {
+      void configStore.updateConfig('volume', normalizedVolume)
+    }
+  },
+  { immediate: true }
+)
 
 /**
  * 更新配置项
@@ -387,9 +452,7 @@ function change<K extends keyof typeof config.value>(
 function showChatHistory(): void {
   // 显示聊天历史弹窗
   showHistoryModal.value = true
-
-  // 这里可以从本地存储或API获取聊天历史
-  loadChatHistory()
+  void loadChatHistory()
 }
 
 /**
@@ -403,13 +466,20 @@ function closeHistoryModal(): void {
 /**
  * 加载聊天历史
  */
-function loadChatHistory(): void {
-  // 模拟加载聊天历史
-  chatHistory.value = chatService.getChatHistory().map((item) => ({
-    role: item.role,
-    content: item.content,
-    timestamp: new Date()
-  }))
+async function loadChatHistory(): Promise<void> {
+  historyLoading.value = true
+  historyError.value = ''
+
+  try {
+    const remoteHistory = await chatService.fetchChatHistory()
+    chatHistory.value = buildHistoryItems(remoteHistory)
+  } catch (error) {
+    console.error('加载远程聊天历史失败:', error)
+    historyError.value = '聊天历史加载失败，已显示本地记录'
+    chatHistory.value = buildHistoryItems(chatService.getChatHistory())
+  } finally {
+    historyLoading.value = false
+  }
 }
 
 /**
@@ -417,9 +487,59 @@ function loadChatHistory(): void {
  * @param timestamp - 时间戳
  * @returns 格式化后的时间字符串
  */
-function formatTime(timestamp: Date): string {
-  // 格式化时间显示
-  return timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+function formatTime(timestamp: Date | null): string {
+  if (!timestamp) {
+    return '----/--/--'
+  }
+  // 格式化时间显示为年月日
+  return timestamp.toLocaleDateString([], {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  })
+}
+
+function buildHistoryItems(
+  messages: Array<{ role: 'user' | 'assistant'; content: string }>
+): Array<{
+  role: 'user' | 'assistant'
+  content: string
+  timestamp: Date | null
+}> {
+  let lastTimestamp: Date | null = null
+
+  return messages.map((item) => {
+    const parsedTimestamp = parseTimestampFromContent(item.content)
+    let content = item.content
+    if (item.role === 'user') {
+      content = (
+        item.content.match(/用户对话内容或动作:\s*([\s\S]*?)$/)?.[1] || item.content
+      ).trim()
+    }
+    if (parsedTimestamp) {
+      lastTimestamp = parsedTimestamp
+    }
+
+    return {
+      role: item.role,
+      content: content,
+      timestamp: parsedTimestamp || lastTimestamp
+    }
+  })
+}
+
+//格式化日期
+function parseTimestampFromContent(content: string): Date | null {
+  const matched = content.match(/当前时间[:：]\s*(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})/)
+  if (!matched?.[1]) {
+    return null
+  }
+
+  const normalized = matched[1].replace(' ', 'T')
+  const parsed = new Date(normalized)
+  return Number.isNaN(parsed.getTime()) ? null : parsed
 }
 
 /**
@@ -820,6 +940,10 @@ async function saveShortcut(shortcut: string): Promise<void> {
   border-radius: 10px;
   width: 100%;
   display: flex;
+
+  .message-text :deep(.message-dim) {
+    opacity: 0.45;
+  }
   flex-direction: row;
 }
 

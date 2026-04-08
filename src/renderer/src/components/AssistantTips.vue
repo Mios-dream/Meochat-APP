@@ -1,22 +1,25 @@
 <!-- src/components/AssistantTips.vue -->
 <template>
   <div id="tips-container">
-    <div id="assistant-tips" :class="{ active: isActive }">
-      <slot></slot>
-    </div>
+    <div id="assistant-tips" ref="tipsElementRef" :class="{ active: isActive }"></div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { onActivated, onMounted, ref } from 'vue'
 import { ChatService } from '../services/ChatService'
 const chatService = ChatService.getInstance()
+const tipsElementRef = ref<HTMLElement | null>(null)
 // 初始化聊天服务
 
-onMounted(() => {
-  const tipsElement = document.getElementById('assistant-tips')
-  chatService.initializeMessageTips(tipsElement!)
-})
+function bindTipsElement(): void {
+  if (tipsElementRef.value) {
+    chatService.initializeMessageTips(tipsElementRef.value)
+  }
+}
+
+onMounted(bindTipsElement)
+onActivated(bindTipsElement)
 
 defineProps<{
   isActive: boolean
@@ -25,28 +28,6 @@ defineProps<{
 </script>
 
 <style scoped>
-/* #assistant-tips {
-  animation: shake 50s ease-in-out 5s infinite;
-  background-color: rgba(236, 217, 188, 0.5);
-  border: 1px solid rgba(224, 186, 140, 0.62);
-  border-radius: 12px;
-  box-shadow: 0 3px 15px 2px rgba(191, 158, 118, 0.2);
-  font-size: 14px;
-  line-height: 24px;
-  margin: 20px 20px;
-  min-height: 70px;
-  opacity: 0;
-  overflow: hidden;
-  padding: 5px 10px;
-  position: absolute;
-  text-overflow: ellipsis;
-  transition: opacity 1s;
-  width: 250px;
-  word-break: break-all;
-  z-index: 10;
-  pointer-events: none;
-} */
-
 #tips-container {
   top: 50%;
   left: 50%;
@@ -66,6 +47,7 @@ defineProps<{
   line-height: 24px;
   margin: 20px 20px;
   min-height: 70px;
+  max-height: 40vh;
   opacity: 0;
   overflow: hidden;
   padding: 20px 20px;
@@ -76,7 +58,7 @@ defineProps<{
   pointer-events: none;
   color: rgba(80, 80, 80);
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: start;
 }
 
@@ -87,6 +69,10 @@ defineProps<{
 
 #assistant-tips .fa-lg {
   color: #0099cc;
+}
+
+#assistant-tips :deep(.assistant-tips-dim) {
+  opacity: 0.45;
 }
 
 @keyframes shake {
