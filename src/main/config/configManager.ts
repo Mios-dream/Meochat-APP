@@ -19,6 +19,8 @@ const schema: Schema<AppConfig> = {
   autoChat: { type: 'boolean', default: false },
   idleEvent: { type: 'boolean', default: true },
   quietMode: { type: 'boolean', default: false },
+  desktopSpeechBoard: { type: 'boolean', default: true },
+  appSpeechBoard: { type: 'boolean', default: true },
   idleTime: { type: 'number', default: 2 },
   // 助手是否开启
   assistantEnabled: { type: 'boolean', default: false },

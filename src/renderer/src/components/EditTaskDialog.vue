@@ -117,11 +117,18 @@
           </div>
 
           <div class="form-footer-row">
-            <label class="moe-switch">
-              <input v-model="editingTask.autoStart" type="checkbox" />
-              <span class="slider round"></span>
-              <span class="switch-label">自动启动</span>
-            </label>
+            <div class="switch-group">
+              <label class="moe-switch">
+                <input v-model="editingTask.autoStart" type="checkbox" />
+                <span class="slider round"></span>
+                <span class="switch-label">自动启动</span>
+              </label>
+              <label class="moe-switch">
+                <input v-model="editingTask.autoSyncDependencies" type="checkbox" />
+                <span class="slider round"></span>
+                <span class="switch-label">自动更新依赖</span>
+              </label>
+            </div>
 
             <div class="action-buttons">
               <button class="moe-btn secondary" @click="closeDialog">取消</button>
@@ -141,7 +148,7 @@
 import { ref, computed, reactive, watch } from 'vue'
 import BlurModal from './BlurModal.vue'
 import TaskManager from '../services/TaskManager'
-import { PythonTask } from '../types/PythonService'
+import type { PythonTask, TaskPriority } from '../types/PythonService'
 
 interface Emits {
   (e: 'update:modelValue', value: boolean): void
@@ -162,7 +169,7 @@ const priorityOptions = [
   { value: 'high', label: '高' },
   { value: 'medium', label: '中' },
   { value: 'low', label: '低' }
-]
+] as const satisfies ReadonlyArray<{ value: TaskPriority; label: string }>
 
 // 用于UI交互的状态
 const focusedField = ref<string>('')
@@ -175,6 +182,7 @@ const editingTask = reactive<Omit<PythonTask, 'id'>>({
   venvPython: '',
   workDir: '',
   autoStart: false,
+  autoSyncDependencies: true,
   priority: 'high'
 })
 
@@ -197,6 +205,7 @@ watch(
         venvPython: newTask.venvPython,
         workDir: newTask.workDir,
         autoStart: newTask.autoStart,
+        autoSyncDependencies: newTask.autoSyncDependencies ?? true,
         priority: newTask.priority
       })
     }
@@ -234,6 +243,7 @@ function submitEditTask(): void {
     venvPython: editingTask.venvPython.trim(),
     workDir: editingTask.workDir.trim(),
     autoStart: editingTask.autoStart,
+    autoSyncDependencies: editingTask.autoSyncDependencies,
     priority: editingTask.priority
   }
 
@@ -249,6 +259,7 @@ function resetForm(): void {
   editingTask.venvPython = ''
   editingTask.workDir = ''
   editingTask.autoStart = false
+  editingTask.autoSyncDependencies = true
   editingTask.priority = 'high'
 }
 
@@ -470,6 +481,12 @@ const closeDialog = (): void => {
   display: flex;
   align-items: center;
   cursor: pointer;
+  gap: 10px;
+}
+
+.switch-group {
+  display: flex;
+  flex-direction: column;
   gap: 10px;
 }
 

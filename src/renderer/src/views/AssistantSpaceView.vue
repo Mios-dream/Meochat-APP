@@ -1,7 +1,7 @@
 <template>
   <div id="background-container">
     <div id="live2d-container">
-      <AssistantTips :is-active="isTipsActive" font-size="20px">
+      <AssistantTips v-show="config.appSpeechBoard" :is-active="isTipsActive" font-size="20px">
         {{ currentTip }}
       </AssistantTips>
 
@@ -119,7 +119,10 @@
               <label for="app-speech-board">应用内台词板</label>
               <div class="description">在应用内显示助手台词板</div>
             </div>
-            <ToggleSwitch v-model="isLocked" />
+            <ToggleSwitch
+              :model-value="config.appSpeechBoard"
+              @update:model-value="(v) => change('appSpeechBoard', v)"
+            />
           </form>
           <div class="divider"></div>
           <form class="setting-from">
@@ -127,7 +130,10 @@
               <label for="desktop-speech-board">桌面台词板</label>
               <div class="description">在桌面显示助手台词板</div>
             </div>
-            <ToggleSwitch v-model="isLocked" />
+            <ToggleSwitch
+              :model-value="config.desktopSpeechBoard"
+              @update:model-value="(v) => change('desktopSpeechBoard', v)"
+            />
           </form>
           <div class="divider"></div>
           <form class="setting-from">
@@ -432,6 +438,15 @@ watch(
     }
   },
   { immediate: true }
+)
+
+watch(
+  () => config.value.appSpeechBoard,
+  (enabled) => {
+    if (!enabled) {
+      chatService.hideMessage()
+    }
+  }
 )
 
 /**

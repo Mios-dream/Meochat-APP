@@ -9,7 +9,7 @@
     @contextmenu.prevent="showContextMenu"
     @mousedown="handleMouseDown"
   >
-    <AssistantTips :is-active="isTipsActive">
+    <AssistantTips v-show="config.desktopSpeechBoard" :is-active="isTipsActive">
       {{ currentTip }}
     </AssistantTips>
 
@@ -361,6 +361,15 @@ watch(
       await syncWakewordState()
     } catch (error) {
       console.error('配置变更后同步唤醒词状态失败:', error)
+    }
+  }
+)
+
+watch(
+  () => config.value.desktopSpeechBoard,
+  (enabled) => {
+    if (!enabled) {
+      chatService.hideMessage()
     }
   }
 )

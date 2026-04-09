@@ -14,6 +14,8 @@ export const useConfigStore = defineStore('config', () => {
     silentMode: false,
     idleEvent: true,
     quietMode: false,
+    desktopSpeechBoard: true,
+    appSpeechBoard: true,
     idleTime: 2,
     assistantEnabled: false,
     currentAssistant: '',

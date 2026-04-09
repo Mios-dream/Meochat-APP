@@ -1,5 +1,4 @@
 import { BrowserWindow } from 'electron'
-// import { MicaBrowserWindow, IS_WINDOWS_11 } from 'mica-electron'
 import { getAppUrl, getPreloadPath, isDevelopment } from '../utils/pathResolve'
 import { getConfig } from '../config/configManager'
 import log from '../utils/logger'
@@ -28,6 +27,7 @@ function createMainWindow(): BrowserWindow {
     autoHideMenuBar: true,
     frame: false,
     show: false,
+    icon: '../../resources/icon/app.ico',
     // transparent: true,
     webPreferences: {
       devTools: true,

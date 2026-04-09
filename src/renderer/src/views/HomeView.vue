@@ -98,6 +98,27 @@
                   </div>
                 </div>
               </div>
+              <div class="task-info-item">
+                <font-awesome-icon icon="fa-solid fa-box-open" class="task-info-icon" />
+                <div class="task-info-item-content">
+                  <div class="task-info-label">Dependency Sync</div>
+                  <div class="task-info-item-setting">
+                    <span class="task-info-value">启动前自动更新依赖</span>
+                    <div class="task-card-auto-start">
+                      <label class="switch">
+                        <input
+                          :checked="autoSyncDependencies"
+                          type="checkbox"
+                          @click="
+                            updateAutoSyncDependencies(selectedTaskId!, !autoSyncDependencies)
+                          "
+                        />
+                        <span class="slider"></span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
             <div class="task-info-section">
               <div class="terminal-container">
@@ -109,11 +130,22 @@
                     ></font-awesome-icon>
                     <div class="terminal-title">Task Logs</div>
                   </div>
-                  <div
-                    :class="['state', { active: tasksStatus.get(selectedTaskId!)?.running }]"
-                  ></div>
+                  <div class="terminal-right">
+                    <div
+                      v-if="tasksStatus.get(selectedTaskId!)?.updatingDependencies"
+                      class="sync-indicator"
+                    >
+                      <span class="sync-dot"></span>
+                      <span>{{
+                        tasksStatus.get(selectedTaskId!)?.dependencyStatus || '正在同步依赖'
+                      }}</span>
+                    </div>
+                    <div
+                      :class="['state', { active: tasksStatus.get(selectedTaskId!)?.running }]"
+                    ></div>
+                  </div>
                 </div>
-                <div class="terminal-body">
+                <div ref="terminalBodyRef" class="terminal-body">
                   <div
                     v-for="(line, index) in selectedTaskStatus?.logs || []"
                     :key="index"
@@ -145,7 +177,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import TaskCard from '../components/TaskCard.vue'
 import TaskManager from '../services/TaskManager'
 import AddTaskDialog from '../components/AddTaskDialog.vue'
@@ -163,8 +195,12 @@ const tasksStatus = taskManager.tasksStatus
 const selectedTaskId = taskManager.selectedTaskId
 const selectedTask = taskManager.selectedTask
 const selectedTaskStatus = taskManager.selectedTaskStatus
+const terminalBodyRef = ref<HTMLElement | null>(null)
 const autoStart = computed(() => {
   return selectedTask.value?.autoStart || false
+})
+const autoSyncDependencies = computed(() => {
+  return selectedTask.value?.autoSyncDependencies ?? true
 })
 
 // 添加任务对话框的可见性状态
@@ -319,9 +355,27 @@ function updateAutoStart(taskId: number, autoStart: boolean): void {
   taskManager.updateAutoStart(taskId, autoStart)
 }
 
+function updateAutoSyncDependencies(taskId: number, autoSyncDependencies: boolean): void {
+  taskManager.updateTask(taskId, { autoSyncDependencies })
+}
+
+function scrollLogsToBottom(): void {
+  const terminalBody = terminalBodyRef.value
+  if (!terminalBody) return
+  terminalBody.scrollTop = terminalBody.scrollHeight
+}
+
+watch([selectedTaskId, () => selectedTaskStatus.value?.logs?.length ?? 0], async () => {
+  await nextTick()
+  scrollLogsToBottom()
+})
+
 onMounted(() => {
   document.addEventListener('click', handleClickOutside)
   loadCurrentMode()
+  nextTick(() => {
+    scrollLogsToBottom()
+  })
 })
 
 // 组件卸载时清理
@@ -503,6 +557,45 @@ onUnmounted(() => {
   align-items: center;
   justify-content: space-between;
   border-bottom: 1px solid #3e3e42;
+}
+
+.terminal-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sync-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: #fda4af;
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: rgba(251, 113, 133, 0.18);
+  border: 1px solid rgba(251, 113, 133, 0.35);
+}
+
+.sync-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #fb7185;
+  box-shadow: 0 0 8px rgba(251, 113, 133, 0.9);
+  animation: pulse-sync 1.1s ease-in-out infinite;
+}
+
+@keyframes pulse-sync {
+  0%,
+  100% {
+    opacity: 0.7;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
 }
 
 .terminal-buttons {

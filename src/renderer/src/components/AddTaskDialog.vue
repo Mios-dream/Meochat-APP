@@ -116,11 +116,18 @@
           </div>
 
           <div class="form-footer-row">
-            <label class="moe-switch">
-              <input v-model="manualTask.autoStart" type="checkbox" />
-              <span class="slider round"></span>
-              <span class="switch-label">自动启动</span>
-            </label>
+            <div class="switch-group">
+              <label class="moe-switch">
+                <input v-model="manualTask.autoStart" type="checkbox" />
+                <span class="slider round"></span>
+                <span class="switch-label">自动启动</span>
+              </label>
+              <label class="moe-switch">
+                <input v-model="manualTask.autoSyncDependencies" type="checkbox" />
+                <span class="slider round"></span>
+                <span class="switch-label">自动更新依赖</span>
+              </label>
+            </div>
 
             <div class="action-buttons">
               <button class="moe-btn secondary" @click="closeDialog">取消</button>
@@ -156,8 +163,11 @@ interface Props {
 defineProps<Props>()
 const emit = defineEmits<Emits>()
 
+type NewTaskInput = Parameters<ReturnType<typeof TaskManager.getInstance>['addTask']>[0]
+type TaskPriorityValue = NewTaskInput['priority']
+
 // 优先级选项
-const priorityOptions = [
+const priorityOptions: Array<{ value: TaskPriorityValue; label: string }> = [
   { value: 'critical', label: '核心' },
   { value: 'high', label: '高' },
   { value: 'medium', label: '中' },
@@ -168,13 +178,14 @@ const priorityOptions = [
 const focusedField = ref<string>('')
 
 // 表单数据
-const manualTask = reactive({
+const manualTask = reactive<NewTaskInput>({
   name: '',
   description: '',
   scriptPath: '',
   venvPython: '',
   workDir: '',
   autoStart: false,
+  autoSyncDependencies: true,
   priority: 'high'
 })
 
@@ -208,13 +219,14 @@ async function browseWorkDir(): Promise<void> {
 function submitManualTask(): void {
   if (!isManualFormValid.value) return
 
-  const task = {
+  const task: NewTaskInput = {
     name: manualTask.name.trim(),
     description: manualTask.description.trim(),
     scriptPath: manualTask.scriptPath.trim(),
     venvPython: manualTask.venvPython.trim(),
     workDir: manualTask.workDir.trim(),
     autoStart: manualTask.autoStart,
+    autoSyncDependencies: manualTask.autoSyncDependencies,
     priority: manualTask.priority
   }
 
@@ -230,6 +242,7 @@ function resetManualForm(): void {
   manualTask.venvPython = ''
   manualTask.workDir = ''
   manualTask.autoStart = false
+  manualTask.autoSyncDependencies = true
   manualTask.priority = 'high'
 }
 
@@ -479,6 +492,12 @@ const closeDialog = (): void => {
   display: flex;
   align-items: center;
   cursor: pointer;
+  gap: 10px;
+}
+
+.switch-group {
+  display: flex;
+  flex-direction: column;
   gap: 10px;
 }
 

@@ -39,6 +39,12 @@ export interface ServerConfig {
       api: string
     }
   }
+  WakeWord: {
+    enable: boolean
+    provider: string
+    keywords_score: number
+    keywords_threshold: number
+  }
 }
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> => {
@@ -85,6 +91,12 @@ export const createDefaultServerConfig = (): ServerConfig => ({
     gptsovits: {
       api: ''
     }
+  },
+  WakeWord: {
+    enable: false,
+    provider: '',
+    keywords_score: 0,
+    keywords_threshold: 0
   }
 })
 

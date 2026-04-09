@@ -8,7 +8,7 @@ import { LLMRequest } from '../utils/LLMRequest'
 
 // 空闲事件模块
 export class IdleEventModule extends EventModule {
-  private idleEventsTimer: number | null = null
+  private idleEventsTimer: NodeJS.Timeout | null = null
 
   start(): void {
     const configStore = useConfigStore()

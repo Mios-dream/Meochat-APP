@@ -109,7 +109,7 @@ class ChatService {
   // 传输缓冲区，防止音频过长导致的chunk分割，json解析失败的问题
   private chunkBuffer: string = ''
   // 隐藏消息定时器
-  private hideMessageTimer: number | null = null
+  private hideMessageTimer: NodeJS.Timeout | null = null
   // 语音播放状态
   private isPlaying: boolean = false
   // api 地址

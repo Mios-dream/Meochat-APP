@@ -21,6 +21,10 @@ export interface AppConfig {
   idleEvent: boolean
   // 是否开启桌宠安静模式，开启后不会自动发起聊天
   quietMode: boolean
+  // 是否显示桌宠状态下的台词板
+  desktopSpeechBoard: boolean
+  // 是否显示助手空间内的台词板
+  appSpeechBoard: boolean
   // 空闲时间阈值，单位毫秒
   idleTime: number
   // 助手是否开启

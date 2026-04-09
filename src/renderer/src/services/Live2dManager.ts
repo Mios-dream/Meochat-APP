@@ -29,19 +29,19 @@ export class Live2DManager {
   // 聚焦的状态,是否可以聚焦
   private isFocusEnabled = false
   // 聚焦超时定时器
-  private focusTimeout: number | null = null
+  private focusTimeout: NodeJS.Timeout | null = null
   // 聚焦超时,用于全局
   public focus_timeout_ms = 5000 // 5秒无点击后取消聚焦
   // 用于控制忽略状态。是否点击的空白区域
   private ignoreState = false
   // 恢复模型状态的定时器
-  private restoreTimer: number | null = null
+  private restoreTimer: NodeJS.Timeout | null = null
 
   // 用于画布内鼠标跟踪
   // 鼠标点击和长按状态
   private isMousePressed = false
   // 鼠标按下的定时器
-  private mousePressTimer: number | null = null
+  private mousePressTimer: NodeJS.Timeout | null = null
   // 鼠标长按触发时间
   private longPressDuration = 100 // 长按触发时间（毫秒）
   // 拖动相关

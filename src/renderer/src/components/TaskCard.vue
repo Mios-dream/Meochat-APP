@@ -41,7 +41,7 @@
         </button>
       </div>
       <div class="task-card-status-text">
-        {{ serviceStatus?.running ? 'RUNNING' : 'STOPPED' }}
+        {{ statusText }}
       </div>
     </div>
   </div>
@@ -62,6 +62,10 @@ const { task, isSelected } = defineProps<{
 const serviceStatus = computed(() => {
   const status = taskManager.tasksStatus.get(task.id)
   return status
+})
+
+const statusText = computed(() => {
+  return serviceStatus.value?.running ? 'RUNNING' : 'STOPPED'
 })
 
 // 定义事件发射器
@@ -173,6 +177,35 @@ defineEmits<{
   color: #333;
 }
 
+.dependency-badge {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #fb7299;
+  background: linear-gradient(90deg, rgba(251, 114, 153, 0.12), rgba(248, 113, 113, 0.12));
+  border: 1px solid rgba(251, 114, 153, 0.25);
+}
+
+.dependency-spinner {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid rgba(251, 114, 153, 0.25);
+  border-top-color: #fb7299;
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .task-card-description {
   font-size: 13px;
   color: #666;
@@ -273,5 +306,6 @@ defineEmits<{
 .task-card-status-text {
   font-size: 12px;
   color: #fca5b9;
+  letter-spacing: 0.4px;
 }
 </style>

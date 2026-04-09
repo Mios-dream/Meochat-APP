@@ -2,9 +2,9 @@ class MessageTips {
   // 显示消息的DOM元素的引用
   public tipsElement: HTMLElement | null = null
   // 定时器ID，用于自动隐藏消息
-  private messageTimer: number | null = null
+  private messageTimer: NodeJS.Timeout | null = null
   // 文本动画相关的状态
-  private textAnimationTimer: number | null = null
+  private textAnimationTimer: NodeJS.Timeout | null = null
   // 文本动画和分页循环的token，用于取消过期的定时器回调
   private textAnimationToken = 0
   // 用于测量文本高度的隐藏元素

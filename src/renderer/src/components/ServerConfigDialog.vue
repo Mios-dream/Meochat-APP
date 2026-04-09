@@ -272,7 +272,7 @@ const closeDialog = (): void => {
 }
 
 const submitConfig = (): void => {
-  emit('submit', structuredClone(localConfig.value) as ServerConfig)
+  emit('submit', localConfig.value)
 }
 
 // const updateNullableString = (setter: (value: string | null) => void) => {
