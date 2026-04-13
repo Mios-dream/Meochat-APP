@@ -71,6 +71,16 @@ export interface MainWindowApi {
       | { success: true; folderPath: string; folderPaths: string[] }
       | { success: false; error: string }
     >
+
+    /**
+     * 检查本地路径是否存在
+     * @param targetPath 目标路径
+     */
+    pathExists: (
+      targetPath: string
+    ) => Promise<
+      { success: true; exists: boolean; isFile: boolean } | { success: false; error: string }
+    >
   }
 
   // 更新相关api

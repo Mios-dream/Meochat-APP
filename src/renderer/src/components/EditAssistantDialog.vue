@@ -284,16 +284,20 @@
                 <div class="voice-file-picker">
                   <input
                     id="gptModelPath"
-                    :value="
-                      displayVoiceFileName(formData.gsvSetting.gptModelPath, selectedGptModelFile)
-                    "
+                    v-model="formData.gsvSetting.gptModelPath"
                     type="text"
-                    placeholder="请选择GPT模型文件..."
-                    readonly
+                    placeholder="可手动输入本地/云端地址，或选择文件"
                     required
+                    @input="handleGptModelPathInput"
                   />
-                  <button type="button" class="file-picker-btn" @click="triggerGptModelSelect">
-                    选择文件
+                  <button
+                    type="button"
+                    class="file-picker-btn"
+                    title="选择GPT模型文件"
+                    aria-label="选择GPT模型文件"
+                    @click="triggerGptModelSelect"
+                  >
+                    <font-awesome-icon icon="fa-solid fa-folder-open" />
                   </button>
                   <input
                     ref="gptModelInput"
@@ -313,19 +317,20 @@
                 <div class="voice-file-picker">
                   <input
                     id="sovitsModelPath"
-                    :value="
-                      displayVoiceFileName(
-                        formData.gsvSetting.sovitsModelPath,
-                        selectedSovitsModelFile
-                      )
-                    "
+                    v-model="formData.gsvSetting.sovitsModelPath"
                     type="text"
-                    placeholder="请选择SOVITS模型文件..."
-                    readonly
+                    placeholder="可手动输入本地/云端地址，或选择文件"
                     required
+                    @input="handleSovitsModelPathInput"
                   />
-                  <button type="button" class="file-picker-btn" @click="triggerSovitsModelSelect">
-                    选择文件
+                  <button
+                    type="button"
+                    class="file-picker-btn"
+                    title="选择SOVITS模型文件"
+                    aria-label="选择SOVITS模型文件"
+                    @click="triggerSovitsModelSelect"
+                  >
+                    <font-awesome-icon icon="fa-solid fa-folder-open" />
                   </button>
                   <input
                     ref="sovitsModelInput"
@@ -346,16 +351,20 @@
                 <div class="voice-file-picker">
                   <input
                     id="refAudioPath"
-                    :value="
-                      displayVoiceFileName(formData.gsvSetting.refAudioPath, selectedRefAudioFile)
-                    "
+                    v-model="formData.gsvSetting.refAudioPath"
                     type="text"
-                    placeholder="请选择参考音频文件..."
-                    readonly
+                    placeholder="可手动输入本地/云端地址，或选择文件"
                     required
+                    @input="handleRefAudioPathInput"
                   />
-                  <button type="button" class="file-picker-btn" @click="triggerRefAudioSelect">
-                    选择文件
+                  <button
+                    type="button"
+                    class="file-picker-btn"
+                    title="选择参考音频文件"
+                    aria-label="选择参考音频文件"
+                    @click="triggerRefAudioSelect"
+                  >
+                    <font-awesome-icon icon="fa-solid fa-folder-open" />
                   </button>
                   <input
                     ref="refAudioInput"
@@ -909,11 +918,93 @@ const normalizeStoredResourcePath = (
   return `assistants/${assistantName}/assets/${subDir}/${fileName}`
 }
 
-const displayVoiceFileName = (savedPath: string, selectedFile: File | null): string => {
-  if (selectedFile) {
-    return selectedFile.name
+const isLikelyRemotePath = (inputPath: string): boolean => {
+  return /^(https?|wss?|ftp|s3):\/\//i.test(inputPath.trim())
+}
+
+const isLikelyLocalAbsolutePath = (inputPath: string): boolean => {
+  const normalized = inputPath.trim()
+  if (!normalized) {
+    return false
   }
-  return extractDisplayFileName(savedPath)
+  return (
+    /^[a-zA-Z]:[\\/]/.test(normalized) ||
+    normalized.startsWith('\\\\') ||
+    normalized.startsWith('/')
+  )
+}
+
+const normalizeVoicePathForStorage = (inputPath: string): string => {
+  const trimmed = inputPath.trim()
+  if (!trimmed) {
+    return ''
+  }
+
+  if (trimmed.startsWith('app-resource://') || trimmed.startsWith('assistants/')) {
+    return extractDisplayFileName(trimmed)
+  }
+
+  return trimmed
+}
+
+const checkLocalPathExists = async (targetPath: string): Promise<boolean | null> => {
+  if (typeof window.api.fileSelectAPI?.pathExists !== 'function') {
+    return null
+  }
+
+  const result = await window.api.fileSelectAPI.pathExists(targetPath)
+  if (!result.success) {
+    console.warn('检查本地路径失败:', result.error)
+    return null
+  }
+
+  return result.exists
+}
+
+const warnMissingLocalVoicePaths = async (): Promise<void> => {
+  const pathChecks = [
+    {
+      label: 'GPT模型',
+      path: formData.value.gsvSetting.gptModelPath,
+      selectedFile: selectedGptModelFile.value
+    },
+    {
+      label: 'SOVITS模型',
+      path: formData.value.gsvSetting.sovitsModelPath,
+      selectedFile: selectedSovitsModelFile.value
+    },
+    {
+      label: '参考音频',
+      path: formData.value.gsvSetting.refAudioPath,
+      selectedFile: selectedRefAudioFile.value
+    }
+  ]
+
+  const missingLocalPaths: string[] = []
+
+  for (const item of pathChecks) {
+    const trimmedPath = item.path?.trim() || ''
+    if (!trimmedPath || item.selectedFile) {
+      continue
+    }
+
+    if (isLikelyRemotePath(trimmedPath) || !isLikelyLocalAbsolutePath(trimmedPath)) {
+      continue
+    }
+
+    const exists = await checkLocalPathExists(trimmedPath)
+    if (exists === false) {
+      missingLocalPaths.push(`${item.label}: ${trimmedPath}`)
+    }
+  }
+
+  if (missingLocalPaths.length > 0) {
+    notificationService.warning({
+      title: '检测到本地路径不存在',
+      message: `以下路径不存在，将跳过对应文件上传，仅保存路径与参数：\n${missingLocalPaths.join('\n')}`,
+      duration: 7000
+    })
+  }
 }
 
 const triggerGptModelSelect = (): void => {
@@ -931,6 +1022,27 @@ const triggerSovitsModelSelect = (): void => {
 const triggerRefAudioSelect = (): void => {
   if (!isSubmitting.value) {
     refAudioInput.value?.click()
+  }
+}
+
+const handleGptModelPathInput = (): void => {
+  selectedGptModelFile.value = null
+  if (gptModelInput.value) {
+    gptModelInput.value.value = ''
+  }
+}
+
+const handleSovitsModelPathInput = (): void => {
+  selectedSovitsModelFile.value = null
+  if (sovitsModelInput.value) {
+    sovitsModelInput.value.value = ''
+  }
+}
+
+const handleRefAudioPathInput = (): void => {
+  selectedRefAudioFile.value = null
+  if (refAudioInput.value) {
+    refAudioInput.value.value = ''
   }
 }
 
@@ -1411,6 +1523,8 @@ const handleSubmit = async (): Promise<void> => {
     return
   }
 
+  await warnMissingLocalVoicePaths()
+
   let stopUploadProgressListener: (() => void) | null = null
 
   try {
@@ -1455,10 +1569,10 @@ const handleSubmit = async (): Promise<void> => {
       ...formData.value,
       gsvSetting: {
         ...formData.value.gsvSetting,
-        // 服务端会拼接资源根目录，这里只保留文件名
-        gptModelPath: extractDisplayFileName(formData.value.gsvSetting.gptModelPath),
-        sovitsModelPath: extractDisplayFileName(formData.value.gsvSetting.sovitsModelPath),
-        refAudioPath: extractDisplayFileName(formData.value.gsvSetting.refAudioPath)
+        // app-resource/assistants 路径兼容旧数据，仅保留文件名；手动输入地址保持原值
+        gptModelPath: normalizeVoicePathForStorage(formData.value.gsvSetting.gptModelPath),
+        sovitsModelPath: normalizeVoicePathForStorage(formData.value.gsvSetting.sovitsModelPath),
+        refAudioPath: normalizeVoicePathForStorage(formData.value.gsvSetting.refAudioPath)
       },
       birthday: new Date(formData.value.birthday).toISOString().split('T')[0]
     }
@@ -1762,14 +1876,19 @@ const handleCancel = (): void => {
 }
 
 .file-picker-btn {
-  padding: 8px 12px;
+  width: 38px;
+  height: 38px;
+  padding: 0;
   border: 1px solid #e0e0e0;
   border-radius: 8px;
   background: #fff;
   color: #666;
   cursor: pointer;
   transition: all 0.2s;
-  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
 }
 
 .file-picker-btn:hover {

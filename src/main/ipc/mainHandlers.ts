@@ -1,4 +1,5 @@
 import { ipcMain, app, shell, Notification, dialog } from 'electron'
+import fs from 'fs'
 import { getMainWindow } from '../windows/mainWindow'
 import { AssistantService } from '../services/assistantService'
 import log from '../utils/logger'
@@ -363,6 +364,26 @@ function setupUtilityIPC(): void {
       }
     } catch (error) {
       log.error('选择文件夹失败:', error)
+      return { success: false, error: (error as Error).message }
+    }
+  })
+
+  // 检查本地路径是否存在
+  ipcMain.handle('tool:path-exists', async (_event, targetPath: string) => {
+    try {
+      if (typeof targetPath !== 'string' || !targetPath.trim()) {
+        return { success: false, error: '路径不能为空' }
+      }
+
+      const normalizedPath = targetPath.trim()
+      if (!fs.existsSync(normalizedPath)) {
+        return { success: true, exists: false, isFile: false }
+      }
+
+      const stat = fs.statSync(normalizedPath)
+      return { success: true, exists: true, isFile: stat.isFile() }
+    } catch (error) {
+      log.error('检查路径失败:', error)
       return { success: false, error: (error as Error).message }
     }
   })

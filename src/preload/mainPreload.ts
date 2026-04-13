@@ -25,7 +25,9 @@ const fileSelectAPI = {
   // 选择单个文件
   selectFile: (options) => ipcRenderer.invoke('tool:select-file', options),
   // 选择文件夹
-  selectFolder: (options) => ipcRenderer.invoke('tool:select-folder', options)
+  selectFolder: (options) => ipcRenderer.invoke('tool:select-folder', options),
+  // 检查本地路径是否存在
+  pathExists: (targetPath: string) => ipcRenderer.invoke('tool:path-exists', targetPath)
 }
 
 contextBridge.exposeInMainWorld('api', {
