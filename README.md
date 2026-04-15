@@ -13,7 +13,7 @@
   <a href="https://vuejs.org/"><img alt="Vue 3.5.21" src="https://img.shields.io/badge/Vue-3.5.21-4FC08D?style=flat-square&logo=vue.js"></a>
   <a href="https://www.electronjs.org/"><img alt="Electron 38.1.2" src="https://img.shields.io/badge/Electron-38.1.2-47848F?style=flat-square&logo=electron"></a>
   <a href="https://www.live2d.com/"><img alt="Live2D SDK 5.1.0" src="https://img.shields.io/badge/Live2D-5.1.0-FF69B4?style=flat-square"></a>
-  <a href="./LICENSE"><img alt="License" src="https://img.shields.io/badge/License-MIT-blue?style=flat-square"></a>
+  <a href="./LICENSE"><img alt="License" src="https://img.shields.io/badge/License-GPL3.0-blue?style=flat-square"></a>
 </p>
 
 <p align="center">
@@ -80,6 +80,15 @@
 
 ### 💻 安装与运行
 
+#### 对于普通用户
+
+> 推荐使用完整整合包
+>
+> MoeChat
+> 链接: https://pan.baidu.com/s/5h_xqAGOZWkn4Y5dMSXk4Vg
+
+#### 如果你希望从源码开始：
+
 1. **克隆仓库**
 
    ```bash
@@ -106,7 +115,7 @@
    ```bash
    # 通用构建
    npm run build
-   
+
    # Windows 构建
    npm run build:win
    ```
