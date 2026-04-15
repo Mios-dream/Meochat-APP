@@ -1,37 +1,18 @@
-import { LLMRequest } from '@renderer/utils/LLMRequest'
-import { AssistantManager } from '../services/assistantManager'
 import { ContextManager } from '../services/InteractionSystem/core/context'
 import { ActionDispatcher } from '../services/InteractionSystem/core/dispatcher'
 import { EventModule } from '../services/InteractionSystem/types/eventModules'
 import { IEventHandler } from '../services/InteractionSystem/types/IEventHandler'
+import { EventReplyGenerator } from '../services/InteractionSystem/eventReplyGenerator'
+import { AssistantManager } from '../services/assistantManager'
 import lunisolar from 'lunisolar'
 
 // 节日事件处理器
 class FestivalEventHandler implements IEventHandler {
   eventType = 'festival'
-  private assistantManager: AssistantManager
-
-  // 系统提示词模板
-  private systemPrompt: string = `
-  你是一个桌面助手，需要根据节日或节气生成自然、亲切的祝福语。
-  可以结合节日特点、文化背景和助手人设，生成个性化的节日问候。
-
-  对话示例：
-  '新年快乐！愿新的一年里，我们的每一天都充满欢笑和惊喜！',
-  '春节到了，愿我们像家人一样温暖相伴，共同迎接美好的春天！',
-  '中秋月圆，愿我们的友谊也像这明月一样，永远明亮圆满！'
-
-  当前情境：
-  - 助手人设：{{personality}}
-  - 节日类型：{{festivalType}}
-  - 节日名称：{{festivalName}}
-  - 节日特点：{{festivalDescription}}
-
-  请生成一句【自然、亲切、符合节日氛围、不超过200字】的节日祝福语，要符合助手的人设和节日特点。
-  `
+  private replyGenerator: EventReplyGenerator
 
   constructor() {
-    this.assistantManager = AssistantManager.getInstance()
+    this.replyGenerator = new EventReplyGenerator()
   }
 
   // 事件处理映射
@@ -109,6 +90,29 @@ class FestivalEventHandler implements IEventHandler {
     },
     'festival.zhongyuan': async () => {
       return await this.generateFestivalMessage('中元节', '祭祖、缅怀先人的传统节日')
+    },
+    // 萌节
+    'festival.moe': async () => {
+      return await this.generateFestivalMessage(
+        '萌节',
+        '二次元节日，庆祝可爱文化的节日，适合各种可爱事物'
+      )
+    },
+    // 虚构节日
+    'festival.mio': async () => {
+      return await this.generateFestivalMessage(
+        '澪的生日',
+        '在2020年的3月25日，第一个助手“澪”诞生了，是澪之梦工作室（这个助手软件的开发团队），梦开始的地方。'
+      )
+    },
+    // 当前助手生日
+    'festival.assistantbirthday': async () => {
+      const assistant = AssistantManager.getInstance().getCurrentAssistant()
+      const assistantName = assistant?.name || '助手'
+      return await this.generateFestivalMessage(
+        `${assistantName}的生日`,
+        `今天是${assistantName}的生日，这是一个属于助手自己的节日！为自己庆祝一下吧！`
+      )
     }
   }
 
@@ -136,43 +140,23 @@ class FestivalEventHandler implements IEventHandler {
    */
   private async generateFestivalMessage(
     festivalName: string,
-    festivalDescription: string
+    festivalDescription: string,
+    context?: ReturnType<ContextManager['get']>
   ): Promise<string | null> {
-    const currentAssistant = this.assistantManager.getCurrentAssistant()
-    const personality =
-      currentAssistant?.description || currentAssistant?.customPrompt || '温柔可爱'
-
-    // 构建提示词
-    const prompt = this.buildPrompt(personality, '节日祝福', festivalName, festivalDescription)
-
-    return await LLMRequest([{ role: 'user', content: prompt }])
-  }
-
-  /**
-   * 构建提示词
-   * @param personality - 助手人设
-   * @param festivalType - 节日类型
-   * @param festivalName - 节日名称
-   * @param festivalDescription - 节日描述
-   * @returns 构建后的提示词
-   */
-  private buildPrompt(
-    personality: string,
-    festivalType: string,
-    festivalName: string,
-    festivalDescription: string
-  ): string {
-    return this.systemPrompt
-      .replace('{{personality}}', personality)
-      .replace('{{festivalType}}', festivalType)
-      .replace('{{festivalName}}', festivalName)
-      .replace('{{festivalDescription}}', festivalDescription)
+    return await this.replyGenerator.generate({
+      event: `festival.${festivalName}`,
+      scene: `当前节日是${festivalName}。节日描述：${festivalDescription}。请给出节日氛围感祝福。`,
+      context: context || { lastInteraction: Date.now(), userMood: '正常', isBusy: false },
+      maxLength: 100,
+      fallback: `${festivalName}快乐，愿你今天也有好心情。`
+    })
   }
 }
 
 // 节日事件模块
 class FestivalEventModule extends EventModule {
-  private festivalCheckTimer: NodeJS.Timeout | null = null
+  private festivalCheckTimer: ReturnType<typeof setTimeout> | null = null
+  private assistantManager = AssistantManager.getInstance()
 
   start(): void {
     this.checkFestival()
@@ -195,6 +179,11 @@ class FestivalEventModule extends EventModule {
     const day = now.getDate()
     const dateStr = `${month}-${day}`
 
+    // 优先触发当前助手生日事件
+    if (this.isCurrentAssistantBirthday(month, day)) {
+      this.eventCenter.emit('festival.assistantbirthday')
+    }
+
     // 检查固定日期节日
     switch (dateStr) {
       case '1-1': // 元旦
@@ -202,6 +191,9 @@ class FestivalEventModule extends EventModule {
         break
       case '2-14': // 情人节
         this.eventCenter.emit('festival.valentine')
+        break
+      case '3-25': // 第一个助手小澪的生日（虚构节日）
+        this.eventCenter.emit('festival.mio')
         break
       case '4-1': // 愚人节
         this.eventCenter.emit('festival.fool')
@@ -217,6 +209,9 @@ class FestivalEventModule extends EventModule {
         break
       case '10-1': // 国庆节
         this.eventCenter.emit('festival.national')
+        break
+      case '10-10': // 萌节
+        this.eventCenter.emit('festival.moe')
         break
       case '10-31': // 万圣节前夜
         this.eventCenter.emit('festival.halloween')
@@ -255,6 +250,58 @@ class FestivalEventModule extends EventModule {
 
     // 每12小时检查一次，提高响应速度
     this.festivalCheckTimer = setTimeout(this.checkFestival, 12 * 60 * 60 * 1000)
+  }
+
+  /**
+   * 判断今天是否是当前助手生日
+   */
+  private isCurrentAssistantBirthday(todayMonth: number, todayDay: number): boolean {
+    const birthday = this.assistantManager.getCurrentAssistant()?.birthday
+    if (!birthday) {
+      return false
+    }
+
+    const parsed = this.parseBirthdayMonthDay(birthday)
+    if (!parsed) {
+      return false
+    }
+
+    return parsed.month === todayMonth && parsed.day === todayDay
+  }
+
+  /**
+   * 将生日字符串解析为月日，支持 YYYY-MM-DD、MM-DD、YYYY/MM/DD、M月D日 等格式
+   */
+  private parseBirthdayMonthDay(birthday: string): { month: number; day: number } | null {
+    const text = birthday.trim()
+    if (!text) {
+      return null
+    }
+
+    const cnMatch = text.match(/(\d{1,2})\s*月\s*(\d{1,2})\s*日/)
+    if (cnMatch) {
+      const month = Number(cnMatch[1])
+      const day = Number(cnMatch[2])
+      return this.isValidMonthDay(month, day) ? { month, day } : null
+    }
+
+    const numberParts = text
+      .split(/[^0-9]+/)
+      .filter(Boolean)
+      .map((part) => Number(part))
+      .filter((num) => Number.isFinite(num))
+
+    if (numberParts.length >= 2) {
+      const month = numberParts.length >= 3 ? numberParts[numberParts.length - 2] : numberParts[0]
+      const day = numberParts[numberParts.length - 1]
+      return this.isValidMonthDay(month, day) ? { month, day } : null
+    }
+
+    return null
+  }
+
+  private isValidMonthDay(month: number, day: number): boolean {
+    return month >= 1 && month <= 12 && day >= 1 && day <= 31
   }
 
   /**
@@ -344,48 +391,6 @@ class FestivalEventModule extends EventModule {
     // 小年（农历腊月二十三或二十四）
     if (lunarMonth === 12 && (lunarDay === 23 || lunarDay === 24)) {
       this.eventCenter.emit('festival.littleyear')
-    }
-
-    // 检查节气
-    this.checkSolarTerms(solarTerm)
-  }
-  /**
-   * 检查节气
-   * @param solarTerm 节气名称
-   */
-  private checkSolarTerms(solarTerm: string | undefined): void {
-    if (!solarTerm) return
-
-    const solarTermMessages: Record<string, string> = {
-      立春: '🌱 立春到了，万物复苏，新的一年开始了！',
-      雨水: '💧 雨水节气，春雨贵如油，愿你的生活滋润美好！',
-      惊蛰: '⚡ 惊蛰时节，春雷始鸣，万物生机勃勃！',
-      春分: '🌞 春分昼夜平分，愿你的生活也平衡美好！',
-      清明: '🌿 清明时节，缅怀先人，珍惜当下！',
-      谷雨: '🌧️ 谷雨节气，雨生百谷，愿你的努力都有收获！',
-      立夏: '☀️ 立夏到了，夏天正式开始，注意防暑哦！',
-      小满: '🌾 小满节气，麦类等夏熟作物籽粒开始饱满！',
-      芒种: '🌾 芒种时节，忙着种，忙着收，愿你的付出都有回报！',
-      夏至: '🔥 夏至日最长，愿你的快乐也最长！',
-      小暑: '🌡️ 小暑来临，天气开始炎热，注意防暑降温！',
-      大暑: '🔥 大暑最热，愿你的热情也像这天气一样热烈！',
-      立秋: '🍂 立秋到了，秋天开始，天气逐渐凉爽！',
-      处暑: '🌬️ 处暑节气，暑气渐消，秋意渐浓！',
-      白露: '💧 白露时节，露水凝结，天气转凉！',
-      秋分: '🌕 秋分昼夜平分，愿你的生活也平衡美好！',
-      寒露: '❄️ 寒露节气，露水寒冷，注意保暖！',
-      霜降: '🌨️ 霜降时节，天气更冷，霜开始出现！',
-      立冬: '⛄ 立冬到了，冬天正式开始，注意保暖！',
-      小雪: '❄️ 小雪节气，开始下雪，愿你的生活也纯净美好！',
-      大雪: '🌨️ 大雪纷飞，注意防寒保暖！',
-      冬至: '🥟 冬至到了，吃饺子防冻耳，愿你的冬天温暖如春！',
-      小寒: '🧊 小寒节气，天气寒冷，注意保暖！',
-      大寒: '❄️ 大寒最冷，春天不远了，坚持就是胜利！'
-    }
-
-    if (solarTermMessages[solarTerm]) {
-      // 可以在这里发送节气消息，或者记录日志
-      console.log(`节气提醒: ${solarTerm} - ${solarTermMessages[solarTerm]}`)
     }
   }
 }

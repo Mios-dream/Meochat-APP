@@ -1,65 +1,242 @@
-# MeoChat-APP
+# 🌸 MoeChat-APP
 
-此项目为[MeoChat](https://github.com/Mios-dream/MoeChat)的客户端，主要提供桌面助手和助手管理
+<img alt="" src="./doc/assets/screen_1.png" width="100%">
 
-使用electron进行开发，使用最新Live2d SDK。
+<p align="center">
+  <span>一个现代化、功能丰富的桌面助手客户端</span>
+  <br/>
+  <span>基于 Electron 和 Vue 3 构建，集成 Live2D 看板娘和智能对话系统</span>
+</p>
 
-愿景是实现一个富有情感的，实用的桌面助手。
+<p align="center">
+  <a href="https://nodejs.org/"><img alt="Node.js >= 22" src="https://img.shields.io/badge/node.js-%3E%3D22-brightgreen?style=flat-square"></a>
+  <a href="https://vuejs.org/"><img alt="Vue 3.5.21" src="https://img.shields.io/badge/Vue-3.5.21-4FC08D?style=flat-square&logo=vue.js"></a>
+  <a href="https://www.electronjs.org/"><img alt="Electron 38.1.2" src="https://img.shields.io/badge/Electron-38.1.2-47848F?style=flat-square&logo=electron"></a>
+  <a href="https://www.live2d.com/"><img alt="Live2D SDK 5.1.0" src="https://img.shields.io/badge/Live2D-5.1.0-FF69B4?style=flat-square"></a>
+  <a href="./LICENSE"><img alt="License" src="https://img.shields.io/badge/License-MIT-blue?style=flat-square"></a>
+</p>
 
-## 环境
+<p align="center">
+  <a href="#-项目简介">项目简介</a> • 
+  <a href="#-核心特性">核心特性</a> • 
+  <a href="#-快速开始">快速开始</a> • 
+  <a href="#-项目结构">项目结构</a> • 
+  <a href="#⚡-可用命令">命令</a> • 
+  <a href="#-开发路线">开发路线</a>
+</p>
 
-- nodejs：v22.19.0
+---
 
-- vue: vue@3.5.21
+## 📋 项目简介
 
-- electron：v38.1.2
+**MoeChat-APP** 是 [MoeChat](https://github.com/Mios-dream/MoeChat) 项目的官方桌面客户端。这是一个富有情感、实用且可爱的AI桌面助手，旨在为用户提供一个智能、交互式的桌面伴侣。
 
-- live2d SDK：Live2D Cubism SDK Core Version 5.1.0
+### 🎯 项目愿景
 
-## 预览
+实现一个集**颜值、情感、实用**为一体的桌面助手：
 
-![image-20250924225750741](./doc/assets/screen_1.png)
+- 🎨 精美的 Live2D 看板娘动画效果
+- 💬 自然流畅的对话交互体验
+- 🚀 高效的资源占用管理
+- 🎤 智能的语音识别和合成
+- 🌈 丰富的交互场景和功能
 
-![image-20251022152739786](./doc/assets/screen_2.png)
+## ✨ 核心特性
 
-![image-20251022152807136](./doc/assets/screen_3.png)
+### 🎭 桌面助手功能
 
-![image-20251022152845102](./doc/assets/screen_4.png)
+- **拖动定位** - 自由拖动助手窗口到屏幕任意位置
+- **点击穿透** - 空白区域支持鼠标穿透，不影响后台操作
+- **工具栏** - 快速访问常用功能的浮动工具栏
+- **实时聊天** - 与AI助手进行自然流畅的对话
+- **Live2D 动画** - 高保真的看板娘动画表现
 
-![image-20251022152819451](./doc/assets/screen_5.png)
+### 🎛️ 助手管理
 
-## 功能支持
+- **助手空间** - 管理和配置多个AI助手的专属空间
+- **助手设置** - 自定义助手的性格、声音、动作等参数
+- **对话管理** - 查看和管理与各助手的对话历史
 
-1. 桌面助手（拖动，空白区域点击穿透，工具栏，聊天）
-2. 助手空间（助手设置，助手对话）
+### 🧠 智能功能
 
-## 后续计划
+- **实时语音识别** - 支持自然语音输入，智能识别用户意图
+- **模型动画生成** - 根据对话内容自动生成对应的表情和动作
+- **多场景响应** - 支持吐槽、问候、祝福等多种交互场景
 
-- [ ] 低占用模式(全屏或高负载时，自动卸载部分模型，减少占用)
-- [ ] 插件系统，Mcp服务
-- [ ] 桌面窗口识别，提供完善的助手服务
-- [x] 实时语音识别，智能进行聊天回复
-- [ ] 模型自动动画生成
-- [ ] 多场景吐槽，聊天，节日祝福等
+### ⚡ 性能优化
 
-## 安装
+- **低占用模式** - 全屏或高负载时自动卸载部分模型，降低系统占用
+- **智能内存管理** - 动态调整资源占用策略
 
-```shell
-npm install
+## 🚀 快速开始
+
+### 📦 环境要求
+
+| 软件     | 版本      | 说明                |
+| -------- | --------- | ------------------- |
+| Node.js  | ≥ 22.19.0 | JavaScript 运行环境 |
+| npm/yarn | 最新      | 包管理工具          |
+| 操作系统 | Windows   | 仅支持windows       |
+
+### 💻 安装与运行
+
+1. **克隆仓库**
+
+   ```bash
+   git clone https://github.com/Mios-dream/MoeChat-APP.git
+   cd MoeChat-APP
+   ```
+
+2. **安装依赖**
+
+   ```bash
+   npm install
+   ```
+
+3. **开发模式启动**
+
+   ```bash
+   npm run dev
+   ```
+
+   应用将在编译完成后自动启动
+
+4. **构建应用**
+
+   ```bash
+   # 通用构建
+   npm run build
+   
+   # Windows 构建
+   npm run build:win
+   ```
+
+## 📂 项目结构
+
+```
+MoeChat-APP/
+├── src/
+│   ├── main/                    # 主进程代码
+│   │   ├── config/              # 应用配置管理
+│   │   ├── ipc/                 # 进程间通信处理
+│   │   ├── permission/          # 权限管理
+│   │   ├── protocol/            # 自定义协议
+│   │   ├── services/            # 核心服务模块
+│   │   ├── tray/                # 系统托盘功能
+│   │   ├── utils/               # 工具函数
+│   │   ├── windows/             # 窗口管理
+│   │   └── main.ts              # 主进程入口
+│   ├── preload/                 # 预加载脚本
+│   │   ├── types/               # TypeScript 类型定义
+│   │   └── *Preload.ts          # 各窗口预加载脚本
+│   └── renderer/                # 渲染进程 (Vue 3)
+│       ├── src/
+│       │   ├── components/      # Vue 组件
+│       │   ├── views/           # 页面视图
+│       │   ├── stores/          # 状态管理 (Pinia)
+│       │   ├── services/        # 业务逻辑服务
+│       │   ├── types/           # 类型定义
+│       │   ├── utils/           # 工具函数
+│       │   └── App.vue          # 根组件
+│       └── public/              # 静态资源
+│           └── images/          # 图片资源
+├── build/                       # 构建配置
+├── resources/                   # 应用资源
+├── electron.vite.config.ts      # Electron 构建配置
+├── tsconfig.json                # TypeScript 配置
+├── eslint.config.mjs            # ESLint 配置
+└── README.md                    # 项目说明文档
 ```
 
-### 开发模式启动
+## 🎯 开发路线
 
-```shell
-npm run dev
-```
+### ✅ 已完成功能
 
-### 构建项目
+- [x] 桌面助手基础框架
+- [x] Live2D 看板娘集成
+- [x] 实时语音识别和合成
+- [x] 模型自动动画生成
+- [x] 低占用模式优化
+- [x] 多场景吐槽、对话、祝福系统
+- [x] 助手管理和配置系统
 
-```shell
-npm run build
-```
+### 🔄 开发中功能
 
-```shell
-npm run build:win
-```
+- [ ] 插件系统
+- [ ] 澪酱陪你看番剧
+- [ ] 更丰富的动画
+
+### 📋 计划功能
+
+- [ ] 桌面窗口识别，提供 Context-aware 的助手服务
+- [ ] 详细的助手配置
+
+## 🎨 项目截图
+
+<table>
+  <tr>
+    <td><img src="./doc/assets/screen_2.png" alt="预览 1"></td>
+    <td><img src="./doc/assets/screen_3.png" alt="预览 2"></td>
+  </tr>
+  <tr>
+    <td><img src="./doc/assets/screen_4.png" alt="预览 3"></td>
+    <td><img src="./doc/assets/screen_5.png" alt="预览 4"></td>
+  </tr>
+</table>
+
+## 🛠 技术栈
+
+- **框架**: Electron 38 + Vue 3 + TypeScript
+- **状态管理**: Pinia
+- **UI 工具**: Tailwind CSS (可选)
+- **动画库**: Live2D Cubism SDK 5.1.0
+- **音频处理**: Web Audio API
+- **构建工具**: Electron Vite
+
+## 💡 开发指南
+
+### 代码规范
+
+- 使用 TypeScript 进行类型检查
+- 遵循 ESLint 规则进行代码格式化
+- 遵守 Prettier 的代码风格
+
+### 主进程 vs 渲染进程
+
+- **主进程** (`/src/main/`) - 系统级操作，窗口管理，文件 I/O
+- **渲染进程** (`/src/renderer/`) - UI 展示，用户交互，数据处理
+
+### IPC 通信
+
+通过预加载脚本在主进程和渲染进程之间建立安全的通信桥梁
+
+## 🤝 贡献
+
+欢迎提交 Issue 和 Pull Request！
+
+1. Fork 本仓库
+2. 创建特性分支 (`git checkout -b feature/AmazingFeature`)
+3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
+4. 推送到分支 (`git push origin feature/AmazingFeature`)
+5. 提交 Pull Request
+
+## 📄 许可证
+
+本项目采用 GPL 许可证 - 详见 [LICENSE](./LICENSE) 文件
+
+## 🙏 致谢
+
+- [Electron](https://www.electronjs.org/) - 跨平台桌面应用框架
+- [Vue 3](https://vuejs.org/) - 渐进式 JavaScript 框架
+- [Live2D](https://www.live2d.com/) - 实时卡通角色渲染技术
+- [MoeChat](https://github.com/Mios-dream/MoeChat) - 原始后端项目
+
+---
+
+<p align="center">
+  Made with ❤️ by <a href="https://github.com/Mios-dream">Mios-dream</a>
+</p>
+
+<p align="center">
+  <a href="#-moeChat-app">⬆ 返回顶部</a>
+</p>

@@ -343,7 +343,7 @@ async function loadLive2DModel(): Promise<void> {
       await live2DManager.init('l2d-canvas', './turong/turong.model3.json')
     }
 
-    live2DManager.initBaseListeners()
+    live2DManager.initListeners()
 
     live2DManager.setLocked(isLocked.value)
 

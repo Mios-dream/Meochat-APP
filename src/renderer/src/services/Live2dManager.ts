@@ -2,6 +2,7 @@ import { Live2DModel, MotionPriority, config } from 'pixi-live2d-display-lipsync
 import * as PIXI from 'pixi.js'
 import throttle from '../utils/Throttle'
 import { InteractionSystem } from './InteractionSystem/InteractionSystem'
+import { useConfigStore } from '../stores/useConfigStore'
 
 // 设置模型配置
 config.motionFadingDuration = 500
@@ -34,7 +35,7 @@ export class Live2DManager {
   public focus_timeout_ms = 5000 // 5秒无点击后取消聚焦
   // 用于控制忽略状态。是否点击的空白区域
   private ignoreState = false
-  // 恢复模型状态的定时器
+  // 恢复模型可交互状态的定时器
   private restoreTimer: NodeJS.Timeout | null = null
 
   // 用于画布内鼠标跟踪
@@ -43,16 +44,21 @@ export class Live2DManager {
   // 鼠标按下的定时器
   private mousePressTimer: NodeJS.Timeout | null = null
   // 鼠标长按触发时间
-  private longPressDuration = 100 // 长按触发时间（毫秒）
+  private longPressDuration = 50 // 长按触发时间（毫秒）
   // 拖动相关
   private dragStartX = 0
   private dragStartY = 0
+  // 触摸轨迹相关（用于轻抚/重抚判定）
+  private strokeStartAt = 0
+  private strokeDistance = 0
+  private lastStrokePoint: { x: number; y: number } | null = null
 
   // 缩放相关
   private currentScale = 1
   private minScale = 0.1
   private maxScale = 2
   private scaleStep = 0.05
+
   // 画步锁定相关
   private isLocked = false
   // 音量控制属性
@@ -276,36 +282,64 @@ export class Live2DManager {
   /*
    * 设置画布内的监听器（鼠标跟踪）
    */
-  public initBaseListeners(): void {
+  public initListeners(isPetMode: boolean = false): void {
+    // 获取交互系统实例
+    const interactionSystem = InteractionSystem.getInstance()
+    // 开启鼠标跟踪
+    this.startMouseTracking()
+
+    // 鼠标移动时更新模型交互,在不透明区域不触发交互
+    this.canvasElement!.addEventListener('mousemove', this.updateMouseInteraction)
+
+    // 监听来自主进程的鼠标位置更新，更新模型注视位置
+    window.api.ipcRenderer.on('assistant:mouse-position', (_event, data) => {
+      // // 检测鼠标点击状态
+      if (data.isMouseDown) {
+        this.handleMouseClick()
+      }
+
+      // 只有在启用聚焦时才更新模型视线
+      if (this.isFocusEnabled) {
+        this.updateModelFocus(data.screenX, data.screenY, data.windowX, data.windowY)
+      }
+    })
+
     // 鼠标按下事件
-    this.canvasElement!.addEventListener('pointerdown', (e) => {
+    this.canvasElement!.addEventListener('mousedown', (e) => {
+      // 长按触发模型注视，短按则正常处理点击
       this.isMousePressed = true
+      // 记录拖动起始位置
       this.dragStartX = e.clientX
       this.dragStartY = e.clientY
-
+      // 重置触摸轨迹数据
+      this.strokeStartAt = Date.now()
+      // 触摸开始时重置距离和起始点
+      this.strokeDistance = 0
+      // 记录当前点为起始点
+      this.lastStrokePoint = { x: e.clientX, y: e.clientY }
+      // 如果点击在模型区域内，触发模型点击事件
+      this.model!.tap(e.x, e.y)
       // 设置长按定时器
       this.mousePressTimer = setTimeout(() => {
         // 长按触发，如果已锁定则启用注视
         if (this.isMousePressed && this.model && this.isLocked) {
           this.isFocusEnabled = true
-          console.log('Long press detected, model starts gazing at mouse')
         }
       }, this.longPressDuration)
     })
 
     // 鼠标移动事件
-    this.canvasElement!.addEventListener('pointermove', (e) => {
+    this.canvasElement!.addEventListener('mousemove', (e) => {
       // 长按期间持续更新模型视线（仅在锁定且启用注视时）
-      if (this.isMousePressed && this.isFocusEnabled && this.model && this.app && this.isLocked) {
+      if (this.isMousePressed && this.isFocusEnabled && this.model && this.isLocked) {
         const rect = this.canvasElement!.getBoundingClientRect()
         const relativeX = e.clientX - rect.left
         const relativeY = e.clientY - rect.top
-
         this.model.focus(relativeX, relativeY, false)
       }
 
-      // 拖动模型（仅在未锁定时可用）
-      if (this.isMousePressed && !this.isLocked && this.model) {
+      // 拖动模型（仅在未锁定和非桌宠模式时可用）
+      if (this.isMousePressed && !this.isLocked && !isPetMode && this.model) {
         const deltaX = e.clientX - this.dragStartX
         const deltaY = e.clientY - this.dragStartY
 
@@ -315,11 +349,38 @@ export class Live2DManager {
         this.dragStartX = e.clientX
         this.dragStartY = e.clientY
       }
+      // 计算触摸轨迹距离（仅在长按期间）
+      if (this.isMousePressed && this.lastStrokePoint) {
+        const dx = e.clientX - this.lastStrokePoint.x
+        const dy = e.clientY - this.lastStrokePoint.y
+        this.strokeDistance += Math.hypot(dx, dy)
+        this.lastStrokePoint = { x: e.clientX, y: e.clientY }
+      }
     })
 
     // 鼠标抬起事件
-    this.canvasElement!.addEventListener('pointerup', () => {
+    this.canvasElement!.addEventListener('mouseup', () => {
+      // 根据触摸轨迹和时间判断是否触发轻抚/重抚事件
+      const strokeDurationMs = Date.now() - this.strokeStartAt
+
+      if (strokeDurationMs >= 120 && this.strokeDistance >= 12) {
+        const speedPxPerSecond = (this.strokeDistance / strokeDurationMs) * 1000
+        const configStore = useConfigStore()
+        const speedThreshold = Math.max(
+          60,
+          Number(configStore.config.live2dStrokeSpeedThreshold || 260)
+        )
+
+        interactionSystem.triggerEvent(
+          speedPxPerSecond >= speedThreshold
+            ? 'live2d.stroke.head.heavy'
+            : 'live2d.stroke.head.light'
+        )
+      }
+      // 释放，重置长按状态
       this.isMousePressed = false
+      this.strokeDistance = 0
+      this.lastStrokePoint = null
 
       // 清除长按定时器
       if (this.mousePressTimer) {
@@ -331,16 +392,16 @@ export class Live2DManager {
       if (this.isFocusEnabled && this.isLocked) {
         this.smoothDisableFocus(500)
       }
-
-      // 如果未锁定，确保注视功能关闭
-      if (!this.isLocked) {
-        this.isFocusEnabled = false
-      }
     })
 
     // 鼠标离开画布
-    this.canvasElement!.addEventListener('pointerleave', () => {
+    this.canvasElement!.addEventListener('mouseleave', () => {
+      // 重置状态
       this.isMousePressed = false
+      // 离开画布时重置触摸轨迹数据
+      this.strokeDistance = 0
+      // 离开画布时重置最后触摸点
+      this.lastStrokePoint = null
 
       // 清除长按定时器
       if (this.mousePressTimer) {
@@ -353,40 +414,48 @@ export class Live2DManager {
         this.smoothDisableFocus(500)
       }
 
-      // 如果未锁定，确保注视功能关闭
-      if (!this.isLocked) {
-        this.isFocusEnabled = false
+      // 重置模型可交互状态
+      this.ignoreState = false
+      // 设置模型忽略鼠标事件，避免在模型区域外触发交互
+      window.api.setIgnoreMouse(false)
+      // 清除检查是否进入交互状态定时器
+      if (this.restoreTimer) {
+        clearTimeout(this.restoreTimer)
+        this.restoreTimer = null
       }
     })
 
-    // 鼠标滚轮事件
-    this.canvasElement!.addEventListener(
-      'wheel',
-      (e) => {
-        e.preventDefault()
+    // 只有在非桌宠模式下才启用缩放功能，宠物模式下保持固定大小，使用面板调整
+    if (!isPetMode) {
+      // 鼠标滚轮事件
+      this.canvasElement!.addEventListener(
+        'wheel',
+        (e) => {
+          e.preventDefault()
 
-        // 仅在未锁定时允许缩放
-        if (!this.model || this.isLocked) return
+          // 仅在未锁定时允许缩放
+          if (!this.model || this.isLocked) return
 
-        // 获取当前缩放值
-        let newScale = this.currentScale
+          // 获取当前缩放值
+          let newScale = this.currentScale
 
-        // 向上滚动放大，向下滚动缩小
-        if (e.deltaY < 0) {
-          newScale += this.scaleStep
-        } else {
-          newScale -= this.scaleStep
-        }
+          // 向上滚动放大，向下滚动缩小
+          if (e.deltaY < 0) {
+            newScale += this.scaleStep
+          } else {
+            newScale -= this.scaleStep
+          }
 
-        // 限制缩放范围
-        newScale = Math.max(this.minScale, Math.min(newScale, this.maxScale))
+          // 限制缩放范围
+          newScale = Math.max(this.minScale, Math.min(newScale, this.maxScale))
 
-        // 更新模型缩放
-        this.model.scale.set(newScale)
-        this.currentScale = newScale
-      },
-      { passive: false }
-    )
+          // 更新模型缩放
+          this.model.scale.set(newScale)
+          this.currentScale = newScale
+        },
+        { passive: false }
+      )
+    }
   }
 
   public async switchModel(modelPath: string): Promise<void> {
@@ -556,55 +625,6 @@ export class Live2DManager {
     return this.isLocked
   }
 
-  /**
-   * 初始化事件监听器
-   */
-  public initListeners(): void {
-    const interactionSystem = InteractionSystem.getInstance()
-    // 开启鼠标跟踪
-    this.startMouseTracking()
-
-    // 监听来自主进程的鼠标位置更新
-    window.api.ipcRenderer.on('assistant:mouse-position', (_event, data) => {
-      // 检测鼠标点击状态
-      if (data.isMouseDown) {
-        this.handleMouseClick()
-      }
-
-      // 只有在启用聚焦时才更新模型视线
-      if (this.isFocusEnabled) {
-        this.updateModelFocus(data.screenX, data.screenY, data.windowX, data.windowY)
-      }
-    })
-
-    // 鼠标移动时更新模型交互
-    this.canvasElement!.addEventListener('mousemove', this.updateMouseInteraction)
-
-    // 鼠标离开时取消穿透状态
-    this.canvasElement!.addEventListener('mouseleave', () => {
-      this.ignoreState = false
-      window.api.setIgnoreMouse(false)
-      if (this.restoreTimer) {
-        clearTimeout(this.restoreTimer)
-        this.restoreTimer = null
-      }
-    })
-
-    // 监听鼠标点击事件，触发模型的hit
-    this.canvasElement!.addEventListener('pointerdown', (e) =>
-      this.model!.tap(e.clientX, e.clientY)
-    )
-    // 监听鼠标点击事件，触发整体点击事件
-    this.canvasElement!.addEventListener('pointerdown', () =>
-      interactionSystem.triggerEvent('live2d.click')
-    )
-
-    this.model!.on('live2d.hit', (hitAreaNames) => {
-      console.log('Hit:', hitAreaNames)
-      interactionSystem.triggerEvent('live2d.hit.' + hitAreaNames)
-    })
-  }
-
   // 处理鼠标点击
   private handleMouseClick(): void {
     // 如果之前未启用聚焦，现在启用
@@ -706,7 +726,7 @@ export class Live2DManager {
   }
 
   /**
-   * 开始鼠标跟踪（模型注视鼠标）
+   * 开始全局鼠标跟踪
    */
   public startMouseTracking(): void {
     if (!this.isMouseTracking) {
@@ -949,6 +969,12 @@ export class Live2DManager {
     this.overlayTransitionMs = null
   }
 
+  public stopSpeaking(): void {
+    this.isSpeaking = false
+    this.currentMouthOpenY = 0
+    this.model?.stopSpeaking()
+  }
+
   /**
    * 每帧调用，更新动作参数覆盖层并应用到模型。
    * 改动要点：
@@ -1174,16 +1200,6 @@ export class Live2DManager {
 
     // 选择较小的缩放比例以确保模型完整显示
     const scale = Math.min(scaleX, scaleY)
-
-    console.log('Scale calculation:', {
-      canvasWidth,
-      canvasHeight,
-      modelWidth,
-      modelHeight,
-      scaleX,
-      scaleY,
-      finalScale: scale
-    })
 
     return scale
   }

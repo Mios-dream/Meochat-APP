@@ -461,6 +461,7 @@ class ChatService {
     this.nextSentenceId = null
     this.motionSequenceToken++
     this.live2DManager?.clearMotionFrame()
+    this.live2DManager?.stopSpeaking()
     this.clearHideMessageTimer()
   }
 

@@ -1,12 +1,9 @@
 import { BrowserWindow, globalShortcut, screen } from 'electron'
 import { createChatBoxWindow } from './chatBoxWindow'
-import Store from 'electron-store'
+
 import { getAppUrl, getPreloadPath, isDevelopment } from '../utils/pathResolve'
 import log from '../utils/logger'
-import { getConfig } from '../config/configManager'
-
-// 创建配置存储实例
-const store = new Store()
+import { getConfig, setConfig } from '../config/configManager'
 
 let assistantWindow: BrowserWindow | null
 
@@ -17,7 +14,7 @@ function createAssistantWindow(): void | BrowserWindow {
   }
 
   // 从存储中读取窗口配置，如果不存在则使用默认值
-  const savedBounds = store.get('assistantWindowBounds') as Electron.Rectangle
+  const savedBounds = getConfig('assistantWindowBounds') as Electron.Rectangle
   const defaultBounds = {
     width: 300,
     height: 500
@@ -74,17 +71,13 @@ function createAssistantWindow(): void | BrowserWindow {
     })
   }
 
-  if (store.get('debugMode')) {
+  if (getConfig('debugMode')) {
     assistantWindow.webContents.openDevTools({ mode: 'detach' })
   }
 
-  assistantWindow.once('ready-to-show', () => {
-    assistantWindow?.show()
-  })
-
   assistantWindow.on('close', () => {
     if (assistantWindow) {
-      store.set('assistantWindowBounds', assistantWindow.getBounds())
+      setConfig('assistantWindowBounds', assistantWindow.getBounds())
     } else {
       log.info('assistantWindow is null')
     }

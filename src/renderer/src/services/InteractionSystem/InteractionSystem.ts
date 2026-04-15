@@ -8,6 +8,9 @@ import { TimeEventHandler, TimeEventModule } from '@renderer/events/timeEvent'
 import { IdleEventHandler, IdleEventModule } from '@renderer/events/idleEvent'
 import { FestivalEventHandler, FestivalEventModule } from '@renderer/events/festivalEvents'
 import { Live2dEventHandler, Live2dEventModule } from '@renderer/events/live2dEvent'
+import { MouseEventHandler, MouseEventModule } from '../../events/mouseEvent'
+import { ApplicationEventHandler, ApplicationEventModule } from '../../events/applicationEvent'
+import { SystemEventHandler, SystemEventModule } from '../../events/systemEvent'
 
 export class InteractionSystem {
   private static instance: InteractionSystem | null = null
@@ -54,6 +57,9 @@ export class InteractionSystem {
     this.eventModules.push(new IdleEventModule(this.eventCenter))
     this.eventModules.push(new FestivalEventModule(this.eventCenter))
     this.eventModules.push(new Live2dEventModule(this.eventCenter))
+    this.eventModules.push(new MouseEventModule(this.eventCenter))
+    this.eventModules.push(new ApplicationEventModule(this.eventCenter))
+    this.eventModules.push(new SystemEventModule(this.eventCenter))
   }
 
   // 注册所有默认处理器
@@ -66,6 +72,9 @@ export class InteractionSystem {
     this.eventSystem.registerHandler(new FestivalEventHandler())
     this.eventSystem.registerHandler(new IdleEventHandler())
     this.eventSystem.registerHandler(new Live2dEventHandler())
+    this.eventSystem.registerHandler(new MouseEventHandler())
+    this.eventSystem.registerHandler(new ApplicationEventHandler())
+    this.eventSystem.registerHandler(new SystemEventHandler())
     this.handlersRegistered = true
   }
 

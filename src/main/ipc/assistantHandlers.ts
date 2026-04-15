@@ -7,10 +7,18 @@ import { uIOhook } from 'uiohook-napi'
 
 import log from '../utils/logger'
 import { AssistantService } from '../services/assistantService'
+import { getConfig } from '../config/configManager'
 
 let mouseTrackingInterval: NodeJS.Timeout | null = null
 let isMousePressed = false // 追踪鼠标按下状态
 let isUiohookStarted = false // 追踪 uiohook 是否已启动
+// 用于追踪鼠标位置和活动状态
+let lastMouseX: number | null = null
+let lastMouseY: number | null = null
+// 最后一次鼠标移动的时间戳
+let lastMouseMoveAt = Date.now()
+// 最后一次发送鼠标活动事件的时间戳，用于节流
+let lastMouseActivityEmitAt = 0
 
 // 清理鼠标追踪的辅助函数
 function cleanupMouseTracking(): void {
@@ -146,12 +154,53 @@ function setupAssistantIPC(): void {
       cleanupMouseTracking()
     }
 
+    const initialPosition = robot.getMousePos()
+    lastMouseX = initialPosition.x
+    lastMouseY = initialPosition.y
+    lastMouseMoveAt = Date.now()
+    lastMouseActivityEmitAt = 0
+
     // 每100ms检查鼠标状态
     mouseTrackingInterval = setInterval(() => {
       if (assistantWin.isDestroyed()) {
         cleanupMouseTracking()
       } else {
         const mousePos = robot.getMousePos()
+        const now = Date.now()
+        const idleThresholdMs = Math.max(1, Number(getConfig('mouseIdleMinutes') || 5)) * 60 * 1000
+        const moved = mousePos.x !== lastMouseX || mousePos.y !== lastMouseY
+
+        if (moved) {
+          const idleDurationMs = now - lastMouseMoveAt
+          if (idleDurationMs >= idleThresholdMs) {
+            BrowserWindow.getAllWindows().forEach((win) => {
+              win.webContents.send('assistantEvent:mouse-resumed', {
+                idleDurationMs,
+                timestamp: now
+              })
+            })
+          }
+
+          lastMouseMoveAt = now
+          lastMouseX = mousePos.x
+          lastMouseY = mousePos.y
+        }
+
+        if (now - lastMouseActivityEmitAt >= 1000) {
+          const idleDurationMs = now - lastMouseMoveAt
+          const payload = {
+            idleDurationMs,
+            isIdle: idleDurationMs >= idleThresholdMs,
+            timestamp: now
+          }
+
+          BrowserWindow.getAllWindows().forEach((win) => {
+            win.webContents.send('assistantEvent:mouse-activity', payload)
+          })
+
+          lastMouseActivityEmitAt = now
+        }
+
         const windowBounds = assistantWin.getBounds()
 
         assistantWin.webContents.send('assistant:mouse-position', {
@@ -164,7 +213,7 @@ function setupAssistantIPC(): void {
           isMouseDown: isMousePressed // 使用 uiohook 追踪的状态
         })
       }
-    }, 100)
+    }, 200)
   })
 
   // 停止鼠标轨迹监控

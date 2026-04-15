@@ -3,7 +3,33 @@ export interface Context {
   lastInteraction: number
   userMood: string
   isBusy: boolean
+  isInConversation?: boolean
+  lastEventTime?: number
+  lastEventType?: string
   lastMessage?: string
+  mouseEventStatus?: {
+    idleDurationMs: number
+    isIdle: boolean
+    timestamp: number
+  }
+  appEventStatus?: {
+    appName: string
+    title: string
+    category: string
+    continuousMs: number
+    timestamp: number
+  }
+  systemPowerStatus?: {
+    state: 'charging' | 'battery'
+    timestamp: number
+  }
+  batteryStatus?: {
+    percent: number
+    isCharging: boolean
+    isLow: boolean
+    threshold: number
+    timestamp: number
+  }
   taskEventStatus?: {
     taskName: string
     success: boolean

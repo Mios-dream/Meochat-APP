@@ -16,6 +16,8 @@ export interface OutputAction {
 export class ActionDispatcher {
   private listeners: Array<(action: OutputAction) => void> = []
   private chatService: ChatService
+  private lastSentText = ''
+  private lastSentAt = 0
 
   constructor() {
     this.chatService = ChatService.getInstance()
@@ -26,6 +28,12 @@ export class ActionDispatcher {
    * @param action - 要发送的动作
    */
   send(action: OutputAction): void {
+    const normalizedText = (action.text || '').trim()
+    const now = Date.now()
+    if (normalizedText && normalizedText === this.lastSentText && now - this.lastSentAt < 3000) {
+      return
+    }
+
     // 添加元数据
     const actionWithMetadata: OutputAction = {
       ...action,
@@ -36,6 +44,9 @@ export class ActionDispatcher {
         ...action.metadata
       }
     }
+
+    this.lastSentText = normalizedText
+    this.lastSentAt = now
 
     // 调用具体的发送逻辑
     this.executeSend(actionWithMetadata)

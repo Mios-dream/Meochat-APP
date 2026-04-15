@@ -8,6 +8,7 @@ import { createTray } from './tray/appTray'
 import { startAutoService } from './utils/autoService'
 import { registerFileProtocol, handleFileProtocol } from './protocol/fileProtocol'
 import setupUpdaterIPC from './ipc/updaterHandlers'
+import { setupSystemEventIPC } from './ipc/assistantEventHandlers'
 import log from './utils/logger'
 
 try {
@@ -19,6 +20,8 @@ try {
   setupConfigIPC()
   // 设置助手Together IPC
   setupAssistantTogetherIPC()
+  // 设置系统事件IPC
+  setupSystemEventIPC()
   // 注册文件协议
   registerFileProtocol()
 } catch (error) {

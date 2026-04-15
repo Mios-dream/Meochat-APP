@@ -216,7 +216,7 @@ async function initAssistantModel(): Promise<void> {
       // 加载默认模型
       await live2DManager.init('l2d-canvas', './turong/turong.model3.json')
     }
-    live2DManager.initListeners()
+    live2DManager.initListeners(true)
     loadingCompleted()
   } catch (error) {
     console.error('初始化Live2D模型失败:', error)

@@ -2,6 +2,7 @@ import { ContextManager } from '../services/InteractionSystem/core/context'
 import { ActionDispatcher } from '../services/InteractionSystem/core/dispatcher'
 import { IEventHandler } from '../services/InteractionSystem/types/IEventHandler'
 import { EventModule } from '../services/InteractionSystem/types/eventModules'
+import { EventReplyGenerator } from '../services/InteractionSystem/eventReplyGenerator'
 
 // Live2d事件模块
 export class Live2dEventModule extends EventModule {
@@ -33,71 +34,87 @@ export class Live2dEventModule extends EventModule {
 // Live2d事件处理器
 export class Live2dEventHandler implements IEventHandler {
   eventType = 'live2d'
+  private replyGenerator: EventReplyGenerator
+
+  constructor() {
+    this.replyGenerator = new EventReplyGenerator()
+  }
 
   responseHandlers = {
-    "'live2d.click": async () => {
-      return '阁下在摸我吗？'
+    'live2d.hit.body': async (contextManager: ContextManager) => {
+      return await this.replyGenerator.generate({
+        event: 'live2d.hit.body',
+        scene: '用户点击了角色身体区域，属于轻互动',
+        context: contextManager.get(),
+        maxLength: 50,
+        fallback: '哎呀，阁下在摸哪里呢~'
+      })
     },
-    'live2d.hit.body': async () => {
-      const responses = [
-        '哎呀，阁下在摸哪里呢~',
-        '痒痒的，别闹啦！',
-        '阁下真是的，突然摸人家...',
-        '嘻嘻，被发现了呢~',
-        '阁下今天心情不错嘛！'
-      ]
-      return responses[Math.floor(Math.random() * responses.length)]
+    'live2d.hit.part.head': async (contextManager: ContextManager) => {
+      return await this.replyGenerator.generate({
+        event: 'live2d.hit.part.head',
+        scene: '用户点击了角色头部，语气可亲昵但不要过激',
+        context: contextManager.get(),
+        maxLength: 50,
+        fallback: '阁下的手好温暖呢~'
+      })
     },
-    'live2d.hit.part.head': async () => {
-      const responses = [
-        '摸头会长不高的啦！',
-        '阁下的手好温暖呢~',
-        '被摸头的感觉...还不错？',
-        '哎呀，发型要乱了！',
-        '阁下是在安慰我吗？'
-      ]
-      return responses[Math.floor(Math.random() * responses.length)]
+    'live2d.hit.part.face': async (contextManager: ContextManager) => {
+      return await this.replyGenerator.generate({
+        event: 'live2d.hit.part.face',
+        scene: '用户点击了角色脸部，表现轻微害羞或打趣',
+        context: contextManager.get(),
+        maxLength: 50,
+        fallback: '不要捏脸啦，会变形的！'
+      })
     },
-    'live2d.hit.part.face': async () => {
-      const responses = [
-        '脸...脸好红！',
-        '阁下真是的，这么直接...',
-        '不要捏脸啦，会变形的！',
-        '呜...害羞死了...',
-        '阁下的手好温柔呢~'
-      ]
-      return responses[Math.floor(Math.random() * responses.length)]
+    'live2d.hit.part.hand': async (contextManager: ContextManager) => {
+      return await this.replyGenerator.generate({
+        event: 'live2d.hit.part.hand',
+        scene: '用户点击了角色手部，可生成牵手或互动感回复',
+        context: contextManager.get(),
+        maxLength: 50,
+        fallback: '要牵手吗？'
+      })
     },
-    'live2d.hit.part.hand': async () => {
-      const responses = [
-        '要牵手吗？',
-        '阁下的手好大呢~',
-        '手牵手一起走吧！',
-        '手有点凉呢，要暖暖吗？',
-        '握手就是好朋友啦！'
-      ]
-      return responses[Math.floor(Math.random() * responses.length)]
+    'live2d.hit.part.leg': async (contextManager: ContextManager) => {
+      return await this.replyGenerator.generate({
+        event: 'live2d.hit.part.leg',
+        scene: '用户点击了角色腿部，保持轻松互动',
+        context: contextManager.get(),
+        maxLength: 50,
+        fallback: '不要挠痒痒啦！'
+      })
     },
-    'live2d.hit.part.leg': async () => {
-      const responses = [
-        '腿有点痒呢...',
-        '阁下在检查我的腿吗？',
-        '不要挠痒痒啦！',
-        '腿有点酸呢，站了好久...',
-        '阁下想跳舞吗？'
-      ]
-      return responses[Math.floor(Math.random() * responses.length)]
+    'live2d.stroke.head.light': async (contextManager: ContextManager) => {
+      return await this.replyGenerator.generate({
+        event: 'live2d.stroke.head.light',
+        scene: '用户轻柔抚摸角色头部，整体偏温柔治愈',
+        context: contextManager.get(),
+        maxLength: 50,
+        fallback: '好轻柔的摸头呀，心情都变好了。'
+      })
+    },
+    'live2d.stroke.head.heavy': async (contextManager: ContextManager) => {
+      return await this.replyGenerator.generate({
+        event: 'live2d.stroke.head.heavy',
+        scene: '用户较重力度抚摸头部，表达撒娇提醒更温柔',
+        context: contextManager.get(),
+        maxLength: 50,
+        fallback: '摸头可以，但请温柔一点点嘛。'
+      })
     }
   }
 
   async handle(
     event: string,
-    _contextManager: ContextManager,
+    contextManager: ContextManager,
     dispatcher: ActionDispatcher
   ): Promise<void> {
+    console.log(`收到Live2D事件: ${event}`)
     const handler = this.responseHandlers[event]
     if (handler) {
-      const message = await handler()
+      const message = await handler(contextManager)
       if (message) {
         dispatcher.send({ text: message })
       }

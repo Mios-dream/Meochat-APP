@@ -15,13 +15,30 @@ const schema: Schema<AppConfig> = {
   silentMode: { type: 'boolean', default: false },
   // 助手配置
   volume: { type: 'number', default: 0.8 },
+  // 是否启用动作生成
   generateMotion: { type: 'boolean', default: false },
+  // 是否启用助手语音唤醒服务
   autoChat: { type: 'boolean', default: false },
+  // 待机事件
   idleEvent: { type: 'boolean', default: true },
+  // 安静模式
   quietMode: { type: 'boolean', default: false },
+  // 是否启用桌面台词板
   desktopSpeechBoard: { type: 'boolean', default: true },
+  // 是否启用应用内台词板
   appSpeechBoard: { type: 'boolean', default: true },
+  // 应用使用提醒时间，单位分钟
   idleTime: { type: 'number', default: 2 },
+  // 闲置认定时间，单位分钟
+  mouseIdleMinutes: { type: 'number', default: 5 },
+  // 自动事件全局冷却时间，单位毫秒
+  autoEventCooldownMs: { type: 'number', default: 8000 },
+  // 同一应用持续使用提醒时间，单位分钟
+  appReminderMinutes: { type: 'number', default: 60 },
+  // 低电量阈值，单位百分比
+  lowBatteryThreshold: { type: 'number', default: 20 },
+  // Live2D 抚摸速度阈值，单位像素/秒
+  live2dStrokeSpeedThreshold: { type: 'number', default: 260 },
   // 助手是否开启
   assistantEnabled: { type: 'boolean', default: false },
   // 当前助手
@@ -33,7 +50,11 @@ const schema: Schema<AppConfig> = {
   // Python服务配置
   pythonTasks: { type: 'array', default: [] },
   // 性能模式
-  performanceMode: { type: 'string', default: 'balanced' }
+  performanceMode: { type: 'string', default: 'balanced' },
+  // 助手窗口位置和大小
+  assistantWindowBounds: {
+    type: 'object'
+  }
 }
 
 const appDataDir = resolveAppDataDir()

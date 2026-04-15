@@ -27,6 +27,16 @@ export interface AppConfig {
   appSpeechBoard: boolean
   // 空闲时间阈值，单位毫秒
   idleTime: number
+  // 鼠标静止多久后认定为离开（单位：分钟）
+  mouseIdleMinutes: number
+  // 自动事件全局冷却时间（单位：毫秒）
+  autoEventCooldownMs: number
+  // 同一应用持续使用多久后提醒休息（单位：分钟）
+  appReminderMinutes: number
+  // 低电量阈值（单位：百分比）
+  lowBatteryThreshold: number
+  // Live2D 抚摸速度阈值（单位：像素/秒）
+  live2dStrokeSpeedThreshold: number
   // 助手是否开启
   assistantEnabled: boolean
   // 当前助手
@@ -39,4 +49,6 @@ export interface AppConfig {
   pythonTasks: PythonTask[]
 
   performanceMode: 'high' | 'balanced' | 'low'
+
+  assistantWindowBounds?: Electron.Rectangle
 }
