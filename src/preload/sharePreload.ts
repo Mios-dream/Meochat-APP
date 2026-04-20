@@ -18,6 +18,8 @@ const globalAPI = {
   showAssistant: () => ipcRenderer.send('assistant:show'),
   // 获取屏幕信息等
   getScreenSize: () => ipcRenderer.invoke('assistant:get-screen-size'),
+  // 获取当前前台应用使用情况
+  getForegroundAppUsage: () => ipcRenderer.invoke('assistant:get-foreground-app-usage'),
 
   // 聊天窗口的preload
   hideChatBox: () => ipcRenderer.send('chat-box:hide'),

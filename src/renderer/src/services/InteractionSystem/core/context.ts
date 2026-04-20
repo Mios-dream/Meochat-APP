@@ -14,6 +14,7 @@ export interface Context {
   }
   appEventStatus?: {
     appName: string
+    previousAppName?: string
     title: string
     category: string
     continuousMs: number

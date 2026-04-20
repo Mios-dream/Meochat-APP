@@ -1,6 +1,14 @@
 import { AssistantInfo } from '../../../renderer/src/types/AssistantInfo'
 
 export interface AssistantApi {
+  getForegroundAppUsage: () => Promise<{
+    processName: string
+    windowTitle: string
+    pid: number
+    category: 'work' | 'social' | 'browser' | 'game' | 'media' | 'other'
+    continuousMs: number
+    sampledAt: number
+  } | null>
   // 助手窗口
   openAssistant: () => void
   closeAssistant: () => void

@@ -1,8 +1,8 @@
-import { BrowserWindow, powerMonitor, app } from 'electron'
+import { BrowserWindow, powerMonitor, app, ipcMain } from 'electron'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
 import { getConfig } from '../config/configManager'
-import { ForegroundAppMonitor } from '../services/foregroundAppMonitor'
+import { ForegroundAppMonitor, ForegroundAppUsagePayload } from '../services/foregroundAppMonitor'
 
 const execFileAsync = promisify(execFile)
 // 是否已经完成事件监听的设置，确保只设置一次
@@ -93,6 +93,10 @@ async function broadcastBatteryStatus(): Promise<void> {
     timestamp: Date.now()
   })
 }
+
+async function queryForegroundAppUsage(): Promise<ForegroundAppUsagePayload | null> {
+  return await appMonitor.queryCurrentUsage()
+}
 // 清理事件监听和定时器资源，确保在应用退出时不会留下未清理的资源
 function cleanupEventResources(): void {
   if (batteryPollingTimer) {
@@ -121,7 +125,9 @@ function setupSystemEventIPC(): void {
     broadcastBatteryStatus()
   })
 
-  appMonitor.start()
+  ipcMain.handle('assistant:get-foreground-app-usage', async () => {
+    return await queryForegroundAppUsage()
+  })
 
   broadcastBatteryStatus()
   batteryPollingTimer = setInterval(() => {

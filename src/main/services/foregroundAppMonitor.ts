@@ -1,4 +1,3 @@
-import { BrowserWindow } from 'electron'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
 
@@ -26,8 +25,6 @@ interface ForegroundWindowInfo {
 
 export class ForegroundAppMonitor {
   private static instance: ForegroundAppMonitor
-  // 监控采样的定时器
-  private timer: NodeJS.Timeout | null = null
   // 当前前台应用的唯一标识，格式为 "processName:pid"
   private currentAppKey = ''
   // 当前前台应用开始的时间戳，单位为毫秒
@@ -42,22 +39,7 @@ export class ForegroundAppMonitor {
     return ForegroundAppMonitor.instance
   }
 
-  start(intervalMs: number = 60000): void {
-    if (this.timer) {
-      return
-    }
-
-    this.sampleAndBroadcast()
-    this.timer = setInterval(() => {
-      this.sampleAndBroadcast()
-    }, intervalMs)
-  }
-
   stop(): void {
-    if (this.timer) {
-      clearInterval(this.timer)
-      this.timer = null
-    }
     this.currentAppKey = ''
     this.currentAppStartAt = 0
     this.lastPayload = null
@@ -67,10 +49,10 @@ export class ForegroundAppMonitor {
     return this.lastPayload
   }
 
-  private async sampleAndBroadcast(): Promise<void> {
+  async queryCurrentUsage(): Promise<ForegroundAppUsagePayload | null> {
     const info = await this.queryForegroundWindow()
     if (!info) {
-      return
+      return null
     }
 
     const now = Date.now()
@@ -91,10 +73,7 @@ export class ForegroundAppMonitor {
     }
 
     this.lastPayload = payload
-
-    BrowserWindow.getAllWindows().forEach((win) => {
-      win.webContents.send('assistantEvent:app-usage', payload)
-    })
+    return payload
   }
 
   // 基于进程名称的简单分类规则，可以根据需要进行调整和扩展
@@ -178,8 +157,6 @@ $windowTitle = $sb.ToString()
           encoding: 'utf8'
         }
       )
-      console.log('Foreground window info raw output:', stdout)
-
       const raw = stdout.trim()
       if (!raw) {
         return null

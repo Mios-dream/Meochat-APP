@@ -68,6 +68,28 @@
 - **低占用模式** - 全屏或高负载时自动卸载部分模型，降低系统占用
 - **智能内存管理** - 动态调整资源占用策略
 
+## 🎨 项目截图
+
+<table>
+  <tr>
+    <td><img src="./doc/assets/screen_2.png" alt="预览 1"></td>
+    <td><img src="./doc/assets/screen_3.png" alt="预览 2"></td>
+  </tr>
+  <tr>
+    <td><img src="./doc/assets/screen_4.png" alt="预览 3"></td>
+    <td><img src="./doc/assets/screen_5.png" alt="预览 4"></td>
+  </tr>
+</table>
+
+
+### 🎞️ 演示视频
+
+当前只演示了软件内聊天，展示表情和语音
+
+<iframe height="600px" src="//player.bilibili.com/player.html?isOutside=true&bvid=BV1TwDABjEB2&p=1" scrolling="yes" border="0" frameborder="1" framespacing="0" allowfullscreen="true"></iframe>
+
+
+
 ## 🚀 快速开始
 
 ### 📦 环境要求
@@ -115,7 +137,7 @@
    ```bash
    # 通用构建
    npm run build
-
+   
    # Windows 构建
    npm run build:win
    ```
@@ -180,24 +202,10 @@ MoeChat-APP/
 - [ ] 桌面窗口识别，提供 Context-aware 的助手服务
 - [ ] 详细的助手配置
 
-## 🎨 项目截图
-
-<table>
-  <tr>
-    <td><img src="./doc/assets/screen_2.png" alt="预览 1"></td>
-    <td><img src="./doc/assets/screen_3.png" alt="预览 2"></td>
-  </tr>
-  <tr>
-    <td><img src="./doc/assets/screen_4.png" alt="预览 3"></td>
-    <td><img src="./doc/assets/screen_5.png" alt="预览 4"></td>
-  </tr>
-</table>
-
 ## 🛠 技术栈
 
 - **框架**: Electron 38 + Vue 3 + TypeScript
 - **状态管理**: Pinia
-- **UI 工具**: Tailwind CSS (可选)
 - **动画库**: Live2D Cubism SDK 5.1.0
 - **音频处理**: Web Audio API
 - **构建工具**: Electron Vite
