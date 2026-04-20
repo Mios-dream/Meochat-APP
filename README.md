@@ -86,8 +86,7 @@
 
 当前只演示了软件内聊天，展示表情和语音
 
-<iframe height="600px" src="//player.bilibili.com/player.html?isOutside=true&bvid=BV1TwDABjEB2&p=1" scrolling="yes" border="0" frameborder="1" framespacing="0" allowfullscreen="true"></iframe>
-
+https://github.com/user-attachments/assets/3878b0fc-fefb-49b6-b987-5f663cce9b48
 
 
 ## 🚀 快速开始
