@@ -1,6 +1,5 @@
 import Store, { Schema } from 'electron-store'
 import { ipcMain, BrowserWindow, app } from 'electron'
-import { MicaBrowserWindow } from 'mica-electron'
 
 import { AppConfig } from '../../renderer/src/types/appConfig'
 import { resolveAppDataDir } from '../utils/pathResolve'
@@ -38,7 +37,7 @@ const schema: Schema<AppConfig> = {
   // 低电量阈值，单位百分比
   lowBatteryThreshold: { type: 'number', default: 20 },
   // Live2D 抚摸速度阈值，单位像素/秒
-  live2dStrokeSpeedThreshold: { type: 'number', default: 260 },
+  live2dStrokeSpeedThreshold: { type: 'number', default: 360 },
   // 助手是否开启
   assistantEnabled: { type: 'boolean', default: false },
   // 当前助手
@@ -79,7 +78,7 @@ function setupConfigIPC(): void {
       win.webContents.send('config:changed', store.store)
     })
 
-    MicaBrowserWindow.getAllWindows().forEach((win) => {
+    BrowserWindow.getAllWindows().forEach((win) => {
       win.webContents.send('config:changed', store.store)
     })
   })

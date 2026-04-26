@@ -21,7 +21,7 @@ export const useConfigStore = defineStore('config', () => {
     autoEventCooldownMs: 8000,
     appReminderMinutes: 60,
     lowBatteryThreshold: 20,
-    live2dStrokeSpeedThreshold: 260,
+    live2dStrokeSpeedThreshold: 360,
     assistantEnabled: false,
     currentAssistant: '',
     themeColor: '#fb7299',

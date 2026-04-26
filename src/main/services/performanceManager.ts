@@ -2,6 +2,7 @@ import { SystemMonitor, SystemResources } from '../utils/systemMonitor'
 import { PythonServiceManager, PythonTask } from './pythonService'
 import log from '../utils/logger'
 import { getConfig, setConfig } from '../config/configManager'
+import { app } from 'electron'
 
 // 性能模式定义
 export type PerformanceMode = 'high' | 'balanced' | 'low'
@@ -90,6 +91,7 @@ export class PerformanceManager {
   private taskStates: Map<number, TaskState> = new Map()
   private monitorInterval: NodeJS.Timeout | null = null
   private isMonitoring: boolean = false
+  private isShuttingDown: boolean = false
   private gpuHistory: GpuUsageHistory = {
     timestamps: [],
     usages: [],
@@ -107,6 +109,11 @@ export class PerformanceManager {
     // 初始化任务配置
     this.initializeTaskConfigs()
     this.startMonitoring()
+
+    app.on('before-quit', () => {
+      this.isShuttingDown = true
+      this.stopMonitoring()
+    })
   }
 
   public static getInstance(): PerformanceManager {
@@ -351,6 +358,10 @@ export class PerformanceManager {
    * 检查并调整服务状态
    */
   private async checkAndAdjustServices(): Promise<void> {
+    if (this.isShuttingDown) {
+      return
+    }
+
     try {
       const resources = await this.systemMonitor.getSystemResources()
 
@@ -580,6 +591,10 @@ export class PerformanceManager {
    * 启动服务
    */
   private async startService(id: number, param?: Record<string, string>): Promise<void> {
+    if (this.isShuttingDown) {
+      return
+    }
+
     try {
       const state = this.taskStates.get(id)
       if (!state) return
@@ -742,6 +757,7 @@ export class PerformanceManager {
    * 销毁管理器
    */
   public destroy(): void {
+    this.isShuttingDown = true
     this.stopMonitoring()
   }
 }

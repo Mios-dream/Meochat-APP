@@ -5,6 +5,7 @@ import PluginManager from '../views/PluginManagerView.vue'
 import AssistantManagerView from '../views/AssistantManagerView.vue'
 import ChatBoxView from '../views/ChatBoxView.vue'
 import AssistantView from '../views/AssistantView.vue'
+import OnboardingView from '../views/OnboardingView.vue'
 
 const router = createRouter({
   history: createWebHashHistory('/'),
@@ -17,6 +18,11 @@ const router = createRouter({
       path: '/tabs',
       name: 'tabs',
       component: Tabs
+    },
+    {
+      path: '/onboarding',
+      name: 'onboarding',
+      component: OnboardingView
     },
     {
       path: '/home',

@@ -1,6 +1,11 @@
 import { AssistantInfo, AssistantBaseInfo } from '../../../renderer/src/types/AssistantInfo'
 import { PythonServiceStatus } from '../../../renderer/src/types/PythonService'
 import { PythonTask } from '../../../renderer/src/types/PythonService'
+import {
+  OnboardingMode,
+  OnboardingProfile,
+  OnboardingState
+} from '../../../renderer/src/types/onboarding'
 
 export interface MainWindowApi {
   // 主窗口
@@ -366,4 +371,12 @@ export interface MainWindowApi {
   getPerformanceMode: () => Promise<
     { success: true; data: string } | { success: false; error: string }
   >
+
+  onboarding: {
+    getState: () => Promise<OnboardingState>
+    setMode: (mode: OnboardingMode) => Promise<OnboardingState>
+    saveProfile: (profile: OnboardingProfile) => Promise<OnboardingState>
+    markCompleted: () => Promise<OnboardingState>
+    reset: () => Promise<OnboardingState>
+  }
 }

@@ -1,8 +1,5 @@
 <!-- src/views/AssistantView.vue -->
 <template>
-  <div id="loading-container">
-    <LoadingProgress :progress="loadingProgress" />
-  </div>
   <div
     id="live2d-container"
     :class="{ locked: isLocked }"
@@ -21,6 +18,18 @@
 
     <canvas id="l2d-canvas"></canvas>
   </div>
+  <div v-if="loadError" class="error-root">
+    <div class="eva-bar">
+      <div class="eva-track">
+        <span v-for="i in 8" :key="i">SYSTEM LOCKED ◆ 系统锁定 ◆ </span>
+      </div>
+    </div>
+    <div class="eva-bar eva-bar--secondary">
+      <div class="eva-track eva-track--reverse">
+        <span v-for="i in 8" :key="i">ERROR :: 加载失败 :: CORE DUMP ◆ </span>
+      </div>
+    </div>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -29,7 +38,6 @@ import { ChatService } from '../services/ChatService'
 import { Live2DManager } from '../services/Live2dManager'
 import AssistantTips from '../components/AssistantTips.vue'
 import ContextMenu from '../components/Toolbar.vue'
-import LoadingProgress from '../components/LoadingProgress.vue'
 import { useConfigStore } from '../stores/useConfigStore'
 import { storeToRefs } from 'pinia'
 import { InteractionSystem } from '../services/InteractionSystem/InteractionSystem'
@@ -43,18 +51,20 @@ const isLocked = ref(JSON.parse(localStorage.getItem('assistantSettings') || '{}
 // 右键菜单
 const contextMenuVisible = ref(false)
 const contextMenuStyle = ref({ top: '0px', left: '0px' })
-// 加载进度
-const loadingProgress = ref(0)
+
 // 消息是否显示
 const isTipsActive: Ref<boolean> = ref(false)
 // 当前消息
 const currentTip: Ref<string> = ref('')
-// 移除监听器
-let removeListener: () => void
+// 是否加载模型失败
+const loadError = ref(false)
 // 组件实例
 const live2DManager = Live2DManager.getInstance()
+// 聊天服务实例
 const chatService = ChatService.getInstance()
+// 交互系统实例
 const interactionSystem = InteractionSystem.getInstance()
+// 唤醒词服务实例
 const wakewordService = WakewordService.getInstance()
 
 // 计算属性
@@ -179,9 +189,8 @@ async function syncWakewordState(): Promise<void> {
 
   try {
     await wakewordService.start(config.value.baseUrl)
-  } catch (error) {
-    console.error('启动语音唤醒失败:', error)
-    chatService.showTempMessage('语音唤醒启动失败，请检查麦克风权限', 3000, 10)
+  } catch {
+    console.error('启动语音唤醒失败，请检查配置和麦克风权限')
   }
 }
 
@@ -195,7 +204,7 @@ async function reconnectWakewordState(): Promise<void> {
 }
 
 // 初始化助手模型
-async function initAssistantModel(): Promise<void> {
+async function initAssistantModel(): Promise<boolean> {
   try {
     let currentAssistantName = ''
     const response = await window.api.getCurrentAssistant()
@@ -207,62 +216,52 @@ async function initAssistantModel(): Promise<void> {
     // 销毁当前模型
     live2DManager.destroy()
     if (assetsResponse.success && assetsResponse.data && assetsResponse.data.live2d.modelJsonPath) {
-      console.log('Live2D模型路径:', 'app-resource://' + assetsResponse.data.live2d.modelJsonPath)
       await live2DManager.init(
         'l2d-canvas',
         'app-resource://' + assetsResponse.data.live2d.modelJsonPath
       )
+      live2DManager.enableModel()
     } else {
       // 加载默认模型
       await live2DManager.init('l2d-canvas', './turong/turong.model3.json')
+      live2DManager.enableModel()
     }
-    live2DManager.initListeners(true)
-    loadingCompleted()
+    live2DManager.initListeners({ isPetMode: true })
+    return true
   } catch (error) {
+    loadError.value = true
+    await live2DManager.init('l2d-canvas', './turong/turong.model3.json')
+    live2DManager.disabledModel()
     console.error('初始化Live2D模型失败:', error)
+    return false
   }
 }
 
 /**
  * 切换助手模型
  * @param assistantName 助手名称
+ * @returns 模型切换是否成功
  */
-async function switchModel(assistantName: string): Promise<void> {
+async function switchModel(assistantName: string): Promise<boolean> {
   try {
-    startLoading()
     const assetsResponse = await window.api.getAssistantAssets(assistantName)
     if (assetsResponse.success && assetsResponse.data && assetsResponse.data.live2d.modelJsonPath) {
       // 切换模型
       await live2DManager.switchModel('app-resource://' + assetsResponse.data.live2d.modelJsonPath)
+      live2DManager.enableModel()
     } else {
       // 加载默认模型
       await live2DManager.switchModel('./turong/turong.model3.json')
+      live2DManager.enableModel()
     }
-    loadingCompleted()
+    return true
   } catch (error) {
+    loadError.value = true
+    await live2DManager.switchModel('./turong/turong.model3.json')
+    live2DManager.disabledModel()
     console.error('切换Live2D模型失败:', error)
+    return false
   }
-}
-
-/**
- * 加载完成，隐藏加载进度
- */
-function loadingCompleted(): void {
-  loadingProgress.value = 100
-  // 隐藏加载进度
-  setTimeout(() => {
-    const progressElement = document.getElementById('loading-container')
-
-    if (progressElement) {
-      progressElement.classList.add('fade-out')
-
-      setTimeout(() => {
-        if (progressElement) {
-          progressElement.style.display = 'none'
-        }
-      }, 500)
-    }
-  }, 500)
 }
 
 /**
@@ -274,32 +273,7 @@ async function handleWakewordDetected(keyword: string): Promise<void> {
   window.api.ipcRenderer.send('chat-box:wakeword-detected', keyword)
 }
 
-/**
- * 启动加载进度
- */
-function startLoading(): void {
-  loadingProgress.value = 0
-  const progressElement = document.getElementById('loading-container')
-
-  if (progressElement) {
-    progressElement.classList.remove('fade-out')
-
-    progressElement.style.display = 'flex'
-  }
-  // 模拟加载进度
-  const progressInterval = setInterval(() => {
-    if (loadingProgress.value < 90) {
-      loadingProgress.value += 10
-    } else {
-      clearInterval(progressInterval)
-    }
-  }, 50)
-}
-
 onMounted(async () => {
-  startLoading()
-  syncInteractionSystemState()
-
   wakewordService.setCallbacks({
     onReady: () => {
       console.log('Wakeword service ready')
@@ -311,12 +285,6 @@ onMounted(async () => {
       console.error('唤醒词服务错误:', message)
     }
   })
-
-  try {
-    await syncWakewordState()
-  } catch (error) {
-    console.error('同步唤醒词状态失败:', error)
-  }
 
   // 监听来自ChatBox的消息
   window.api.ipcRenderer.on('chat-box:send-message', async (_, data) => {
@@ -331,14 +299,30 @@ onMounted(async () => {
       })
     }
   })
-  await initAssistantModel()
+
+  // 初始化模型，只有成功加载模型后才启用服务
+  const modelLoaded = await initAssistantModel()
+  if (modelLoaded) {
+    syncInteractionSystemState()
+    try {
+      await syncWakewordState()
+    } catch (error) {
+      console.error('同步唤醒词状态失败:', error)
+    }
+  } else {
+    console.warn('Live2D模型加载失败，InteractionSystem 和 Wakeword 服务未启用')
+  }
 
   // 监听助手切换事件
-  removeListener = window.api.onAssistantSwitched(async (assistant) => {
+  window.api.onAssistantSwitched(async (assistant) => {
     // 当助手切换时，重新初始化模型
-    await switchModel(assistant.name)
-    // 切换助手后同步唤醒词状态
-    await reconnectWakewordState()
+    const modelSwitched = await switchModel(assistant.name)
+    // 只有模型成功切换时才重连唤醒词状态
+    if (modelSwitched) {
+      await reconnectWakewordState()
+    } else {
+      console.warn('助手模型切换失败，唤醒词服务未重连')
+    }
   })
 })
 
@@ -375,18 +359,112 @@ watch(
 )
 
 onUnmounted(() => {
-  if (removeListener) {
-    removeListener()
-  }
   interactionSystem.stop()
   wakewordService.stop()
-
   window.api.ipcRenderer.removeAllListeners('chat-box:send-message')
   live2DManager.destroy()
 })
 </script>
 
 <style>
+/* ERROR ROOT — 整体容器 */
+.error-root {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  pointer-events: none;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 12px;
+}
+
+.eva-bar {
+  width: 100%;
+  overflow: hidden;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  border-top: 1px solid rgba(255, 77, 166, 0.6);
+  border-bottom: 1px solid rgba(255, 77, 166, 0.6);
+  background: repeating-linear-gradient(
+    45deg,
+    rgba(255, 77, 166, 0.15),
+    rgba(255, 77, 166, 0.15) 10px,
+    rgba(255, 77, 166, 0.35) 10px,
+    rgba(255, 77, 166, 0.35) 20px
+  );
+  background-size: 200px 40px;
+  animation: eva-bg-move 5s linear infinite;
+}
+
+.eva-bar--secondary {
+  height: 28px;
+  opacity: 0.7;
+  background: repeating-linear-gradient(
+    -45deg,
+    rgba(180, 100, 255, 0.1),
+    rgba(180, 100, 255, 0.1) 10px,
+    rgba(180, 100, 255, 0.25) 10px,
+    rgba(180, 100, 255, 0.25) 20px
+  );
+  background-size: 200px 40px;
+  border-color: rgba(180, 100, 255, 0.5);
+  animation: eva-bg-move 4s linear infinite reverse;
+}
+
+.eva-track {
+  display: flex;
+  white-space: nowrap;
+  animation: eva-scroll 24s linear infinite;
+}
+
+.eva-track--reverse {
+  animation: eva-scroll-reverse 21s linear infinite;
+}
+
+.eva-track span {
+  margin-right: 60px;
+  font-size: 13px;
+  font-weight: bold;
+  letter-spacing: 2px;
+  color: #ff4da6;
+  text-shadow: 0 0 8px rgba(255, 77, 166, 0.8);
+  font-family: 'Courier New', monospace;
+}
+
+.eva-bar--secondary .eva-track span {
+  color: #c87eff;
+  text-shadow: 0 0 8px rgba(180, 100, 255, 0.8);
+}
+
+@keyframes eva-scroll {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+@keyframes eva-scroll-reverse {
+  0% {
+    transform: translateX(-50%);
+  }
+  100% {
+    transform: translateX(0);
+  }
+}
+@keyframes eva-bg-move {
+  0% {
+    background-position: 0 0;
+  }
+  100% {
+    background-position: 200px 0;
+  }
+}
+
 #live2d-container {
   height: 100vh;
   width: 100vw;
@@ -417,5 +495,33 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   /* border: 2px dashed #a18cd1; */
+}
+
+.seal-core {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+  text-shadow: 0 0 18px rgba(255, 138, 198, 0.65);
+}
+
+.core-title {
+  color: #ffd4ea;
+  font-size: clamp(22px, 2.8vw, 40px);
+  letter-spacing: 5px;
+  font-family: 'Rajdhani', 'Segoe UI', sans-serif;
+  font-weight: 700;
+}
+
+.core-subtitle {
+  color: rgba(230, 234, 255, 0.9);
+  font-size: clamp(12px, 1.3vw, 18px);
+  letter-spacing: 3px;
+  font-family: 'Rajdhani', 'Segoe UI', sans-serif;
 }
 </style>

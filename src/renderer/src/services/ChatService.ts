@@ -108,8 +108,7 @@ class ChatService {
   private nextSentenceId: number | null = null
   // 传输缓冲区，防止音频过长导致的chunk分割，json解析失败的问题
   private chunkBuffer: string = ''
-  // 隐藏消息定时器
-  private hideMessageTimer: NodeJS.Timeout | null = null
+
   // 语音播放状态
   private isPlaying: boolean = false
   // api 地址
@@ -250,8 +249,11 @@ class ChatService {
         break
       }
 
-      await new Promise((resolve) => window.setTimeout(resolve, 80))
+      await new Promise((resolve) => window.setTimeout(resolve, 100))
     }
+    // 确保回复完成后至少有短暂的停顿，避免紧接着的用户输入导致消息提示过快消失，提升用户体验。
+    await new Promise((resolve) => window.setTimeout(resolve, 3000))
+    this.hideMessage()
   }
 
   /**
@@ -270,6 +272,8 @@ class ChatService {
     if (!message || !message.trim()) {
       return false
     }
+
+    if (this.live2DManager?.disabled) return false
     // 停止正在播放的对话和消息
     this.interruptCurrentPlayback()
 
@@ -358,6 +362,8 @@ class ChatService {
    * @param message 消息内容
    */
   public async sendMessage(message: string): Promise<void> {
+    if (this.live2DManager?.disabled) return
+    // 打断当前的播放对话和消息
     this.interruptCurrentPlayback()
     // 重置文本缓冲区和累积文本
 
@@ -398,8 +404,6 @@ class ChatService {
     } else {
       this.showTempMessage(ttsMessage)
     }
-
-    this.clearHideMessageTimer()
   }
 
   /**
@@ -416,9 +420,6 @@ class ChatService {
     this.currentDisplayText = ''
 
     this.chunkBuffer = ''
-
-    // 4. 清除隐藏消息定时器
-    this.clearHideMessageTimer()
 
     // 5. 重置播放状态
     this.isPlaying = false
@@ -462,7 +463,6 @@ class ChatService {
     this.motionSequenceToken++
     this.live2DManager?.clearMotionFrame()
     this.live2DManager?.stopSpeaking()
-    this.clearHideMessageTimer()
   }
 
   /**
@@ -706,7 +706,6 @@ class ChatService {
     // 如果有新句子入队，立即尝试播放（使用 Live2D 同步口型），确保响应流畅且动作与语音能够及时同步。
     if (hasQueued) {
       this.playAudioQueueWithLive2D()
-      this.clearHideMessageTimer()
     }
   }
 
@@ -827,17 +826,6 @@ class ChatService {
 
     if (hasQueued) {
       this.playAudioQueueWithLive2D()
-      this.clearHideMessageTimer()
-    }
-  }
-
-  /**
-   * 清除隐藏消息的定时器
-   */
-  private clearHideMessageTimer(): void {
-    if (this.hideMessageTimer) {
-      clearTimeout(this.hideMessageTimer)
-      this.hideMessageTimer = null
     }
   }
 
@@ -901,26 +889,11 @@ class ChatService {
           await this.playMotionSequence(pair.motionSequence, targetDuration, token)
         }
       }
-
-      this.scheduleHideMessageAfterPlayback()
     } catch (error) {
-      this.scheduleHideMessageAfterPlayback()
       console.error('播放音频失败:', error)
     } finally {
       this.isPlaying = false
     }
-  }
-
-  private scheduleHideMessageAfterPlayback(): void {
-    const text = this.currentDisplayText.trim()
-    const keepMs = Math.max(6000, Math.min(15000, text.length * 120))
-
-    this.clearHideMessageTimer()
-    this.hideMessageTimer = setTimeout(() => {
-      this.messageTips.hideMessage()
-      this.hideMessageTimer = null
-      this.live2DManager?.clearMotionFrame()
-    }, keepMs)
   }
 
   /**

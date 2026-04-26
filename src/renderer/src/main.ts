@@ -23,6 +23,13 @@ app.use(router)
 const configStore = useConfigStore()
 await configStore.loadConfig()
 configStore.listenForChanges()
+
+// 根据onboarding状态决定初始路由
+const onboardingState = await window.api.onboarding.getState()
+console.log('当前路由:', router.currentRoute.value.path)
+if (!onboardingState.completed && router.currentRoute.value.path === '/tabs') {
+  await router.replace('/onboarding')
+}
 // 注册全局组件
 app.component('FontAwesomeIcon', FontAwesomeIcon)
 app.mount('#app')

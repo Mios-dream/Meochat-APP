@@ -4,13 +4,16 @@ import { getMainWindow } from '../windows/mainWindow'
 import { AssistantService } from '../services/assistantService'
 import log from '../utils/logger'
 import { AssistantAssets } from '../../renderer/src/types/AssistantInfo'
+import { OnboardingMode, OnboardingProfile } from '../../renderer/src/types/onboarding'
 import { PythonServiceManager, PythonTask } from '../services/pythonService'
+import { OnboardingStoreService } from '../services/onboardingStore'
 import { SystemMonitor } from '../utils/systemMonitor'
 import { PerformanceMode, PerformanceManager } from '../services/performanceManager'
 
 const pythonServiceManager = PythonServiceManager.getInstance()
 const systemMonitor = SystemMonitor.getInstance()
 const performanceModeManager = PerformanceManager.getInstance()
+const onboardingStore = OnboardingStoreService.getInstance()
 /**
  * 设置助手服务IPC
  */
@@ -524,6 +527,28 @@ function setupSystemMonitorIPC(): void {
   })
 }
 
+function setupOnboardingIPC(): void {
+  ipcMain.handle('onboarding:get-state', async () => {
+    return onboardingStore.getState()
+  })
+
+  ipcMain.handle('onboarding:set-mode', async (_event, mode: OnboardingMode) => {
+    return onboardingStore.setMode(mode)
+  })
+
+  ipcMain.handle('onboarding:save-profile', async (_event, profile: OnboardingProfile) => {
+    return onboardingStore.saveProfile(profile)
+  })
+
+  ipcMain.handle('onboarding:mark-completed', async () => {
+    return onboardingStore.markCompleted()
+  })
+
+  ipcMain.handle('onboarding:reset', async () => {
+    return onboardingStore.reset()
+  })
+}
+
 function setupMainIPC(): void {
   ipcMain.on('app:show', () => {
     const win = getMainWindow()
@@ -561,6 +586,7 @@ function setupMainIPC(): void {
   setupLoggerIPC()
   setupPythonServiceIPC()
   setupSystemMonitorIPC()
+  setupOnboardingIPC()
 }
 
 export { setupMainIPC }

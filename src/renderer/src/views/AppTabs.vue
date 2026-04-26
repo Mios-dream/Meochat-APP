@@ -48,6 +48,7 @@
 
 <script setup lang="ts">
 import { computed, ref, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import HomeView from './HomeView.vue'
 import AssistantManagerView from './AssistantManagerView.vue'
 import PluginsView from './PluginManagerView.vue'
@@ -57,6 +58,7 @@ import SettingView from './SettingView.vue'
 import { NotificationService } from '../services/NotificationService'
 
 const notificationService = NotificationService.getInstance()
+const route = useRoute()
 
 const activeTab = ref(0)
 
@@ -132,6 +134,30 @@ function switchTab(index: number): void {
   activeTab.value = index
 }
 
+function applyRouteTab(tab: unknown): void {
+  const tabValue = typeof tab === 'string' ? tab.trim() : ''
+
+  switch (tabValue) {
+    case 'home':
+      switchTab(0)
+      break
+    case 'assistant-manager':
+      switchTab(1)
+      break
+    case 'assistant-space':
+      switchTab(2)
+      break
+    case 'plugin-manager':
+      switchTab(3)
+      break
+    case 'setting':
+      switchTab(4)
+      break
+    default:
+      break
+  }
+}
+
 // 检查云端版本
 async function checkCloudVersion(): Promise<void> {
   const result = await window.api.checkCloudVersion()
@@ -158,6 +184,7 @@ async function checkCloudVersion(): Promise<void> {
 
 onMounted(() => {
   checkCloudVersion()
+  applyRouteTab(route.query.tab)
 })
 </script>
 

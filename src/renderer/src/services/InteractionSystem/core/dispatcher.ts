@@ -18,6 +18,7 @@ export class ActionDispatcher {
   private chatService: ChatService
   private lastSentText = ''
   private lastSentAt = 0
+  private sendQueue: Promise<void> = Promise.resolve()
 
   constructor() {
     this.chatService = ChatService.getInstance()
@@ -48,8 +49,12 @@ export class ActionDispatcher {
     this.lastSentText = normalizedText
     this.lastSentAt = now
 
-    // 调用具体的发送逻辑
-    this.executeSend(actionWithMetadata)
+    // 串行执行发送，确保当前回复完整结束后再发送下一条。
+    this.sendQueue = this.sendQueue
+      .then(() => this.executeSend(actionWithMetadata))
+      .catch((error) => {
+        console.error('事件发送失败:', error)
+      })
 
     // 通知所有监听器
     this.notifyListeners(actionWithMetadata)
@@ -61,7 +66,8 @@ export class ActionDispatcher {
    */
   private async executeSend(action: OutputAction): Promise<void> {
     // console.log('执行发送:', action)
-    this.chatService.sendMessage(action.text)
+    await this.chatService.sendMessage(action.text)
+    await this.chatService.waitForReplyPlaybackComplete()
   }
 
   /**

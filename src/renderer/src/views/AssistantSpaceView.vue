@@ -5,8 +5,8 @@
         {{ currentTip }}
       </AssistantTips>
 
-      <canvas id="l2d-canvas"></canvas>
-      <LoadingProgress :progress="loadingProgress" />
+      <canvas id="l2d-canvas" :class="{ 'canvas-fade-in': modelLoaded }"></canvas>
+      <ModelErrorDisplay v-if="showError" :visible="showError" :message="modelErrorMessage" />
     </div>
     <div id="toolbar-right-top">
       <div class="diamond-button" @click="toggleAssistantSettings">
@@ -221,10 +221,11 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, Ref, watch, computed } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ChatService } from '../services/ChatService'
 import { Live2DManager } from '../services/Live2dManager'
 import AssistantTips from '../components/AssistantTips.vue'
-import LoadingProgress from '../components/LoadingProgress.vue'
+import ModelErrorDisplay from '../components/ModelErrorDisplay.vue'
 import BlurModal from '../components/BlurModal.vue'
 import ToggleSwitch from '../components/ToggleSwitch.vue'
 import VolumeSlider from '../components/VolumeSlider.vue'
@@ -234,12 +235,18 @@ import { storeToRefs } from 'pinia'
 import { AssistantInfo, AssistantManager } from '../services/assistantManager'
 import ChatBox from '../components/ChatBox.vue'
 import MessageContent from '../components/MessageContent.vue'
+import { InteractionSystem } from '@renderer/services/InteractionSystem/InteractionSystem'
 
 const configStore = useConfigStore()
 const { config } = storeToRefs(configStore)
+const route = useRoute()
+const router = useRouter()
 
-// 加载进度
-const loadingProgress = ref(0)
+// 模型加载状态
+const modelLoaded = ref(false)
+const showError = ref(false)
+const modelErrorMessage = ref('')
+
 // 消息是否显示
 const isTipsActive: Ref<boolean> = ref(false)
 // 当前消息
@@ -272,6 +279,8 @@ const isCapturingShortcut = ref(false)
 const live2DManager = Live2DManager.getInstance()
 const chatService = ChatService.getInstance()
 const assistantManager = AssistantManager.getInstance()
+// 获取交互系统实例
+const interactionSystem = InteractionSystem.getInstance()
 
 const currentAssistant: Ref<AssistantInfo | null> = ref(null)
 // 当前助手的好感度
@@ -314,22 +323,7 @@ function percentToNormalized(value: number): number {
 // 设置模型聚焦超时时间
 live2DManager.focus_timeout_ms = 500
 
-function loadingCompleted(): void {
-  loadingProgress.value = 100
-}
-function startLoading(): void {
-  loadingProgress.value = 0
-  // 模拟加载进度
-  const progressInterval = setInterval(() => {
-    if (loadingProgress.value < 90) {
-      loadingProgress.value += 10
-    } else {
-      clearInterval(progressInterval)
-    }
-  }, 50)
-}
-
-async function loadLive2DModel(): Promise<void> {
+async function loadLive2DModel(): Promise<boolean> {
   try {
     const assistantAssets = await assistantManager.getAssistantAssets()
 
@@ -344,18 +338,36 @@ async function loadLive2DModel(): Promise<void> {
     }
 
     live2DManager.initListeners()
-
     live2DManager.setLocked(isLocked.value)
 
-    loadingCompleted()
+    // 模型加载成功，淡入显示
+    modelLoaded.value = true
+    showError.value = false
+    return true
   } catch (error) {
-    console.error('Failed to load Live2D model:', error)
+    console.error('加载Live2D模型失败:', error)
+    showError.value = true
+    return false
+  }
+}
+
+async function sendOnboardingWelcomeIfNeeded(): Promise<void> {
+  const fromRoute = route.query.welcome === 'true'
+  if (fromRoute) {
+    await chatService.sendMessage('您好，阁下！初次见面，以后请多指教！')
+    await chatService.waitForReplyPlaybackComplete()
+
+    // 欢迎语只需要触发一次，触发后移除路由标记，避免切换 tab 重复触发
+    const restQuery = { ...route.query }
+    delete restQuery.welcome
+    await router.replace({
+      path: route.path,
+      query: restQuery
+    })
   }
 }
 
 onMounted(async () => {
-  startLoading()
-
   currentAssistant.value = assistantManager.getCurrentAssistant()
   // 从配置加载快捷键设置
   chatShortcut.value = config.value.chatShortcut
@@ -363,20 +375,22 @@ onMounted(async () => {
   // 当前窗口显示时隐藏助手窗口
   window.api.closeAssistant()
 
-  loadLive2DModel()
-
-  // 监听来自ChatBox的消息
-  window.api.ipcRenderer.on('chat-box:send-message', async (_, data) => {
-    try {
-      // 调用 ChatService 处理消息，并等待语音/动作播放完成后再解锁输入
-      await chatService.chat(data.text)
-      await chatService.waitForReplyPlaybackComplete()
-    } finally {
-      // 发送状态更新给 ChatBox
-      window.api.ipcRenderer.send('chat-box:update-status', {
-        loading: false
-      })
-    }
+  loadLive2DModel().then(async () => {
+    await sendOnboardingWelcomeIfNeeded()
+    interactionSystem.start()
+    // 监听来自ChatBox的消息
+    window.api.ipcRenderer.on('chat-box:send-message', async (_, data) => {
+      try {
+        // 调用 ChatService 处理消息，并等待语音/动作播放完成后再解锁输入
+        await chatService.chat(data.text)
+        await chatService.waitForReplyPlaybackComplete()
+      } finally {
+        // 发送状态更新给 ChatBox
+        window.api.ipcRenderer.send('chat-box:update-status', {
+          loading: false
+        })
+      }
+    })
   })
 })
 
@@ -724,6 +738,7 @@ async function saveShortcut(shortcut: string): Promise<void> {
   height: 100vh;
   width: 100vw;
   position: relative;
+  overflow: hidden;
 }
 
 #live2d-container.locked {
@@ -734,6 +749,12 @@ async function saveShortcut(shortcut: string): Promise<void> {
   width: 100%;
   height: 100%;
   display: block;
+  opacity: 0;
+  transition: opacity 1s ease-in-out;
+}
+
+#l2d-canvas.canvas-fade-in {
+  opacity: 1;
 }
 
 .message-form {

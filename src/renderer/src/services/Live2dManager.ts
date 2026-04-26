@@ -1,5 +1,5 @@
-import { Live2DModel, MotionPriority, config } from 'pixi-live2d-display-lipsyncpatch'
-import * as PIXI from 'pixi.js'
+import { Live2DModel, MotionPriority, config } from 'untitled-pixi-live2d-engine'
+import { Application, Ticker, WebGLRenderer } from 'pixi.js'
 import throttle from '../utils/Throttle'
 import { InteractionSystem } from './InteractionSystem/InteractionSystem'
 import { useConfigStore } from '../stores/useConfigStore'
@@ -17,10 +17,12 @@ interface MotionFrameOptions {
 export class Live2DManager {
   // 单例模式
   private static instance: Live2DManager
+  // 是否禁用模型的自动动作和交互，进入纯展示状态
+  public disabled = false
   // 画布元素
   private canvasElement: HTMLCanvasElement | null = null
   // 渲染器
-  public app: PIXI.Application | null = null
+  public app: Application | null = null
   // 模型对象
   private model: Live2DModel | null = null
   // 音频上下文
@@ -30,19 +32,19 @@ export class Live2DManager {
   // 聚焦的状态,是否可以聚焦
   private isFocusEnabled = false
   // 聚焦超时定时器
-  private focusTimeout: NodeJS.Timeout | null = null
+  private focusTimeout: number | null = null
   // 聚焦超时,用于全局
   public focus_timeout_ms = 5000 // 5秒无点击后取消聚焦
   // 用于控制忽略状态。是否点击的空白区域
   private ignoreState = false
   // 恢复模型可交互状态的定时器
-  private restoreTimer: NodeJS.Timeout | null = null
+  private restoreTimer: number | null = null
 
   // 用于画布内鼠标跟踪
   // 鼠标点击和长按状态
   private isMousePressed = false
   // 鼠标按下的定时器
-  private mousePressTimer: NodeJS.Timeout | null = null
+  private mousePressTimer: number | null = null
   // 鼠标长按触发时间
   private longPressDuration = 50 // 长按触发时间（毫秒）
   // 拖动相关
@@ -79,9 +81,6 @@ export class Live2DManager {
   private overlayLastTickAt = 0
   // 当前叠加层过渡时长，单位 ms，null 表示使用默认值
   private overlayTransitionMs: number | null = null
-
-  // Cubism 默认 maskBufferCount=1，复杂模型可能超过上限（36）
-  private readonly maskBufferCount = 2
 
   // 当前口型开合度，用于语音驱动口型时的平滑过渡
   private currentMouthOpenY = 0
@@ -195,7 +194,11 @@ export class Live2DManager {
    * @param modelPath 模型路径
    * @returns Promise<Live2DModel> 模型对象
    */
-  public async init(canvasId: string, modelPath: string): Promise<void> {
+  public async init(
+    canvasId: string,
+    modelPath: string,
+    options?: { resolution?: number }
+  ): Promise<void> {
     if (!canvasId || !modelPath) {
       console.warn('Live2D初始化参数为空')
       return
@@ -203,23 +206,27 @@ export class Live2DManager {
     // 获取画布元素
     this.canvasElement = document.getElementById(canvasId) as HTMLCanvasElement
     // 创建渲染器
-    this.app = new PIXI.Application({
+    this.app = new Application()
+    await this.app.init({
+      preference: 'webgl',
       view: this.canvasElement,
-      resizeTo: this.canvasElement,
       backgroundAlpha: 0,
       autoStart: true,
       // 允许保存画布,便于获取画布数据
       preserveDrawingBuffer: true,
-      resolution: 2
+      // 提高分辨率以获得更清晰的渲染效果，尤其在高 DPI 显示器上
+      resolution: options?.resolution || 2,
+      resizeTo: window,
+      autoDensity: true
     })
 
     // 加载模型
     this.model = await Live2DModel.from(modelPath, {
-      ticker: PIXI.Ticker.shared,
-      autoInteract: false
+      ticker: Ticker.shared,
+      autoFocus: false,
+      autoHitTest: true,
+      autoUpdate: true
     })
-
-    this.applyMaskBufferCount()
 
     this.installMotionManagerHook()
 
@@ -237,6 +244,11 @@ export class Live2DManager {
   public destroy(): void {
     // 清理监听器
     this.stopMouseTracking()
+
+    // 获取交互系统实例
+    const interactionSystem = InteractionSystem.getInstance()
+
+    interactionSystem.stop()
 
     // 清理长按定时器
     if (this.mousePressTimer) {
@@ -279,30 +291,47 @@ export class Live2DManager {
     }
   }
 
+  /**
+   * 禁用模型的自动动作和交互，进入纯展示状态
+   * 返回是否成功禁用（需要模型存在）
+   */
+  public disabledModel(): boolean {
+    if (!this.model || !this.model.internalModel) return false
+
+    // this.model.internalModel.updateFocus = () => {} // 视线跟随
+    this.model.internalModel.motionManager.state.shouldRequestIdleMotion = () => false // idle 动作
+    const eyeBlink = (
+      this.model.internalModel as unknown as {
+        eyeBlink?: { updateParameters?: (...args: unknown[]) => void }
+      }
+    ).eyeBlink
+    if (eyeBlink) {
+      eyeBlink.updateParameters = () => {}
+    }
+    // 将眼睑参数设置为闭合状态
+    this.setModelParameterValue('ParamEyeLOpen', 0)
+    this.setModelParameterValue('ParamEyeROpen', 0)
+    this.disabled = true
+    return true
+  }
+
+  /**
+   * 启用模型的自动动作和交互，恢复正常状态
+   */
+  public enableModel(): boolean {
+    if (!this.model || !this.model.internalModel) return false
+    this.disabled = false
+    return true
+  }
+
   /*
    * 设置画布内的监听器（鼠标跟踪）
    */
-  public initListeners(isPetMode: boolean = false): void {
+  public initListeners(options: { isPetMode?: boolean } = { isPetMode: false }): void {
+    if (this.disabled) return
+
     // 获取交互系统实例
     const interactionSystem = InteractionSystem.getInstance()
-    // 开启鼠标跟踪
-    this.startMouseTracking()
-
-    // 鼠标移动时更新模型交互,在不透明区域不触发交互
-    this.canvasElement!.addEventListener('mousemove', this.updateMouseInteraction)
-
-    // 监听来自主进程的鼠标位置更新，更新模型注视位置
-    window.api.ipcRenderer.on('assistant:mouse-position', (_event, data) => {
-      // // 检测鼠标点击状态
-      if (data.isMouseDown) {
-        this.handleMouseClick()
-      }
-
-      // 只有在启用聚焦时才更新模型视线
-      if (this.isFocusEnabled) {
-        this.updateModelFocus(data.screenX, data.screenY, data.windowX, data.windowY)
-      }
-    })
 
     // 鼠标按下事件
     this.canvasElement!.addEventListener('mousedown', (e) => {
@@ -339,7 +368,7 @@ export class Live2DManager {
       }
 
       // 拖动模型（仅在未锁定和非桌宠模式时可用）
-      if (this.isMousePressed && !this.isLocked && !isPetMode && this.model) {
+      if (this.isMousePressed && !this.isLocked && !options.isPetMode && this.model) {
         const deltaX = e.clientX - this.dragStartX
         const deltaY = e.clientY - this.dragStartY
 
@@ -368,7 +397,7 @@ export class Live2DManager {
         const configStore = useConfigStore()
         const speedThreshold = Math.max(
           60,
-          Number(configStore.config.live2dStrokeSpeedThreshold || 260)
+          Number(configStore.config.live2dStrokeSpeedThreshold || 360)
         )
 
         interactionSystem.triggerEvent(
@@ -394,7 +423,6 @@ export class Live2DManager {
       }
     })
 
-    // 鼠标离开画布
     this.canvasElement!.addEventListener('mouseleave', () => {
       // 重置状态
       this.isMousePressed = false
@@ -417,7 +445,9 @@ export class Live2DManager {
       // 重置模型可交互状态
       this.ignoreState = false
       // 设置模型忽略鼠标事件，避免在模型区域外触发交互
-      window.api.setIgnoreMouse(false)
+      if (options.isPetMode) {
+        window.api.setIgnoreMouse(false)
+      }
       // 清除检查是否进入交互状态定时器
       if (this.restoreTimer) {
         clearTimeout(this.restoreTimer)
@@ -426,7 +456,7 @@ export class Live2DManager {
     })
 
     // 只有在非桌宠模式下才启用缩放功能，宠物模式下保持固定大小，使用面板调整
-    if (!isPetMode) {
+    if (!options.isPetMode) {
       // 鼠标滚轮事件
       this.canvasElement!.addEventListener(
         'wheel',
@@ -456,6 +486,26 @@ export class Live2DManager {
         { passive: false }
       )
     }
+    // 只有在桌宠模式下才启用鼠标事件，离开画布时重置状态
+    if (options.isPetMode) {
+      // 监听来自主进程的鼠标位置更新，更新模型注视位置
+      window.api.ipcRenderer.on('assistant:mouse-position', (_event, data) => {
+        // // 检测鼠标点击状态
+        if (data.isMouseDown) {
+          this.handleMouseClick()
+        }
+
+        // 只有在启用聚焦时才更新模型视线
+        if (this.isFocusEnabled) {
+          this.updateModelFocus(data.screenX, data.screenY, data.windowX, data.windowY)
+        }
+      })
+
+      // 开启全局鼠标跟踪
+      this.startMouseTracking()
+      // 鼠标移动时更新模型交互,在不透明区域不触发交互
+      this.canvasElement!.addEventListener('mousemove', this.updateMouseInteraction)
+    }
   }
 
   public async switchModel(modelPath: string): Promise<void> {
@@ -471,11 +521,11 @@ export class Live2DManager {
     }
     // 加载新模型
     this.model = await Live2DModel.from(modelPath, {
-      ticker: PIXI.Ticker.shared,
-      autoInteract: false
+      ticker: Ticker.shared,
+      autoFocus: false,
+      autoHitTest: true,
+      autoUpdate: true
     })
-
-    this.applyMaskBufferCount()
 
     // 模型切换后重置语音/动作覆盖状态，避免沿用旧模型参数状态
     this.isSpeaking = false
@@ -498,52 +548,28 @@ export class Live2DManager {
   }
 
   /**
-   * 提升 Cubism 渲染器 maskBufferCount，缓解复杂模型的遮罩数量限制。
-   */
-  private applyMaskBufferCount(): void {
-    if (!this.model) {
-      return
-    }
-
-    try {
-      const internalModel = this.model.internalModel as {
-        coreModel?: unknown
-        renderer?: { initialize?: (coreModel: unknown, maskBufferCount?: number) => void }
-      }
-
-      if (internalModel?.renderer?.initialize && internalModel?.coreModel) {
-        internalModel.renderer.initialize(internalModel.coreModel, this.maskBufferCount)
-      }
-    } catch (error) {
-      console.warn('设置Live2D遮罩缓冲数量失败:', error)
-    }
-  }
-
-  /**
    * 重置模型到初始位置和缩放
    */
   public resetModelTransform(): void {
     if (!this.model || !this.app) return
 
-    const displayWidth = this.app.renderer.width / this.app.renderer.resolution
-    const displayHeight = this.app.renderer.height / this.app.renderer.resolution
+    const displayWidth = this.app.renderer.width
+    const displayHeight = this.app.renderer.height
 
-    // 计算最优缩放
-    const optimalScale = this._calculateOptimalScale(
-      displayWidth,
-      displayHeight,
-      this.model.width,
-      this.model.height
-    )
+    // 计算基于宽高的缩放比例，让模型尽可能大地填充画布
+    const scaleX = displayWidth / this.model.width
+    const scaleY = displayHeight / this.model.height
+
+    // 选择较小的缩放比例以确保模型完整显示
+    const optimalScale = Math.min(scaleX, scaleY) * 0.9 // 预留一些边距
+
     this.currentScale = optimalScale
 
     this.model.scale.set(optimalScale)
 
     // 设置模型锚点为中心
-    this.model.anchor.set(0.5, 0.5)
-    // 居中模型（使用显示尺寸的中心）
-    this.model.x = displayWidth / 2
-    this.model.y = displayHeight / 2
+    this.model.anchor.set(0.5)
+    this.model.position.set(this.app.screen.width / 2, this.app.screen.height / 2)
   }
 
   /**
@@ -784,8 +810,7 @@ export class Live2DManager {
     const coreModel = this.model.internalModel.coreModel
     if (!coreModel) return null
 
-    // @ts-expect-error 运行时 API 存在但类型不完整
-    const paramIndex = coreModel.getParameterIndex(paramId)
+    const paramIndex = this.resolveParameterIndex(coreModel, paramId)
     if (paramIndex >= 0) {
       // @ts-expect-error 运行时 API 存在但类型不完整
       if (typeof coreModel.getParameterValueByIndex === 'function') {
@@ -811,21 +836,58 @@ export class Live2DManager {
     if (!this.model) return false
     try {
       const coreModel = this.model.internalModel.coreModel
-      // @ts-expect-error 无法找到模型参数
-      if (!coreModel || typeof coreModel.getParameterIndex !== 'function') return false
-      // @ts-expect-error 无法找到模型参数
-      return coreModel.getParameterIndex(paramId) >= 0
+      if (!coreModel) return false
+      return this.resolveParameterIndex(coreModel, paramId) >= 0
     } catch {
       return false
     }
+  }
+
+  /**
+   * 从 coreModel 中解析参数 ID 对应的真实索引。
+   * 某些 Cubism 运行时的 getParameterIndex 需要 CubismIdHandle，
+   * 直接传字符串会落入 not-exist 参数槽，导致写入看似成功但不生效。
+   */
+  private resolveParameterIndex(coreModel: unknown, paramId: string): number {
+    if (!coreModel || !paramId || typeof coreModel !== 'object') return -1
+
+    const modelLike = coreModel as {
+      getParameterCount?: () => number
+      getParameterId?: (index: number) => unknown
+      getParameterIndex?: (parameterId: unknown) => number
+    }
+
+    // 优先按参数列表逐项比对，确保字符串 ID 在不同运行时都能命中真实参数
+    if (
+      typeof modelLike.getParameterCount === 'function' &&
+      typeof modelLike.getParameterId === 'function'
+    ) {
+      const count = modelLike.getParameterCount()
+      for (let i = 0; i < count; i++) {
+        const idHandle = modelLike.getParameterId(i)
+        const idString = this.normalizeCubismId(idHandle)
+        if (idString === paramId) return i
+      }
+    }
+
+    // 兜底：若运行时支持字符串 getParameterIndex 且会返回真实索引，继续兼容
+    if (typeof modelLike.getParameterIndex === 'function') {
+      const fallbackIndex = modelLike.getParameterIndex(paramId)
+      const count =
+        typeof modelLike.getParameterCount === 'function' ? modelLike.getParameterCount() : 0
+      if (typeof fallbackIndex === 'number' && fallbackIndex >= 0 && fallbackIndex < count) {
+        return fallbackIndex
+      }
+    }
+
+    return -1
   }
 
   private setModelParameterValue(paramId: string, value: number): boolean {
     if (!this.model || !this.model.internalModel) return false
 
     const coreModel = this.model.internalModel.coreModel
-    // @ts-expect-error 运行时 API 存在但类型不完整
-    const paramIndex = coreModel.getParameterIndex(paramId)
+    const paramIndex = this.resolveParameterIndex(coreModel, paramId)
 
     if (paramIndex < 0) return false
     // @ts-expect-error 运行时 API 存在但类型不完整
@@ -1040,6 +1102,11 @@ export class Live2DManager {
    * @param volume 音量值 (0.0 to 1.0)
    */
   public async speak(audioData: ArrayBuffer, volume: number = this.volume): Promise<void> {
+    if (this.disabled) return
+
+    // const audioUrl = URL.createObjectURL(new Blob([audioData]))
+    // this.model?.speak(audioUrl)
+
     return new Promise((resolve, reject) => {
       try {
         this.isSpeaking = true
@@ -1112,29 +1179,25 @@ export class Live2DManager {
   private isPixelTransparentFromEvent(event: MouseEvent): boolean {
     if (!this.app || !this.app.renderer) return false
 
-    const gl = (this.app.renderer as PIXI.Renderer).gl
-    const canvas = this.app.view as HTMLCanvasElement
+    const gl = (this.app.renderer as WebGLRenderer).gl
+    const canvas = this.app.canvas as HTMLCanvasElement
     const rect = canvas.getBoundingClientRect()
 
     // 计算相对于canvas的CSS坐标
     const cssX = event.clientX - rect.left
     const cssY = event.clientY - rect.top
 
-    // 考虑分辨率差异，将CSS坐标转换为GL坐标
-    const resolution = this.app.renderer.resolution || 1
-    const glX = Math.floor(cssX * resolution)
-    const glY = Math.floor(cssY * resolution)
+    // 使用真实画布像素尺寸进行映射，避免 autoDensity / DPI 场景下命中偏移
+    const scaleX = rect.width > 0 ? canvas.width / rect.width : 1
+    const scaleY = rect.height > 0 ? canvas.height / rect.height : 1
+    const glX = Math.floor(cssX * scaleX)
+    const glY = Math.floor(cssY * scaleY)
 
     // 注意：WebGL坐标系Y轴方向与CSS相反
-    const glYFlipped = this.app.renderer.height - glY
+    const glYFlipped = canvas.height - glY - 1
 
     // 边界检查
-    if (
-      glX < 0 ||
-      glYFlipped < 0 ||
-      glX >= this.app.renderer.width ||
-      glYFlipped >= this.app.renderer.height
-    ) {
+    if (glX < 0 || glYFlipped < 0 || glX >= canvas.width || glYFlipped >= canvas.height) {
       return true // 超出边界视为透明
     }
 
@@ -1181,26 +1244,38 @@ export class Live2DManager {
   }, 200) // 每 200ms 检测一次
 
   /**
-   * 计算模型缩放比例
-   * @param canvasWidth 画布宽度
-   * @param canvasHeight 画布高度
-   * @param modelWidth 模型宽度
-   * @param modelHeight 模型高度
-   * @returns 模型缩放比例
+   * 将 CubismIdHandle / csmString 规范化为字符串 ID。
    */
-  private _calculateOptimalScale(
-    canvasWidth: number,
-    canvasHeight: number,
-    modelWidth: number,
-    modelHeight: number
-  ): number {
-    // 计算基于宽高的缩放比例，让模型尽可能大地填充画布
-    const scaleX = canvasWidth / modelWidth
-    const scaleY = canvasHeight / modelHeight
+  private normalizeCubismId(idHandle: unknown): string | null {
+    // console.log('Normalizing Cubism ID handle:', idHandle)
+    if (!idHandle) return null
+    if (typeof idHandle === 'string') return idHandle
 
-    // 选择较小的缩放比例以确保模型完整显示
-    const scale = Math.min(scaleX, scaleY)
+    // 常见形态：idHandle.getString().s
+    if (
+      typeof idHandle === 'object' &&
+      idHandle !== null &&
+      'getString' in idHandle &&
+      typeof (idHandle as { getString?: unknown }).getString === 'function'
+    ) {
+      const raw = (idHandle as { getString: () => unknown }).getString()
+      if (typeof raw === 'string') return raw
+      if (
+        raw &&
+        typeof raw === 'object' &&
+        's' in raw &&
+        typeof (raw as { s?: unknown }).s === 'string'
+      ) {
+        return (raw as { s: string }).s
+      }
+    }
 
-    return scale
+    const maybeToString = (idHandle as { toString?: unknown }).toString
+    if (typeof maybeToString === 'function') {
+      const value = maybeToString.call(idHandle)
+      if (typeof value === 'string' && value !== '[object Object]') return value
+    }
+
+    return null
   }
 }

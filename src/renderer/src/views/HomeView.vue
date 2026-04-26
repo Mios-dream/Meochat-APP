@@ -4,7 +4,7 @@
     <div class="dashboard-content">
       <div class="page-top-container">
         <h1 class="page-title">主页</h1>
-        <p class="page-title-description">你好，阁下！今天是我陪伴阁下的第100天！</p>
+        <p class="page-title-description">{{ companionDaysText }}</p>
       </div>
       <div class="perf-card-container">
         <div class="perf-card-title">性能模式</div>
@@ -183,6 +183,7 @@ import TaskManager from '../services/TaskManager'
 import AddTaskDialog from '../components/AddTaskDialog.vue'
 import EditTaskDialog from '../components/EditTaskDialog.vue'
 import { PythonTask } from '../types/PythonService'
+import type { OnboardingState } from '../types/onboarding'
 import ContextMenu from '../components/Toolbar.vue'
 import throttle from '../utils/Throttle'
 
@@ -196,6 +197,37 @@ const selectedTaskId = taskManager.selectedTaskId
 const selectedTask = taskManager.selectedTask
 const selectedTaskStatus = taskManager.selectedTaskStatus
 const terminalBodyRef = ref<HTMLElement | null>(null)
+const companionDays = ref(1)
+
+const companionDaysText = computed(() => {
+  return `你好，阁下！今天是我陪伴阁下的第${companionDays.value}天！`
+})
+
+const calcCompanionDays = (completedAt: number): number => {
+  if (!Number.isFinite(completedAt) || completedAt <= 0) {
+    return 1
+  }
+
+  const startDate = new Date(completedAt)
+  const now = new Date()
+  const startDay = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate())
+  const nowDay = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const dayMs = 24 * 60 * 60 * 1000
+  const diffDays = Math.floor((nowDay.getTime() - startDay.getTime()) / dayMs)
+
+  return Math.max(1, diffDays + 1)
+}
+
+const loadCompanionDays = async (): Promise<void> => {
+  try {
+    const onboardingState = (await window.api.onboarding.getState()) as OnboardingState
+    companionDays.value = calcCompanionDays(onboardingState.completedAt)
+  } catch (error) {
+    console.error('加载陪伴天数失败:', error)
+    companionDays.value = 1
+  }
+}
+
 const autoStart = computed(() => {
   return selectedTask.value?.autoStart || false
 })
@@ -373,6 +405,7 @@ watch([selectedTaskId, () => selectedTaskStatus.value?.logs?.length ?? 0], async
 onMounted(() => {
   document.addEventListener('click', handleClickOutside)
   loadCurrentMode()
+  loadCompanionDays()
   nextTick(() => {
     scrollLogsToBottom()
   })

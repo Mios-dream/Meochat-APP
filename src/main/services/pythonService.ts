@@ -224,34 +224,37 @@ class PythonService {
   }
 
   stop(): void {
-    // if (!this.running && !this.updatingDependencies) {
-    //   this.addLog(`[${this.name}] 服务未运行,无需停止`)
-    //   return
-    // }
+    const pidCandidates = [this.child?.pid, this.dependencyChild?.pid].filter(
+      (pid): pid is number => typeof pid === 'number' && pid > 0
+    )
+    const uniquePids = Array.from(new Set(pidCandidates))
 
-    try {
-      if (this.child?.pid) {
-        execSync(`taskkill /PID ${this.child.pid} /T /F`, { stdio: 'ignore' })
-      } else if (this.dependencyChild?.pid) {
-        execSync(`taskkill /PID ${this.dependencyChild.pid} /T /F`, { stdio: 'ignore' })
+    let hasKillError = false
+
+    uniquePids.forEach((pid) => {
+      try {
+        execSync(`taskkill /PID ${pid} /T /F`, { stdio: 'ignore' })
+      } catch {
+        hasKillError = true
       }
-      this.child = null
-      this.dependencyChild = null
-      this.running = false
-      this.setDependencySyncState(false)
-      this.addLog(`[${this.name}] 服务已停止`)
-    } catch (error) {
-      if (error instanceof Error && error.message.includes('No process found')) {
-        this.child = null
-        this.dependencyChild = null
-        this.running = false
-        this.setDependencySyncState(false)
-        this.addLog(`[${this.name}] 进程已不存在,无需强制终止`)
-      } else {
-        this.addLog(`[${this.name}] 强制终止进程失败,请手动终止进程`)
-      }
+    })
+
+    this.child = null
+    this.dependencyChild = null
+    this.running = false
+    this.setDependencySyncState(false)
+
+    if (hasKillError && uniquePids.length > 0) {
+      this.addLog(`[${this.name}] 部分进程终止失败，请检查系统进程列表`)
+      return
     }
-    // this.child.kill('SIGKILL')
+
+    if (uniquePids.length === 0) {
+      this.addLog(`[${this.name}] 服务未运行,无需停止`)
+      return
+    }
+
+    this.addLog(`[${this.name}] 服务已停止`)
   }
 
   restart(): void {
