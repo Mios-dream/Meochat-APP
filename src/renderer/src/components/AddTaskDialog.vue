@@ -264,7 +264,7 @@ const closeDialog = (): void => {
     0 20px 60px rgba(251, 114, 153, 0.15),
     0 0 0 1px rgba(255, 255, 255, 0.8) inset;
   position: relative;
-  overflow: hidden;
+  /* overflow: hidden; */
   font-family: 'Segoe UI', 'PingFang SC', sans-serif;
 }
 

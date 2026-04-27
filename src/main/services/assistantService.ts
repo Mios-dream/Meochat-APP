@@ -283,7 +283,7 @@ class AssistantService {
   private updateAssistantAssetsLastModified(assistantName: string): boolean {
     const assistant = this.getAssistantInfo(assistantName)
     if (assistant) {
-      assistant.assetsLastModified = Date.now()
+      assistant.assetsLastModified = Math.floor(Date.now() / 1000)
       this.saveAssistantToLocal(assistant)
       return true
     } else {
@@ -325,7 +325,7 @@ class AssistantService {
         settings: assistant.settings,
         gsvSetting: assistant.gsvSetting,
         // 更新时间戳
-        updatedAt: Date.now()
+        updatedAt: Math.floor(Date.now() / 1000)
       }
 
       // 上传到云端
@@ -400,8 +400,8 @@ class AssistantService {
         settings: assistant.settings,
         gsvSetting: assistant.gsvSetting,
         // 更新时间戳
-        updatedAt: Date.now(),
-        assetsLastModified: Date.now()
+        updatedAt: Math.floor(Date.now() / 1000),
+        assetsLastModified: Math.floor(Date.now() / 1000)
       }
 
       // 上传到云端

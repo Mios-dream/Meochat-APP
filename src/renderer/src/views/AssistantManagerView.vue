@@ -16,8 +16,7 @@
                   {{
                     assistantInfo?.firstMeetTime
                       ? Math.floor(
-                          (new Date().getTime() - assistantInfo.firstMeetTime) /
-                            (1000 * 60 * 60 * 24)
+                          (Date.now() / 1000 - assistantInfo.firstMeetTime) / (60 * 60 * 24)
                         )
                       : 0
                   }}天

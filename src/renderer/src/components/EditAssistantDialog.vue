@@ -116,6 +116,7 @@
             <textarea
               id="assistantPersonality"
               v-model="formData.personality"
+              class="simple-textarea"
               type="text"
               placeholder="例如：活泼、内向等"
               rows="2"
@@ -286,7 +287,7 @@
                     id="gptModelPath"
                     v-model="formData.gsvSetting.gptModelPath"
                     type="text"
-                    placeholder="可手动输入本地/云端地址，或选择文件"
+                    placeholder="输入本地/云端地址"
                     required
                     @input="handleGptModelPathInput"
                   />
@@ -319,7 +320,7 @@
                     id="sovitsModelPath"
                     v-model="formData.gsvSetting.sovitsModelPath"
                     type="text"
-                    placeholder="可手动输入本地/云端地址，或选择文件"
+                    placeholder="输入本地/云端地址"
                     required
                     @input="handleSovitsModelPathInput"
                   />
@@ -353,7 +354,7 @@
                     id="refAudioPath"
                     v-model="formData.gsvSetting.refAudioPath"
                     type="text"
-                    placeholder="可手动输入本地/云端地址，或选择文件"
+                    placeholder="输入本地/云端地址"
                     required
                     @input="handleRefAudioPathInput"
                   />
@@ -1610,7 +1611,7 @@ const handleSubmit = async (): Promise<void> => {
       const updatedAssistant: AssistantInfo = {
         ...props.editingAssistant,
         ...plainProcessedFormData,
-        updatedAt: Date.now()
+        updatedAt: Math.floor(Date.now() / 1000)
       }
 
       const shouldUploadAssets = assetsDirty.value
@@ -1655,10 +1656,10 @@ const handleSubmit = async (): Promise<void> => {
       // 添加模式：创建新助手
       const assistantInfo: AssistantInfo = {
         ...plainProcessedFormData,
-        firstMeetTime: new Date().getTime(),
+        firstMeetTime: Math.floor(Date.now() / 1000),
         love: 0,
-        updatedAt: Date.now(),
-        assetsLastModified: Date.now()
+        updatedAt: Math.floor(Date.now() / 1000),
+        assetsLastModified: Math.floor(Date.now() / 1000)
       }
 
       // 添加新助手
@@ -1951,7 +1952,7 @@ const handleCancel = (): void => {
   width: 30px;
   height: 30px;
   border-radius: 50%;
-  background-color: #ff4757;
+  background-color: #fb7299;
   color: white;
   border: none;
   font-size: 20px;
@@ -1982,17 +1983,19 @@ const handleCancel = (): void => {
 .form-group textarea {
   width: 100%;
   padding: 10px 12px;
-  border: 1px solid #e0e0e0;
-  border-radius: 8px;
+  border: 2px solid #e0e0e0;
+  color: #333;
+  border-radius: 14px;
   font-size: 14px;
   transition: border-color 0.2s;
+  font-family: 'Segoe UI', 'PingFang SC', sans-serif;
 }
 
 .form-group input:focus,
 .form-group select:focus,
 .form-group textarea:focus {
   outline: none;
-  border-color: #fb7299;
+  border: #fb7299 solid 2px;
 }
 
 .form-group textarea {
@@ -2041,7 +2044,7 @@ const handleCancel = (): void => {
   width: 24px;
   height: 24px;
   border-radius: 50%;
-  background-color: #ff4757;
+  background-color: #fb7299;
   color: white;
   border: none;
   font-size: 16px;
@@ -2059,7 +2062,7 @@ const handleCancel = (): void => {
   padding: 10px;
   background: none;
   border: 2px dashed #e0e0e0;
-  border-radius: 8px;
+  border-radius: 14px;
   color: #666;
   cursor: pointer;
   transition: all 0.3s;
@@ -2148,7 +2151,7 @@ const handleCancel = (): void => {
 .upload-placeholder {
   color: #626262;
   border: 2px dashed #ccc;
-  border-radius: 8px;
+  border-radius: 14px;
   padding: 32px;
   text-align: center;
   cursor: pointer;
@@ -2187,7 +2190,7 @@ const handleCancel = (): void => {
 .image-preview-item {
   position: relative;
   border: 1px solid #ddd;
-  border-radius: 8px;
+  border-radius: 14px;
   overflow: hidden;
 }
 
@@ -2255,7 +2258,7 @@ const handleCancel = (): void => {
   flex-direction: row;
   gap: 12px;
   border: 1px solid #e0e0e0;
-  border-radius: 4px;
+  border-radius: 14px;
   padding: 12px;
   background-color: #f9f9f9;
   transition: all 0.3s ease;
@@ -2280,7 +2283,7 @@ const handleCancel = (): void => {
 
 .upload-placeholder {
   border: 2px dashed #d9d9d9;
-  border-radius: 4px;
+  border-radius: 14px;
   padding: 24px;
   text-align: center;
   cursor: pointer;
@@ -2296,7 +2299,7 @@ const handleCancel = (): void => {
 
 .remove-asset {
   flex-shrink: 0;
-  background-color: #ff4d4f;
+  background-color: #fb7299;
   color: white;
   border: none;
   border-radius: 50%;

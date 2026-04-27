@@ -512,6 +512,7 @@ function change<K extends keyof typeof config.value>(
 }
 
 .color-picker-container {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -545,9 +546,12 @@ function change<K extends keyof typeof config.value>(
 }
 
 .color-input {
+  position: absolute;
+  right: 0;
   display: flex;
   width: 0;
   height: 0;
+  opacity: 0;
 }
 
 .color-value {

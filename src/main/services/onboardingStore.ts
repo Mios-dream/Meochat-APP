@@ -27,7 +27,7 @@ const onboardingSchema: Schema<OnboardingStoreShape> = {
     }
   },
   completedAt: { type: 'number', default: 0 },
-  updatedAt: { type: 'number', default: Date.now() }
+  updatedAt: { type: 'number', default: Math.floor(Date.now() / 1000) }
 }
 
 class OnboardingStoreService {
@@ -77,7 +77,7 @@ class OnboardingStoreService {
   }
 
   public markCompleted(): OnboardingState {
-    const now = Date.now()
+    const now = Math.floor(Date.now() / 1000)
     this.store.set('completed', true)
     this.store.set('completedAt', now)
     this.store.set('updatedAt', now)
@@ -98,7 +98,7 @@ class OnboardingStoreService {
   }
 
   private touch(): void {
-    this.store.set('updatedAt', Date.now())
+    this.store.set('updatedAt', Math.floor(Date.now() / 1000))
   }
 }
 

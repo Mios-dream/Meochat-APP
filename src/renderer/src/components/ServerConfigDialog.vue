@@ -20,7 +20,7 @@
             <h3>SV</h3>
             <span class="section-badge">声纹识别</span>
           </div>
-          <div class="section-grid">
+          <div class="section-grid two-column">
             <div class="field-card">
               <label class="field-label">服务运行状态</label>
               <div class="field-description">是否启用声纹识别</div>
@@ -481,7 +481,7 @@ const updateNullableNumber = (setter: (value: number | null) => void) => {
 }
 
 .footer-button.primary {
-  background: linear-gradient(90deg, #fca9c2, #fb7299);
+  background: #fb7299;
   color: white;
 }
 

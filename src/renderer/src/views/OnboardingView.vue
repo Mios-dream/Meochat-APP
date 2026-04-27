@@ -198,7 +198,7 @@ const logLines = computed(() => taskManager.localStartupLogs.value)
 const logContainerRef = ref<HTMLElement | null>(null)
 const sortedTasks = taskManager.tasks
 const showLogs = ref(false)
-const sloganText = '这里是澪，从此刻起，将常驻于您的屏幕角落'
+const sloganText = '澪将从此刻起，常驻于您的屏幕角落...'
 
 const profile = reactive<OnboardingProfile>({
   birthday: '',
