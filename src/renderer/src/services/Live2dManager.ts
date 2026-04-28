@@ -1,5 +1,5 @@
 import { Live2DModel, MotionPriority, config } from 'untitled-pixi-live2d-engine'
-import { Application, Ticker, WebGLRenderer } from 'pixi.js'
+import { Application, WebGLRenderer } from 'pixi.js'
 import throttle from '../utils/Throttle'
 import { InteractionSystem } from './InteractionSystem/InteractionSystem'
 import { useConfigStore } from '../stores/useConfigStore'
@@ -54,6 +54,10 @@ export class Live2DManager {
   private strokeStartAt = 0
   private strokeDistance = 0
   private lastStrokePoint: { x: number; y: number } | null = null
+  // 交互起始是否在透明像素上
+  private interactionStartedOnTransparent = false
+  // 交互期间的最大位移（用于区分点击和滑动）
+  private interactionMaxDisplacement = 0
 
   // 缩放相关
   private currentScale = 1
@@ -194,11 +198,7 @@ export class Live2DManager {
    * @param modelPath 模型路径
    * @returns Promise<Live2DModel> 模型对象
    */
-  public async init(
-    canvasId: string,
-    modelPath: string,
-    options?: { resolution?: number }
-  ): Promise<void> {
+  public async init(canvasId: string, modelPath: string): Promise<void> {
     if (!canvasId || !modelPath) {
       console.warn('Live2D初始化参数为空')
       return
@@ -215,14 +215,16 @@ export class Live2DManager {
       // 允许保存画布,便于获取画布数据
       preserveDrawingBuffer: true,
       // 提高分辨率以获得更清晰的渲染效果，尤其在高 DPI 显示器上
-      resolution: options?.resolution || 2,
+      resolution: 2,
+      antialias: true,
       resizeTo: window,
-      autoDensity: true
+      autoDensity: true,
+      sharedTicker: true,
+      powerPreference: 'high-performance'
     })
 
     // 加载模型
     this.model = await Live2DModel.from(modelPath, {
-      ticker: Ticker.shared,
       autoFocus: false,
       autoHitTest: true,
       autoUpdate: true
@@ -346,8 +348,14 @@ export class Live2DManager {
       this.strokeDistance = 0
       // 记录当前点为起始点
       this.lastStrokePoint = { x: e.clientX, y: e.clientY }
-      // 如果点击在模型区域内，触发模型点击事件
-      this.model!.tap(e.x, e.y)
+      // 重置交互位移跟踪
+      this.interactionMaxDisplacement = 0
+      // 检测交互是否起始于模型非透明区域
+      this.interactionStartedOnTransparent = this.isPixelTransparentFromEvent(e)
+      // 仅在点击模型区域时触发 tap
+      if (!this.interactionStartedOnTransparent) {
+        this.model!.tap(e.x, e.y)
+      }
       // 设置长按定时器
       this.mousePressTimer = setTimeout(() => {
         // 长按触发，如果已锁定则启用注视
@@ -382,34 +390,52 @@ export class Live2DManager {
       if (this.isMousePressed && this.lastStrokePoint) {
         const dx = e.clientX - this.lastStrokePoint.x
         const dy = e.clientY - this.lastStrokePoint.y
-        this.strokeDistance += Math.hypot(dx, dy)
+        const delta = Math.hypot(dx, dy)
+        this.strokeDistance += delta
+        this.interactionMaxDisplacement += delta
         this.lastStrokePoint = { x: e.clientX, y: e.clientY }
       }
     })
 
     // 鼠标抬起事件
-    this.canvasElement!.addEventListener('mouseup', () => {
-      // 根据触摸轨迹和时间判断是否触发轻抚/重抚事件
-      const strokeDurationMs = Date.now() - this.strokeStartAt
+    this.canvasElement!.addEventListener('mouseup', (e) => {
+      // 仅在交互起始于模型非透明区域时处理
+      if (!this.interactionStartedOnTransparent) {
+        const strokeDurationMs = Date.now() - this.strokeStartAt
+        const displacement = this.interactionMaxDisplacement
 
-      if (strokeDurationMs >= 120 && this.strokeDistance >= 12) {
-        const speedPxPerSecond = (this.strokeDistance / strokeDurationMs) * 1000
-        const configStore = useConfigStore()
-        const speedThreshold = Math.max(
-          60,
-          Number(configStore.config.live2dStrokeSpeedThreshold || 360)
-        )
+        if (displacement < 5) {
+          // 几乎无移动 → 点击，按位置映射身体部位
+          this.handleModelClick(e)
+        } else if (displacement >= 12 && strokeDurationMs >= 120) {
+          // 明显滑动 → 仅在头部区域触发摸头事件
+          const rect = this.canvasElement!.getBoundingClientRect()
+          const cssX = e.clientX - rect.left
+          const cssY = e.clientY - rect.top
 
-        interactionSystem.triggerEvent(
-          speedPxPerSecond >= speedThreshold
-            ? 'live2d.stroke.head.heavy'
-            : 'live2d.stroke.head.light'
-        )
+          if (this.isPositionOnModelHead(cssX, cssY)) {
+            const speedPxPerSecond = (this.strokeDistance / strokeDurationMs) * 1000
+            const configStore = useConfigStore()
+            const speedThreshold = Math.max(
+              60,
+              Number(configStore.config.live2dStrokeSpeedThreshold || 360)
+            )
+            interactionSystem.triggerEvent(
+              speedPxPerSecond >= speedThreshold
+                ? 'live2d.stroke.head.heavy'
+                : 'live2d.stroke.head.light'
+            )
+          }
+        }
+        // 中间位移（5-11px）静默忽略，避免误触发
       }
-      // 释放，重置长按状态
+
+      // 释放，重置所有交互状态
       this.isMousePressed = false
       this.strokeDistance = 0
       this.lastStrokePoint = null
+      this.interactionStartedOnTransparent = false
+      this.interactionMaxDisplacement = 0
 
       // 清除长按定时器
       if (this.mousePressTimer) {
@@ -430,6 +456,8 @@ export class Live2DManager {
       this.strokeDistance = 0
       // 离开画布时重置最后触摸点
       this.lastStrokePoint = null
+      this.interactionStartedOnTransparent = false
+      this.interactionMaxDisplacement = 0
 
       // 清除长按定时器
       if (this.mousePressTimer) {
@@ -521,7 +549,6 @@ export class Live2DManager {
     }
     // 加载新模型
     this.model = await Live2DModel.from(modelPath, {
-      ticker: Ticker.shared,
       autoFocus: false,
       autoHitTest: true,
       autoUpdate: true
@@ -1204,6 +1231,88 @@ export class Live2DManager {
     const pixels = new Uint8Array(4)
     gl.readPixels(glX, glYFlipped, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixels)
     return pixels[3] < 10
+  }
+
+  /**
+   * 获取模型在屏幕空间的包围盒（CSS像素坐标）
+   */
+  private getModelScreenBounds(): {
+    left: number
+    top: number
+    right: number
+    bottom: number
+  } | null {
+    if (!this.model) return null
+    const bounds = this.model.getBounds()
+    return {
+      left: bounds.minX,
+      top: bounds.minY,
+      right: bounds.maxX,
+      bottom: bounds.maxY
+    }
+  }
+
+  /**
+   * 判断 canvas 相对坐标是否位于模型头部区域（顶部 25%）
+   */
+  private isPositionOnModelHead(cssX: number, cssY: number): boolean {
+    const bounds = this.getModelScreenBounds()
+    if (!bounds) return false
+    if (cssX < bounds.left || cssX > bounds.right || cssY < bounds.top || cssY > bounds.bottom) {
+      return false
+    }
+    const relativeY = (cssY - bounds.top) / (bounds.bottom - bounds.top)
+    return relativeY <= 0.25
+  }
+
+  /**
+   * 根据 canvas 相对坐标映射到身体部位
+   * 简单划分：顶部 15% 为头部，15%-25% 为脸部，25%-70% 为身体（左右 25% 为手），70%-底部为腿部
+   * 这种划分是基于常见模型的比例设计的，实际效果可能因模型设计而异
+   */
+  private getBodyPartAtPosition(cssX: number, cssY: number): string | null {
+    const bounds = this.getModelScreenBounds()
+    if (!bounds) return null
+    if (cssX < bounds.left || cssX > bounds.right || cssY < bounds.top || cssY > bounds.bottom) {
+      return null
+    }
+    const modelWidth = bounds.right - bounds.left
+    const relativeY = (cssY - bounds.top) / (bounds.bottom - bounds.top)
+    const relativeX = (cssX - bounds.left) / modelWidth
+
+    if (relativeY <= 0.15) return 'head'
+    if (relativeY <= 0.25) return 'face'
+    if (relativeY <= 0.7) {
+      return relativeX <= 0.25 || relativeX >= 0.75 ? 'hand' : 'body'
+    }
+    return 'leg'
+  }
+
+  /**
+   * 处理模型点击事件——根据点击位置映射到身体部位并触发对应的 live2d.hit 事件
+   */
+  private handleModelClick(event: MouseEvent): void {
+    if (!this.canvasElement) return
+    // 二次确认：释放时像素仍在模型非透明区域
+    if (this.isPixelTransparentFromEvent(event)) return
+
+    const rect = this.canvasElement.getBoundingClientRect()
+    const cssX = event.clientX - rect.left
+    const cssY = event.clientY - rect.top
+    const bodyPart = this.getBodyPartAtPosition(cssX, cssY)
+    if (!bodyPart) return
+
+    const eventMap: Record<string, string> = {
+      head: 'live2d.hit.part.head',
+      face: 'live2d.hit.part.face',
+      body: 'live2d.hit.body',
+      hand: 'live2d.hit.part.hand',
+      leg: 'live2d.hit.part.leg'
+    }
+    const eventName = eventMap[bodyPart]
+    if (eventName) {
+      InteractionSystem.getInstance().triggerEvent(eventName)
+    }
   }
 
   /**

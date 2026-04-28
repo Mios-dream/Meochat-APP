@@ -6,6 +6,10 @@
   --theme-text-color-dark: #4f4f4f;
 }
 
+* {
+  user-select: none;
+}
+
 .dashboard-content {
   padding: 15px;
 }
