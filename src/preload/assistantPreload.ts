@@ -13,5 +13,13 @@ contextBridge.exposeInMainWorld('api', {
   // 获取当前助手信息
   getCurrentAssistant: () => ipcRenderer.invoke('assistant:get-current'),
   // 获取助手资产配置
-  getAssistantAssets: (assistantName) => ipcRenderer.invoke('assistant:get-assets', assistantName)
+  getAssistantAssets: (assistantName) => ipcRenderer.invoke('assistant:get-assets', assistantName),
+
+  // Tips窗口相关API
+  showTips: (message: string, avatarUrl?: string) =>
+    ipcRenderer.send('tips:show-message', { message, avatarUrl }),
+  updateTips: (message: string, avatarUrl?: string) =>
+    ipcRenderer.send('tips:update-message', { message, avatarUrl }),
+  hideTips: () => ipcRenderer.send('tips:hide-message'),
+  isAssistantVisible: () => ipcRenderer.invoke('assistant:check-visible')
 })

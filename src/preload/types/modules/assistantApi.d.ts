@@ -31,4 +31,10 @@ export interface AssistantApi {
   onAssistantSwitched: (
     callback: (data: AssistantInfo | null) => void
   ) => () => Electron.IpcRenderer
+
+  // Tips窗口相关API
+  showTips: (message: string, avatarUrl?: string) => void
+  updateTips: (message: string, avatarUrl?: string) => void
+  hideTips: () => void
+  isAssistantVisible: () => Promise<boolean>
 }

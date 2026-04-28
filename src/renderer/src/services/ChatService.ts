@@ -122,6 +122,9 @@ interface SentenceSyncState {
 
 class ChatService {
   private static instance: ChatService
+  // 语音播放开始/结束回调
+  private speechStartCallbacks: Array<(message: string) => void> = []
+  private speechEndCallbacks: Array<() => void> = []
   // 消息提示对象
   private messageTips: MessageTips
   // 聊天记录, 键为助手名称
@@ -335,6 +338,27 @@ class ChatService {
   public getReplyStatus(): boolean {
     // 如果正在播放语音，视为正在回复
     return this.isPlaying
+  }
+
+  /**
+   * 注册语音播放开始回调
+   */
+  public onSpeechStart(callback: (message: string) => void): void {
+    this.speechStartCallbacks.push(callback)
+  }
+
+  /**
+   * 注册语音播放结束回调
+   */
+  public onSpeechEnd(callback: () => void): void {
+    this.speechEndCallbacks.push(callback)
+  }
+
+  /**
+   * 获取当前累积的显示文本
+   */
+  public getCurrentDisplayText(): string {
+    return this.currentDisplayText
   }
 
   /**
@@ -940,6 +964,7 @@ class ChatService {
     this.isPlaying = true
 
     try {
+      let speechStarted = false
       while (this.textAudioQueue.length > 0) {
         const pair = this.textAudioQueue.shift()!
         const hasAudio = Boolean(pair.audioBlob)
@@ -954,6 +979,12 @@ class ChatService {
               ? 260
               : 220
           this.showTempMessage(this.currentDisplayText, -1, 999, fadeDuration)
+        }
+
+        // 在第一条消息文本准备好后通知语音开始，确保 Tips 有内容可显示
+        if (!speechStarted) {
+          speechStarted = true
+          this.notifySpeechStart()
         }
 
         const token = ++this.motionSequenceToken
@@ -994,6 +1025,30 @@ class ChatService {
       console.error('播放音频失败:', error)
     } finally {
       this.isPlaying = false
+      this.notifySpeechEnd()
+    }
+  }
+
+  /**
+   * 通知语音播放开始
+   */
+  private notifySpeechStart(): void {
+    const message = this.currentDisplayText
+    for (const cb of this.speechStartCallbacks) {
+      Promise.resolve()
+        .then(() => cb(message))
+        .catch((e) => console.error('speechStart callback error:', e))
+    }
+  }
+
+  /**
+   * 通知语音播放结束
+   */
+  private notifySpeechEnd(): void {
+    for (const cb of this.speechEndCallbacks) {
+      Promise.resolve()
+        .then(() => cb())
+        .catch((e) => console.error('speechEnd callback error:', e))
     }
   }
 

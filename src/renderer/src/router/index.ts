@@ -5,6 +5,7 @@ import PluginManager from '../views/PluginManagerView.vue'
 import AssistantManagerView from '../views/AssistantManagerView.vue'
 import ChatBoxView from '../views/ChatBoxView.vue'
 import AssistantView from '../views/AssistantView.vue'
+import TipsView from '../views/TipsView.vue'
 import OnboardingView from '../views/OnboardingView.vue'
 
 const router = createRouter({
@@ -48,6 +49,11 @@ const router = createRouter({
       path: '/assistant',
       name: 'assistant',
       component: AssistantView
+    },
+    {
+      path: '/tips',
+      name: 'tips',
+      component: TipsView
     }
   ]
 })

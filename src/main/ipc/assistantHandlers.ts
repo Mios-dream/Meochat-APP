@@ -1,6 +1,8 @@
 import { ipcMain, screen, BrowserWindow, app } from 'electron'
 import { getAssistantWindow, createAssistantWindow } from '../windows/assistantWindow'
 import { getChatBoxWindow, createChatBoxWindow } from '../windows/chatBoxWindow'
+import { showTipsWindow, hideTipsWindow, sendMessageToTips } from '../windows/tipsWindow'
+import { checkAssistantWindowVisibility } from '../utils/windowVisibility'
 import dragAddon from 'electron-click-drag-plugin'
 import robot from '@jitsi/robotjs'
 import { uIOhook } from 'uiohook-napi'
@@ -237,6 +239,25 @@ function setupAssistantIPC(): void {
     } catch (error) {
       return { success: false, error: (error as Error).message }
     }
+  })
+
+  // Tips窗口相关IPC
+  ipcMain.on('tips:show-message', async (_event, data: { message: string; avatarUrl?: string }) => {
+    showTipsWindow(data.message, data.avatarUrl)
+  })
+
+  ipcMain.on('tips:update-message', (_event, data: { message: string; avatarUrl?: string }) => {
+    sendMessageToTips(data.message, data.avatarUrl)
+  })
+
+  ipcMain.on('tips:hide-message', () => {
+    hideTipsWindow()
+  })
+
+  ipcMain.handle('assistant:check-visible', async () => {
+    const assistantWin = getAssistantWindow()
+    const result = await checkAssistantWindowVisibility(assistantWin)
+    return result.visible
   })
 }
 

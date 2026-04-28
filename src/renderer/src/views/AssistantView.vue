@@ -66,6 +66,8 @@ const chatService = ChatService.getInstance()
 const interactionSystem = InteractionSystem.getInstance()
 // 唤醒词服务实例
 const wakewordService = WakewordService.getInstance()
+// Tips更新定时器,定时更新Tips内容以保持与语音输出同步
+let tipsUpdateInterval: number | null = null
 
 // 计算属性
 const contextMenuItems = computed(() => [
@@ -194,6 +196,9 @@ async function syncWakewordState(): Promise<void> {
   }
 }
 
+/**
+ * 重连唤醒词状态
+ */
 async function reconnectWakewordState(): Promise<void> {
   try {
     await wakewordService.stop()
@@ -276,13 +281,13 @@ async function handleWakewordDetected(keyword: string): Promise<void> {
 onMounted(async () => {
   wakewordService.setCallbacks({
     onReady: () => {
-      console.log('Wakeword service ready')
+      console.log('唤醒服务启动成功')
     },
     onDetected: ({ keyword }) => {
       handleWakewordDetected(keyword)
     },
     onError: (message) => {
-      console.error('唤醒词服务错误:', message)
+      console.error('唤醒服务错误:', message)
     }
   })
 
@@ -312,6 +317,38 @@ onMounted(async () => {
   } else {
     console.warn('Live2D模型加载失败，InteractionSystem 和 Wakeword 服务未启用')
   }
+
+  // 注册语音播放事件 — 用于控制Tips窗口
+  chatService.onSpeechStart(async (message) => {
+    try {
+      const isVisible = await window.api.isAssistantVisible()
+      // const isVisible = false // 暂时不检查窗口可见性，直接显示Tips
+      if (!isVisible) {
+        // console.log('语音开始播放，显示Tips:', message)
+        window.api.showTips(message)
+        // 定期更新Tips消息内容
+        tipsUpdateInterval = setInterval(() => {
+          const currentText = chatService.getCurrentDisplayText()
+          // console.log('更新Tips内容:', currentText)
+          if (currentText) {
+            window.api.updateTips(currentText)
+          }
+        }, 1000)
+      }
+    } catch {
+      // Tips不可用时静默处理
+    }
+  })
+
+  chatService.onSpeechEnd(() => {
+    if (tipsUpdateInterval) {
+      clearInterval(tipsUpdateInterval)
+      tipsUpdateInterval = null
+    }
+    setTimeout(() => {
+      window.api.hideTips()
+    }, 2000)
+  })
 
   // 监听助手切换事件
   window.api.onAssistantSwitched(async (assistant) => {
@@ -363,6 +400,12 @@ onUnmounted(() => {
   wakewordService.stop()
   window.api.ipcRenderer.removeAllListeners('chat-box:send-message')
   live2DManager.destroy()
+  // 清除Tips更新定时器
+  if (tipsUpdateInterval) {
+    clearInterval(tipsUpdateInterval)
+    tipsUpdateInterval = null
+  }
+  window.api.hideTips()
 })
 </script>
 
