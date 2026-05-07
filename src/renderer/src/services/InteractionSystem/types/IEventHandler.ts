@@ -1,10 +1,8 @@
 import { ContextManager } from '../core/context'
-import { ActionDispatcher } from '../core/dispatcher'
-// import { InteractionEngine } from '../core/engine'
+import { ActionDispatcher, OutputAction } from '../core/dispatcher'
 
-// 定义事件处理器接口
 export interface IEventHandler {
   eventType: string
-  responseHandlers: Record<string, (contextManager: ContextManager) => Promise<string | null>>
+  responseHandlers: Record<string, (contextManager: ContextManager) => Promise<OutputAction | null>>
   handle: (event: string, contextManager: ContextManager, dispatcher: ActionDispatcher) => void
 }

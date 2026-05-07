@@ -1,11 +1,9 @@
-import { ChatService } from '@renderer/services/ChatService'
+import { ChatService, InteractionEventPayload } from '@renderer/services/ChatService'
 
 export interface OutputAction {
-  // 文本数据
   text: string
-  // 动作数据
   action?: string
-  // 元数据
+  eventPayload?: InteractionEventPayload
   metadata?: {
     timestamp: number
     eventType?: string
@@ -35,7 +33,6 @@ export class ActionDispatcher {
       return
     }
 
-    // 添加元数据
     const actionWithMetadata: OutputAction = {
       ...action,
       metadata: {
@@ -49,39 +46,32 @@ export class ActionDispatcher {
     this.lastSentText = normalizedText
     this.lastSentAt = now
 
-    // 串行执行发送，确保当前回复完整结束后再发送下一条。
     this.sendQueue = this.sendQueue
       .then(() => this.executeSend(actionWithMetadata))
       .catch((error) => {
         console.error('事件发送失败:', error)
       })
 
-    // 通知所有监听器
     this.notifyListeners(actionWithMetadata)
   }
 
   /**
    * 执行实际的发送逻辑
-   * @param action
+   * 有新接口载荷时走完整 SSE 管线（文本+动作+语音+历史记录）
    */
   private async executeSend(action: OutputAction): Promise<void> {
-    // console.log('执行发送:', action)
-    await this.chatService.sendMessage(action.text)
+    if (action.eventPayload) {
+      await this.chatService.interactionChat(action.eventPayload)
+    } else {
+      await this.chatService.sendMessage(action.text)
+    }
     await this.chatService.waitForReplyPlaybackComplete()
   }
 
-  /**
-   * 添加监听器
-   * @param listener
-   */
   addListener(listener: (action: OutputAction) => void): void {
     this.listeners.push(listener)
   }
 
-  /**
-   * 移除监听器
-   * @param listener
-   */
   removeListener(listener: (action: OutputAction) => void): void {
     const index = this.listeners.indexOf(listener)
     if (index > -1) {
@@ -89,10 +79,6 @@ export class ActionDispatcher {
     }
   }
 
-  /**
-   * 通知所有监听器
-   * @param action
-   */
   private notifyListeners(action: OutputAction): void {
     this.listeners.forEach((listener) => {
       try {
@@ -103,10 +89,14 @@ export class ActionDispatcher {
     })
   }
 
-  /**
-   * 获取监听器数量
-   */
   getListenerCount(): number {
     return this.listeners.length
+  }
+
+  /**
+   * 等待 sendQueue 中所有任务完成
+   */
+  async waitForDrain(): Promise<void> {
+    await this.sendQueue
   }
 }

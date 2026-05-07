@@ -257,6 +257,7 @@ function setupAssistantIPC(): void {
   ipcMain.handle('assistant:check-visible', async () => {
     const assistantWin = getAssistantWindow()
     const result = await checkAssistantWindowVisibility(assistantWin)
+    console.log('检查助手窗口可见性:', result)
     return result.visible
   })
 }

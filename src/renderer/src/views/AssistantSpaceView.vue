@@ -278,6 +278,7 @@ import { AssistantInfo, AssistantManager } from '../services/assistantManager'
 import ChatBox from '../components/ChatBox.vue'
 import MessageContent from '../components/MessageContent.vue'
 import { InteractionSystem } from '@renderer/services/InteractionSystem/InteractionSystem'
+import { DiarySystem } from '@renderer/services/DiarySystem'
 
 const configStore = useConfigStore()
 const { config } = storeToRefs(configStore)
@@ -341,6 +342,7 @@ const isCapturingShortcut = ref(false)
 // 组件实例
 const live2DManager = Live2DManager.getInstance()
 const chatService = ChatService.getInstance()
+const diarySystem = DiarySystem.getInstance()
 const assistantManager = AssistantManager.getInstance()
 // 获取交互系统实例
 const interactionSystem = InteractionSystem.getInstance()
@@ -583,7 +585,7 @@ async function loadDiaryRecords(forceReload: boolean = false): Promise<void> {
   diaryError.value = ''
 
   try {
-    const remoteDiary = await chatService.fetchDiaryRecords({
+    const remoteDiary = await diarySystem.fetchDiaryRecords({
       limit: diaryPagination.value.limit,
       offset: 0
     })

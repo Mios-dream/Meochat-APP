@@ -1,7 +1,6 @@
 // core/context.ts
 export interface Context {
   lastInteraction: number
-  userMood: string
   isBusy: boolean
   isInConversation?: boolean
   lastEventTime?: number
@@ -46,7 +45,6 @@ export interface Context {
 export class ContextManager {
   private state: Context = {
     lastInteraction: Date.now(),
-    userMood: '正常',
     isBusy: false
   }
 

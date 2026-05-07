@@ -323,6 +323,7 @@ onMounted(async () => {
     try {
       const isVisible = await window.api.isAssistantVisible()
       // const isVisible = false // 暂时不检查窗口可见性，直接显示Tips
+      console.log('语音开始播放，当前窗口可见:', isVisible)
       if (!isVisible) {
         // console.log('语音开始播放，显示Tips:', message)
         window.api.showTips(message)

@@ -19,6 +19,8 @@ export class Live2DManager {
   private static instance: Live2DManager
   // 是否禁用模型的自动动作和交互，进入纯展示状态
   public disabled = false
+  // 用于清理 initListeners 注册的 DOM 事件监听器，避免重复注册
+  private listenerAbortController: AbortController | null = null
   // 画布元素
   private canvasElement: HTMLCanvasElement | null = null
   // 渲染器
@@ -244,6 +246,12 @@ export class Live2DManager {
    * 销毁方法
    */
   public destroy(): void {
+    // 清理 initListeners 注册的 DOM 事件监听器
+    if (this.listenerAbortController) {
+      this.listenerAbortController.abort()
+      this.listenerAbortController = null
+    }
+
     // 清理监听器
     this.stopMouseTracking()
 
@@ -332,6 +340,13 @@ export class Live2DManager {
   public initListeners(options: { isPetMode?: boolean } = { isPetMode: false }): void {
     if (this.disabled) return
 
+    // 移除上一次注册的所有 DOM 事件监听器
+    if (this.listenerAbortController) {
+      this.listenerAbortController.abort()
+    }
+    this.listenerAbortController = new AbortController()
+    const { signal } = this.listenerAbortController
+
     // 获取交互系统实例
     const interactionSystem = InteractionSystem.getInstance()
 
@@ -363,7 +378,7 @@ export class Live2DManager {
           this.isFocusEnabled = true
         }
       }, this.longPressDuration)
-    })
+    }, { signal })
 
     // 鼠标移动事件
     this.canvasElement!.addEventListener('mousemove', (e) => {
@@ -395,7 +410,7 @@ export class Live2DManager {
         this.interactionMaxDisplacement += delta
         this.lastStrokePoint = { x: e.clientX, y: e.clientY }
       }
-    })
+    }, { signal })
 
     // 鼠标抬起事件
     this.canvasElement!.addEventListener('mouseup', (e) => {
@@ -447,7 +462,7 @@ export class Live2DManager {
       if (this.isFocusEnabled && this.isLocked) {
         this.smoothDisableFocus(500)
       }
-    })
+    }, { signal })
 
     this.canvasElement!.addEventListener('mouseleave', () => {
       // 重置状态
@@ -481,7 +496,7 @@ export class Live2DManager {
         clearTimeout(this.restoreTimer)
         this.restoreTimer = null
       }
-    })
+    }, { signal })
 
     // 只有在非桌宠模式下才启用缩放功能，宠物模式下保持固定大小，使用面板调整
     if (!options.isPetMode) {
@@ -511,11 +526,13 @@ export class Live2DManager {
           this.model.scale.set(newScale)
           this.currentScale = newScale
         },
-        { passive: false }
+        { passive: false, signal }
       )
     }
     // 只有在桌宠模式下才启用鼠标事件，离开画布时重置状态
     if (options.isPetMode) {
+      // 移除旧的 IPC 监听器，避免重复注册
+      window.api.ipcRenderer.removeAllListeners('assistant:mouse-position')
       // 监听来自主进程的鼠标位置更新，更新模型注视位置
       window.api.ipcRenderer.on('assistant:mouse-position', (_event, data) => {
         // // 检测鼠标点击状态
@@ -532,7 +549,7 @@ export class Live2DManager {
       // 开启全局鼠标跟踪
       this.startMouseTracking()
       // 鼠标移动时更新模型交互,在不透明区域不触发交互
-      this.canvasElement!.addEventListener('mousemove', this.updateMouseInteraction)
+      this.canvasElement!.addEventListener('mousemove', this.updateMouseInteraction, { signal })
     }
   }
 

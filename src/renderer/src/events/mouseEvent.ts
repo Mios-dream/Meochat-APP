@@ -1,10 +1,9 @@
 import { ContextManager } from '../services/InteractionSystem/core/context'
-import { ActionDispatcher } from '../services/InteractionSystem/core/dispatcher'
+import { ActionDispatcher, OutputAction } from '../services/InteractionSystem/core/dispatcher'
 import { IEventHandler } from '../services/InteractionSystem/types/IEventHandler'
 import { EventModule } from '../services/InteractionSystem/types/eventModules'
 import { EventReplyGenerator } from '../services/InteractionSystem/eventReplyGenerator'
 import randomSelect from '@renderer/utils/RandomSelect'
-import { AssistantInfo, AssistantManager } from '@renderer/services/assistantManager'
 
 interface MouseResumePayload {
   idleDurationMs: number
@@ -79,29 +78,31 @@ export class MouseEventModule extends EventModule {
 export class MouseEventHandler implements IEventHandler {
   eventType = 'mouse'
   private replyGenerator: EventReplyGenerator
-  private assistant: AssistantInfo | null
 
   constructor() {
     this.replyGenerator = new EventReplyGenerator()
-    this.assistant = AssistantManager.getInstance().getCurrentAssistant()
   }
 
-  responseHandlers = {
+  responseHandlers: Record<
+    string,
+    (contextManager: ContextManager) => Promise<OutputAction | null>
+  > = {
     'mouse.resume': async (contextManager: ContextManager) => {
       const context = contextManager.get()
       const idleDurationMs = context.mouseEventStatus?.idleDurationMs || 0
       const minutes = Math.max(1, Math.round(idleDurationMs / 60000))
       const response = [
-        `${this.assistant?.user || '阁下'}已经很久没有和你互动了，你可以表达一下想被关注的心情`,
-        `${this.assistant?.user || '阁下'}已经${minutes}分钟没有理你了，你可以主动找话题聊聊`
+        '用户已经很久没有和你互动了，你可以表达一下想被关注的心情',
+        `用户已经${minutes}分钟没有理你了，你可以主动找话题聊聊`
       ]
-      return await this.replyGenerator.generate({
+      const result = await this.replyGenerator.generate({
         event: 'mouse.resume',
         scene: randomSelect(response)!,
         context,
         maxLength: 80,
         fallback: `欢迎回来，已经有${minutes}分钟没看到你啦。`
       })
+      return result ? { text: result.text, eventPayload: result.eventPayload } : null
     },
     'mouse.idle': async () => null,
     'mouse.busy': async () => null
@@ -117,9 +118,9 @@ export class MouseEventHandler implements IEventHandler {
       return
     }
 
-    const message = await handler(contextManager)
-    if (message) {
-      dispatcher.send({ text: message, metadata: { eventType: event, timestamp: Date.now() } })
+    const result = await handler(contextManager)
+    if (result) {
+      dispatcher.send(result)
     }
   }
 }

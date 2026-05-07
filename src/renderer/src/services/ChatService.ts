@@ -3,48 +3,39 @@ import { Live2DManager } from './Live2dManager'
 import { useConfigStore } from '../stores/useConfigStore'
 import { computed, watch } from 'vue'
 import { AssistantManager } from './assistantManager'
+import { normalizeNumber } from '@renderer/utils/MathUtils'
 
 interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
 }
 
+/**
+ * 用于生成交互事件回复的工具类，构建事件载荷并调用后端接口获取回复文本和动作数据。
+ */
+export interface InteractionEventPayload {
+  event_type: string
+  // 场景
+  scene: string
+  context: Record<string, unknown>
+  generation_motion: boolean
+  include_history?: boolean
+  history_limit?: number
+}
+/**
+ * 聊天历史接口响应格式
+ */
 interface ChatHistoryApiResponse {
   msg?: string
   assistant?: string
   onlyAssistant?: boolean
   count?: number
   data?: Array<{
-    role: 'user' | 'assistant' | string
+    role: 'user' | 'assistant'
     content: string
   }>
 }
 
-interface DiaryRecord {
-  day: string
-  summary: string
-  facts: string
-  dayLastTimestamp: string
-  dayLastTimestampSec: number
-}
-
-interface DiaryApiResponse {
-  msg?: string
-  assistant?: string
-  limit?: number
-  offset?: number
-  startDay?: string | null
-  endDay?: string | null
-  count?: number
-  total?: number
-  data?: Array<{
-    day?: string
-    summary?: string
-    facts?: string
-    dayLastTimestamp?: string
-    dayLastTimestampSec?: number
-  }>
-}
 // 文本chunk
 interface TextChunk {
   type: 'text'
@@ -140,6 +131,7 @@ class ChatService {
 
   // 语音播放状态
   private isPlaying: boolean = false
+
   // api 地址
   private apiUrl = computed(() => {
     // 延迟获取 configStore
@@ -171,25 +163,13 @@ class ChatService {
 
     // 从全局配置同步音量，兼容旧配置可能使用 0-100 存储。
     const configStore = useConfigStore()
-    this.setVolume(this.normalizeConfigVolume(configStore.config.volume))
+    this.setVolume(normalizeNumber(configStore.config.volume))
     watch(
       () => configStore.config.volume,
       (newVolume) => {
-        this.setVolume(this.normalizeConfigVolume(newVolume))
+        this.setVolume(normalizeNumber(newVolume))
       }
     )
-  }
-
-  private normalizeConfigVolume(value: number): number {
-    if (!Number.isFinite(value)) {
-      return 0.8
-    }
-
-    if (value > 1 && value <= 100) {
-      return Math.max(0, Math.min(1, value / 100))
-    }
-
-    return Math.max(0, Math.min(1, value))
   }
 
   /**
@@ -258,81 +238,6 @@ class ChatService {
   }
 
   /**
-   * 从后端拉取助手日记
-   */
-  public async fetchDiaryRecords(params?: {
-    limit?: number
-    offset?: number
-    startDay?: string
-    endDay?: string
-  }): Promise<{
-    assistant: string
-    limit: number
-    offset: number
-    startDay: string | null
-    endDay: string | null
-    count: number
-    total: number
-    data: DiaryRecord[]
-  }> {
-    const limitInput = Number(params?.limit)
-    const offsetInput = Number(params?.offset)
-    const normalizedLimit = Number.isFinite(limitInput)
-      ? Math.min(100, Math.max(1, Math.trunc(limitInput)))
-      : 20
-    const normalizedOffset = Number.isFinite(offsetInput) ? Math.max(0, Math.trunc(offsetInput)) : 0
-
-    const searchParams = new URLSearchParams({
-      limit: String(normalizedLimit),
-      offset: String(normalizedOffset)
-    })
-
-    const startDay = params?.startDay?.trim()
-    const endDay = params?.endDay?.trim()
-    if (startDay) {
-      searchParams.set('start_day', startDay)
-    }
-    if (endDay) {
-      searchParams.set('end_day', endDay)
-    }
-
-    const response = await fetch(this.apiUrl.value + `/api/chat/diary?${searchParams.toString()}`, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json'
-      }
-    })
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`)
-    }
-
-    const result = (await response.json()) as DiaryApiResponse
-    const normalizedData = Array.isArray(result.data)
-      ? result.data.map((item) => ({
-          day: typeof item.day === 'string' ? item.day : '',
-          summary: typeof item.summary === 'string' ? item.summary : '',
-          facts: typeof item.facts === 'string' ? item.facts : '',
-          dayLastTimestamp: typeof item.dayLastTimestamp === 'string' ? item.dayLastTimestamp : '',
-          dayLastTimestampSec: Number.isFinite(item.dayLastTimestampSec)
-            ? Number(item.dayLastTimestampSec)
-            : 0
-        }))
-      : []
-
-    return {
-      assistant: typeof result.assistant === 'string' ? result.assistant : '',
-      limit: Number.isFinite(result.limit) ? Number(result.limit) : normalizedLimit,
-      offset: Number.isFinite(result.offset) ? Number(result.offset) : normalizedOffset,
-      startDay: typeof result.startDay === 'string' ? result.startDay : null,
-      endDay: typeof result.endDay === 'string' ? result.endDay : null,
-      count: Number.isFinite(result.count) ? Number(result.count) : normalizedData.length,
-      total: Number.isFinite(result.total) ? Number(result.total) : normalizedData.length,
-      data: normalizedData
-    }
-  }
-
-  /**
    * 获取当前消息回复状态
    */
   public getReplyStatus(): boolean {
@@ -389,6 +294,29 @@ class ChatService {
   }
 
   /**
+   * 读取并处理 SSE 流式响应
+   */
+  private async readStreamResponse(response: Response): Promise<void> {
+    const reader = response.body!.getReader()
+    const decoder = new TextDecoder()
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) {
+        const flushChunk = decoder.decode()
+        if (flushChunk) {
+          this.parseStreamChunk(flushChunk)
+        }
+        this.flushStreamBuffer()
+        break
+      }
+
+      const chunk = decoder.decode(value, { stream: true })
+      this.parseStreamChunk(chunk)
+    }
+  }
+
+  /**
    * 发送消息
    * @param message 消息内容
    * @returns Promise<boolean> 是否成功发送
@@ -439,46 +367,89 @@ class ChatService {
           msg: this.chatHistory.get(assistantName) || [],
           generation_motion: useMotionGenerate
         }),
-        signal: this.abortController.signal // 添加信号用于中断
+        signal: this.abortController.signal
       })
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`)
       }
 
-      const reader = response.body!.getReader()
-      const decoder = new TextDecoder()
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) {
-          const flushChunk = decoder.decode()
-          if (flushChunk) {
-            this.parseStreamChunk(flushChunk)
-          }
-          this.flushStreamBuffer()
-          break
-        }
-
-        const chunk = decoder.decode(value, { stream: true })
-        this.parseStreamChunk(chunk)
-      }
+      await this.readStreamResponse(response)
       return true
     } catch (error) {
-      // 检查是否是因为中断导致的错误
       if ((error as Error).name === 'AbortError') {
         console.log('请求被中断')
         return false
       }
 
       console.error('请求失败:', error)
-      // 出错时移除刚刚添加的用户消息
       const assistantName = this.assistantManager.getCurrentAssistant()?.name || ''
       const currentHistory = this.chatHistory.get(assistantName)
       if (currentHistory && currentHistory.length > 0) {
         currentHistory.pop()
       }
       return false
+    }
+  }
+
+  /**
+   * 发送交互事件消息（自动交互系统专用）
+   * 调用后端 /api/interaction/message 获取 SSE 流式响应（文本+动作+语音），
+   * 复用与正常对话相同的流式解析、句子同步和 Live2D 播放管线。
+   * @param payload 交互事件数据
+   * @returns 助手回复的完整文本，失败时返回 null
+   */
+  public async interactionChat(payload: InteractionEventPayload): Promise<string | null> {
+    if (this.live2DManager?.disabled) return null
+
+    this.interruptCurrentPlayback()
+
+    this.currentDisplayText = ''
+    this.textAudioQueue = []
+    this.pendingSentenceSync.clear()
+    this.nextSentenceId = null
+    this.chunkBuffer = ''
+
+    try {
+      const configStore = useConfigStore()
+      const useMotionGenerate = configStore.config.generateMotion
+      this.expectMotionForStream = useMotionGenerate
+
+      this.abortController = new AbortController()
+      console.log(
+        '发送交互事件消息',
+        JSON.stringify({
+          ...payload,
+          generation_motion: useMotionGenerate
+        })
+      )
+      const response = await fetch(this.apiUrl.value + '/api/interaction/message', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          ...payload,
+          generation_motion: useMotionGenerate
+        }),
+        signal: this.abortController.signal
+      })
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
+      await this.readStreamResponse(response)
+
+      return this.currentDisplayText.trim() || null
+    } catch (error) {
+      if ((error as Error).name === 'AbortError') {
+        console.log('交互请求被中断')
+        return null
+      }
+
+      console.error('交互请求失败:', error)
+      return null
     }
   }
 
@@ -497,37 +468,43 @@ class ChatService {
     // 创建 AbortController 用于可能的中断
     this.abortController = new AbortController()
 
-    const response = await fetch(this.apiUrl.value + '/api/gptsovits', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        msg: message
-      }),
-      signal: this.abortController.signal // 添加信号用于中断
-    })
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`)
-    }
-
-    const result = await response.json()
-
-    const ttsMessage = typeof result.message === 'string' ? result.message : ''
-    const ttsFile = typeof result.file === 'string' ? result.file : ''
-
-    if (ttsFile) {
-      const audioBlob = base64ToBlob(ttsFile, 'audio/wav')
-      this.textAudioQueue.push({
-        message: ttsMessage,
-        audioBlob,
-        audioDurationMs: await this.estimateAudioDurationMs(audioBlob),
-        appendToDisplayText: true
+    try {
+      const response = await fetch(this.apiUrl.value + '/api/gptsovits', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          msg: message
+        }),
+        signal: this.abortController.signal // 添加信号用于中断
       })
-      this.playAudioQueueWithLive2D()
-    } else {
-      this.showTempMessage(ttsMessage)
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
+      const result = await response.json()
+
+      const ttsMessage = typeof result.message === 'string' ? result.message : ''
+      const ttsFile = typeof result.file === 'string' ? result.file : ''
+
+      if (ttsFile) {
+        const audioBlob = base64ToBlob(ttsFile, 'audio/wav')
+        this.textAudioQueue.push({
+          message: ttsMessage,
+          audioBlob,
+          audioDurationMs: await this.estimateAudioDurationMs(audioBlob),
+          appendToDisplayText: true
+        })
+        this.playAudioQueueWithLive2D()
+      } else {
+        this.showTempMessage(ttsMessage)
+      }
+    } catch (error) {
+      if ((error as Error).name !== 'AbortError') {
+        console.error('发送消息失败:', error)
+      }
     }
   }
 
@@ -906,6 +883,9 @@ class ChatService {
     }
   }
 
+  /**
+   * 在接收完成事件时，检查是否有未入队的句子状态，并根据其文本、音频和动作数据决定是否将它们入队播放，确保即使在流式数据最后才收到文本或动作的情况，也能正确展示和播放。
+   */
   private async flushPendingSentenceStatesOnComplete(): Promise<void> {
     if (this.pendingSentenceSync.size === 0) {
       return
@@ -1198,14 +1178,10 @@ class ChatService {
       return []
     }
 
-    return rawMessages
-      .filter((item): item is { role: string; content: string } => {
-        return Boolean(item && typeof item.content === 'string' && typeof item.role === 'string')
-      })
-      .map((item) => ({
-        role: item.role === 'assistant' ? 'assistant' : 'user',
-        content: item.content
-      }))
+    return rawMessages.map((item) => ({
+      role: item.role === 'assistant' ? 'assistant' : 'user',
+      content: item.content
+    }))
   }
 }
 

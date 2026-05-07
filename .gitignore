@@ -9,3 +9,4 @@ assistants
 !test/.gitkeep
 test/*.ts
 
+tsconfig.web.tsbuildinfo

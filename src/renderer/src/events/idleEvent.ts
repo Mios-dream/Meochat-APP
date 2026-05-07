@@ -1,13 +1,15 @@
 import { Context, ContextManager } from '../services/InteractionSystem/core/context'
-import { ActionDispatcher } from '../services/InteractionSystem/core/dispatcher'
+import { ActionDispatcher, OutputAction } from '../services/InteractionSystem/core/dispatcher'
 import { IEventHandler } from '../services/InteractionSystem/types/IEventHandler'
 import { EventModule } from '../services/InteractionSystem/types/eventModules'
 import { useConfigStore } from '../stores/useConfigStore'
-import { EventReplyGenerator } from '../services/InteractionSystem/eventReplyGenerator'
+import {
+  EventReplyGenerator,
+  HandlerResult
+} from '../services/InteractionSystem/eventReplyGenerator'
 
-// 空闲事件模块
 export class IdleEventModule extends EventModule {
-  private idleEventsTimer: NodeJS.Timeout | null = null
+  private idleEventsTimer: number | null = null
 
   start(): void {
     const configStore = useConfigStore()
@@ -30,12 +32,10 @@ export class IdleEventModule extends EventModule {
 
   private scheduleIdleEvents(): void {
     const loop = (): void => {
-      // 根据事件类型计算延迟时间
       const delay = this.calculateEventDelay(2, 4)
 
       this.idleEventsTimer = setTimeout(() => {
         this.eventCenter.emit(`idle.random`)
-
         loop()
       }, delay)
     }
@@ -51,22 +51,11 @@ export class IdleEventModule extends EventModule {
     })
   }
 
-  /**
-   * 计算事件触发延迟时间（随机值）
-   * @param minInterval - 最小间隔分钟
-   * @param maxInterval - 最大间隔分钟（可选，默认是最小间隔的两倍）
-   * @returns 随机延迟时间
-   */
   private calculateEventDelay(minInterval: number, maxInterval?: number): number {
     const max = maxInterval || minInterval * 2
     return (minInterval + Math.random() * (max - minInterval)) * 1000 * 60
   }
 
-  /**
-   * 触发任务完成事件
-   * @param taskName - 任务名称
-   * @param success - 任务是否成功完成（可选，默认是成功）
-   */
   public triggerTaskCompleteEvent(taskName: string, success: boolean = true): void {
     const context = {
       taskName,
@@ -76,11 +65,6 @@ export class IdleEventModule extends EventModule {
     this.eventCenter.emit('idle.taskComplete', { taskEventStatus: context })
   }
 
-  /**
-   * 触发系统事件
-   * @param eventName - 事件名称
-   * @param description - 事件描述
-   */
   public triggerSystemEvent(eventName: string, description: string): void {
     const context = {
       eventName,
@@ -91,7 +75,6 @@ export class IdleEventModule extends EventModule {
   }
 }
 
-// 空闲事件处理器
 export class IdleEventHandler implements IEventHandler {
   eventType = 'idle'
   private replyGenerator: EventReplyGenerator
@@ -109,54 +92,23 @@ export class IdleEventHandler implements IEventHandler {
     '回忆过去的美好时光',
     '其他'
   ]
+
   constructor() {
     this.replyGenerator = new EventReplyGenerator()
   }
 
-  // 事件处理映射
-  responseHandlers = {
+  responseHandlers: Record<
+    string,
+    (contextManager: ContextManager) => Promise<OutputAction | null>
+  > = {
     'idle.random': async (contextManager: ContextManager) => {
       const context = contextManager.get()
-      const message = await this.generateAIMessage(
-        'random',
-        '随机空闲时刻',
-        '用户可能处于空闲状态',
-        context
-      )
-      if (message) {
-        contextManager.update({ lastMessage: message })
+      const result = await this.generateAIMessage('random', '随机空闲时刻', context)
+      if (result) {
+        contextManager.update({ lastMessage: result.text })
+        return { text: result.text, eventPayload: result.eventPayload }
       }
-      return message
-    },
-    'idle.taskComplete': async (contextManager: ContextManager) => {
-      const context = contextManager.get()
-      const taskName = context.taskEventStatus?.taskName || '未知任务'
-      const success = context.taskEventStatus?.success !== false
-      const description = `${taskName}${success ? '完成' : '失败'}`
-      const message = await this.generateAIMessage(
-        'taskComplete',
-        description,
-        '用户刚刚完成任务',
-        context
-      )
-      if (message) {
-        contextManager.update({ lastMessage: message })
-      }
-      return message
-    },
-    'idle.systemEvent': async (contextManager: ContextManager) => {
-      const context = contextManager.get()
-      const description = context?.systemEventStatus?.description || '发生了系统事件'
-      const message = await this.generateAIMessage(
-        'systemEvent',
-        description,
-        '系统状态发生变化',
-        context
-      )
-      if (message) {
-        contextManager.update({ lastMessage: message })
-      }
-      return message
+      return null
     }
   }
 
@@ -167,31 +119,23 @@ export class IdleEventHandler implements IEventHandler {
   ): Promise<void> {
     const handler = this.responseHandlers[event]
     if (handler) {
-      const message = await handler(contextManager)
-
-      if (message) {
-        dispatcher.send({ text: message })
+      const result = await handler(contextManager)
+      if (result) {
+        dispatcher.send(result)
       }
     }
   }
 
-  /**
-   * 生成AI回复消息
-   * @param eventType - 事件类型
-   * @param eventDescription - 事件描述
-   * @param userStatus - 用户状态
-   * @returns 生成的回复消息
-   */
   private async generateAIMessage(
     eventType: string,
     eventDescription: string,
-    userStatus: string,
+
     context: Context
-  ): Promise<string | null> {
+  ): Promise<HandlerResult | null> {
     const selectedTheme = this.chatTheme[Math.floor(Math.random() * this.chatTheme.length)]
     return await this.replyGenerator.generate({
       event: `idle.${eventType}`,
-      scene: `空闲主动对话。主题:${selectedTheme}；事件描述:${eventDescription}；用户状态:${userStatus}；上一次对话:${context.lastMessage || '无'}`,
+      scene: `空闲主动对话。主题:${selectedTheme}；事件描述:${eventDescription}`,
       context,
       maxLength: 100,
       extraRules: ['如果包含动作或心理活动，请使用()标记', '尽量避免与上一次对话主题重复'],
