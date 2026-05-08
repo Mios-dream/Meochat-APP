@@ -228,6 +228,17 @@ function setupAssistantServerIPC(): void {
     return await assistantService.setCurrentAssistant(assistantName)
   })
 
+  /**
+   * 从云端刷新当前助手数据（好感度等）
+   */
+  ipcMain.handle('assistant:refresh-current', async () => {
+    const assistant = await assistantService.refreshCurrentAssistant()
+    if (!assistant) {
+      return { success: false, error: '刷新当前助手数据失败' }
+    }
+    return { success: true, data: assistant }
+  })
+
   // 从角色卡片导入助手信息
   ipcMain.handle('assistant:import-from-card', async (_event, imageData: ArrayBuffer) => {
     try {

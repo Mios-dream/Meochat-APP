@@ -32,7 +32,7 @@ export class IdleEventModule extends EventModule {
 
   private scheduleIdleEvents(): void {
     const loop = (): void => {
-      const delay = this.calculateEventDelay(2, 4)
+      const delay = this.calculateEventDelay(4, 6)
 
       this.idleEventsTimer = setTimeout(() => {
         this.eventCenter.emit(`idle.random`)

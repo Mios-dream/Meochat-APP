@@ -129,6 +129,37 @@ class AssistantService {
   }
 
   /**
+   * 从云端刷新当前助手数据，同步最新的好感度等信息到本地
+   */
+  public async refreshCurrentAssistant(): Promise<AssistantInfo | null> {
+    try {
+      const cloudAssistant = await this.getCurrentAssistantFromCloud()
+      if (!cloudAssistant) {
+        return null
+      }
+
+      // 更新本地文件
+      this.saveAssistantToLocal(cloudAssistant)
+
+      // 更新内存中的数据
+      const index = this.assistants.findIndex((a) => a.name === cloudAssistant.name)
+      if (index !== -1) {
+        this.assistants[index] = cloudAssistant
+      }
+
+      // 如果恰好是当前助手，同步引用
+      if (this.currentAssistant && this.currentAssistant.name === cloudAssistant.name) {
+        this.currentAssistant = cloudAssistant
+      }
+
+      return cloudAssistant
+    } catch (error) {
+      log.error('刷新当前助手数据失败:', (error as Error).message)
+      return null
+    }
+  }
+
+  /**
    * 获取当前助手信息
    */
   public getCurrentAssistant(): AssistantInfo | null {
@@ -469,7 +500,7 @@ class AssistantService {
           }
         }
 
-        // 同步策略1: 处理云端存在的助手（新增或更新）
+        // 同步策略1: 处理云端存在的助手（双向同步）
         for (const [assistantName, cloudAssistant] of cloudAssistantMap.entries()) {
           try {
             const assistantDir = this.ensureAssistantDirExists(assistantName)
@@ -478,17 +509,25 @@ class AssistantService {
             // 检查本地是否存在该助手
             const localAssistant = localAssistants.get(assistantName)
 
-            // 确定是否需要更新本地数据
-            let shouldUpdate = true
-            // 如果本地存在，则比较更新时间戳
             if (localAssistant) {
               const cloudTime = new Date(cloudAssistant.updatedAt).getTime()
               const localTime = new Date(localAssistant.updatedAt).getTime()
-              shouldUpdate = cloudTime > localTime
-            }
 
-            // 更新本地数据
-            if (shouldUpdate) {
+              if (cloudTime > localTime) {
+                // 云端更新，覆盖本地
+                fs.writeFileSync(infoPath, JSON.stringify(cloudAssistant, null, 2))
+              } else if (localTime > cloudTime) {
+                // 本地更新，推送到云端
+                try {
+                  const url = `http://${getConfig('baseUrl')}/api/assistant/info/update`
+                  await axios.post(url, localAssistant)
+                  log.info(`已将本地助手 ${assistantName} 的更新推送到云端`)
+                } catch (pushError) {
+                  log.error(`推送本地助手 ${assistantName} 到云端失败:`, (pushError as Error).message)
+                }
+              }
+            } else {
+              // 云端有但本地没有，下载到本地
               fs.writeFileSync(infoPath, JSON.stringify(cloudAssistant, null, 2))
             }
 

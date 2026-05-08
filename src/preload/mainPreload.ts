@@ -102,6 +102,8 @@ contextBridge.exposeInMainWorld('api', {
   isNeedsUpdate: (assistant) => ipcRenderer.invoke('assistant:need-update', assistant),
   // 获取当前助手信息
   getCurrentAssistant: () => ipcRenderer.invoke('assistant:get-current-assistant'),
+  // 从云端刷新当前助手数据（好感度等）
+  refreshCurrentAssistant: () => ipcRenderer.invoke('assistant:refresh-current'),
   // 切换当前助手
   switchAssistant: (name) => ipcRenderer.invoke('assistant:switch-assistant', name),
   // 资产管理相关API

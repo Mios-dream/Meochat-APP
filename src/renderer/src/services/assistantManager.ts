@@ -169,6 +169,21 @@ class AssistantManager {
   }
 
   /**
+   * 从云端刷新当前助手数据（好感度等）
+   */
+  public async refreshCurrentAssistant(): Promise<void> {
+    const result = await window.api.refreshCurrentAssistant()
+    if (result.success && result.data) {
+      this.currentAssistant = result.data
+      // 同步更新本地列表
+      const index = this.assistants.findIndex((a) => a.name === result.data.name)
+      if (index !== -1) {
+        this.assistants[index] = result.data
+      }
+    }
+  }
+
+  /**
    * 下载助手资源（zip文件）并解压到应用目录的助手文件夹
    * @param assistantName 助手名称
    * @param onProgress 下载进度回调函数 (可选)

@@ -209,6 +209,13 @@ export interface MainWindowApi {
     name: string
   ) => Promise<{ success: true; data: AssistantInfo } | { success: false; error: string }>
 
+  /**
+   * 从云端刷新当前助手数据（好感度等）
+   */
+  refreshCurrentAssistant: () => Promise<
+    { success: true; data: AssistantInfo } | { success: false; error: string }
+  >
+
   // 助手资产管理相关API
   /**
    * 下载助手资产
