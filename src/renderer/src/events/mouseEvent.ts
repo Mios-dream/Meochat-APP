@@ -1,9 +1,9 @@
 import { ContextManager } from '../services/InteractionSystem/core/context'
-import { ActionDispatcher, OutputAction } from '../services/InteractionSystem/core/dispatcher'
+import { ActionDispatcher } from '../services/InteractionSystem/core/dispatcher'
 import { IEventHandler } from '../services/InteractionSystem/types/IEventHandler'
 import { EventModule } from '../services/InteractionSystem/types/eventModules'
-import { EventReplyGenerator } from '../services/InteractionSystem/eventReplyGenerator'
 import randomSelect from '@renderer/utils/RandomSelect'
+import { InteractionEventPayload } from '@renderer/services/ChatService'
 
 interface MouseResumePayload {
   idleDurationMs: number
@@ -77,15 +77,11 @@ export class MouseEventModule extends EventModule {
 
 export class MouseEventHandler implements IEventHandler {
   eventType = 'mouse'
-  private replyGenerator: EventReplyGenerator
-
-  constructor() {
-    this.replyGenerator = new EventReplyGenerator()
-  }
+  cooldownMs = 0 // 鼠标事件通常是用户直接触发的，不需要全局冷却
 
   responseHandlers: Record<
     string,
-    (contextManager: ContextManager) => Promise<OutputAction | null>
+    (contextManager: ContextManager) => Promise<InteractionEventPayload | null>
   > = {
     'mouse.resume': async (contextManager: ContextManager) => {
       const context = contextManager.get()
@@ -95,14 +91,14 @@ export class MouseEventHandler implements IEventHandler {
         '用户已经很久没有和你互动了，你可以表达一下想被关注的心情',
         `用户已经${minutes}分钟没有理你了，你可以主动找话题聊聊`
       ]
-      const result = await this.replyGenerator.generate({
+      const result = ActionDispatcher.buildEventPayload({
         event: 'mouse.resume',
         scene: randomSelect(response)!,
         context,
         maxLength: 80,
         fallback: `欢迎回来，已经有${minutes}分钟没看到你啦。`
       })
-      return result ? { text: result.text, eventPayload: result.eventPayload } : null
+      return result
     },
     'mouse.idle': async () => null,
     'mouse.busy': async () => null
@@ -120,7 +116,7 @@ export class MouseEventHandler implements IEventHandler {
 
     const result = await handler(contextManager)
     if (result) {
-      dispatcher.send(result)
+      await dispatcher.send(result)
     }
   }
 }

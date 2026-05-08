@@ -1,8 +1,17 @@
 import { ContextManager } from '../core/context'
-import { ActionDispatcher, OutputAction } from '../core/dispatcher'
+import { ActionDispatcher } from '../core/dispatcher'
+import { InteractionEventPayload } from '@renderer/services/ChatService'
 
 export interface IEventHandler {
   eventType: string
-  responseHandlers: Record<string, (contextManager: ContextManager) => Promise<OutputAction | null>>
-  handle: (event: string, contextManager: ContextManager, dispatcher: ActionDispatcher) => void
+  cooldownMs: number
+  responseHandlers: Record<
+    string,
+    (contextManager: ContextManager) => Promise<InteractionEventPayload | null>
+  >
+  handle: (
+    event: string,
+    contextManager: ContextManager,
+    dispatcher: ActionDispatcher
+  ) => Promise<void>
 }

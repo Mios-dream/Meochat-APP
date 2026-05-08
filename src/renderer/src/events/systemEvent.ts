@@ -1,8 +1,8 @@
 import { ContextManager } from '../services/InteractionSystem/core/context'
-import { ActionDispatcher, OutputAction } from '../services/InteractionSystem/core/dispatcher'
+import { ActionDispatcher } from '../services/InteractionSystem/core/dispatcher'
 import { IEventHandler } from '../services/InteractionSystem/types/IEventHandler'
 import { EventModule } from '../services/InteractionSystem/types/eventModules'
-import { EventReplyGenerator } from '../services/InteractionSystem/eventReplyGenerator'
+import { InteractionEventPayload } from '@renderer/services/ChatService'
 
 interface BatteryPayload {
   percent: number
@@ -92,44 +92,43 @@ export class SystemEventModule extends EventModule {
 
 export class SystemEventHandler implements IEventHandler {
   eventType = 'system'
-  private replyGenerator: EventReplyGenerator
+  cooldownMs = 0 // 系统事件通常是用户直接触发的，不需要全局冷却
 
-  constructor() {
-    this.replyGenerator = new EventReplyGenerator()
-  }
-
-  responseHandlers: Record<string, (contextManager: ContextManager) => Promise<OutputAction | null>> = {
+  responseHandlers: Record<
+    string,
+    (contextManager: ContextManager) => Promise<InteractionEventPayload | null>
+  > = {
     'system.charging': async (contextManager: ContextManager) => {
-      const result = await this.replyGenerator.generate({
+      const result = ActionDispatcher.buildEventPayload({
         event: 'system.charging',
         scene: '设备已接入电源并开始充电',
         context: contextManager.get(),
         maxLength: 80,
         fallback: '已经开始充电啦，安心继续使用吧。'
       })
-      return result ? { text: result.text, eventPayload: result.eventPayload } : null
+      return result
     },
     'system.discharging': async (contextManager: ContextManager) => {
-      const result = await this.replyGenerator.generate({
+      const result = ActionDispatcher.buildEventPayload({
         event: 'system.discharging',
         scene: '设备已切换到电池供电模式',
         context: contextManager.get(),
         maxLength: 80,
         fallback: '现在是电池模式，记得关注续航哦。'
       })
-      return result ? { text: result.text, eventPayload: result.eventPayload } : null
+      return result
     },
     'system.battery-level': async () => null,
     'system.lowBattery': async (contextManager: ContextManager) => {
       const percent = contextManager.get().batteryStatus?.percent ?? 0
-      const result = await this.replyGenerator.generate({
+      const result = ActionDispatcher.buildEventPayload({
         event: 'system.lowBattery',
         scene: `设备电量偏低，当前电量约${percent}%`,
         context: contextManager.get(),
         maxLength: 80,
         fallback: `当前电量只剩${percent}%，建议尽快充电。`
       })
-      return result ? { text: result.text, eventPayload: result.eventPayload } : null
+      return result
     }
   }
 
@@ -145,7 +144,7 @@ export class SystemEventHandler implements IEventHandler {
 
     const result = await handler(contextManager)
     if (result) {
-      dispatcher.send(result)
+      await dispatcher.send(result)
     }
   }
 }

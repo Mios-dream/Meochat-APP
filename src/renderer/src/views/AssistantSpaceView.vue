@@ -318,6 +318,7 @@ const showDiaryModal = ref(false)
 const diaryLoading = ref(false)
 const diaryError = ref('')
 const diaryLoaded = ref(false)
+// 是否正在提示用户日记访问受限（避免重复提示）
 const isDiaryPrompting = ref(false)
 const diaryRecords = ref<
   Array<{
@@ -563,8 +564,13 @@ async function handleDiaryClick(): Promise<void> {
 
   isDiaryPrompting.value = true
   try {
-    await chatService.sendMessage('不允许偷看日记哦')
-    await chatService.waitForReplyPlaybackComplete()
+    await chatService.interactionChat({
+      event_type: 'diary_access',
+      // 场景
+      scene: '用户尝试访问日记，但好感度不足，助手需要给出提示',
+      context: {},
+      generation_motion: false
+    })
   } catch (error) {
     console.error('日记访问提示失败:', error)
   } finally {
@@ -1133,7 +1139,7 @@ async function saveShortcut(shortcut: string): Promise<void> {
 .diary-binding {
   width: 52px;
   background:
-    radial-gradient(circle at center, #ffffff 4px, transparent 4px) center 16px / 20px 34px repeat-y,
+    radial-gradient(circle at center, #ffffff 4px, transparent 4px) center 16px / 20px 40px repeat-y,
     linear-gradient(180deg, #ffd4e3 0%, #ffc1d7 100%);
   border-right: 2px solid #f7afc6;
 }

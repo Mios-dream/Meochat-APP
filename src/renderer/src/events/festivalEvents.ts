@@ -1,22 +1,18 @@
 import { ContextManager } from '../services/InteractionSystem/core/context'
-import { ActionDispatcher, OutputAction } from '../services/InteractionSystem/core/dispatcher'
+import { InteractionEventPayload } from '@renderer/services/ChatService'
+import { ActionDispatcher } from '../services/InteractionSystem/core/dispatcher'
 import { EventModule } from '../services/InteractionSystem/types/eventModules'
 import { IEventHandler } from '../services/InteractionSystem/types/IEventHandler'
-import { EventReplyGenerator } from '../services/InteractionSystem/eventReplyGenerator'
 import { AssistantManager } from '../services/assistantManager'
 import lunisolar from 'lunisolar'
 
 class FestivalEventHandler implements IEventHandler {
   eventType = 'festival'
-  private replyGenerator: EventReplyGenerator
-
-  constructor() {
-    this.replyGenerator = new EventReplyGenerator()
-  }
+  cooldownMs: number = 5 * 60 * 60 * 1000 // 5 hours
 
   responseHandlers: Record<
     string,
-    (contextManager: ContextManager) => Promise<OutputAction | null>
+    (contextManager: ContextManager) => Promise<InteractionEventPayload | null>
   > = {
     'festival.newyear': async () => this.generateFestivalMessage('元旦', '新年伊始，万象更新'),
     'festival.spring': async () =>
@@ -84,7 +80,7 @@ class FestivalEventHandler implements IEventHandler {
     if (handler) {
       const result = await handler(contextManager)
       if (result) {
-        dispatcher.send(result)
+        await dispatcher.send(result)
       }
     }
   }
@@ -93,15 +89,15 @@ class FestivalEventHandler implements IEventHandler {
     festivalName: string,
     festivalDescription: string,
     context?: ReturnType<ContextManager['get']>
-  ): Promise<OutputAction | null> {
-    const result = await this.replyGenerator.generate({
+  ): Promise<InteractionEventPayload | null> {
+    const result = ActionDispatcher.buildEventPayload({
       event: `festival.${festivalName}`,
       scene: `当前节日是${festivalName}。节日描述：${festivalDescription}。请给出节日氛围感祝福。`,
       context: context || { lastInteraction: Date.now(), isBusy: false },
       maxLength: 100,
       fallback: `${festivalName}快乐，愿你今天也有好心情。`
     })
-    return result ? { text: result.text, eventPayload: result.eventPayload } : null
+    return result
   }
 }
 

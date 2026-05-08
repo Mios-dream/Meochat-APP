@@ -1,11 +1,11 @@
 import { ContextManager } from '../services/InteractionSystem/core/context'
-import { ActionDispatcher, OutputAction } from '../services/InteractionSystem/core/dispatcher'
+import { ActionDispatcher } from '../services/InteractionSystem/core/dispatcher'
 import { IEventHandler } from '../services/InteractionSystem/types/IEventHandler'
 import { EventModule } from '../services/InteractionSystem/types/eventModules'
-import { EventReplyGenerator } from '../services/InteractionSystem/eventReplyGenerator'
+import { InteractionEventPayload } from '@renderer/services/ChatService'
 
 export class TimeEventModule extends EventModule {
-  private timeEventsTimer: NodeJS.Timeout | null = null
+  private timeEventsTimer: number | null = null
 
   start(): void {
     this.scheduleTimeEvents()
@@ -33,55 +33,51 @@ export class TimeEventModule extends EventModule {
 
 export class TimeEventHandler implements IEventHandler {
   eventType = 'time'
-  private replyGenerator: EventReplyGenerator
-
-  constructor() {
-    this.replyGenerator = new EventReplyGenerator()
-  }
+  cooldownMs = 0 // 时间事件不设置全局冷却，由具体事件类型控制
 
   responseHandlers: Record<
     string,
-    (contextManager: ContextManager) => Promise<OutputAction | null>
+    (contextManager: ContextManager) => Promise<InteractionEventPayload | null>
   > = {
     'time.morning': async (contextManager: ContextManager) => {
-      const result = await this.replyGenerator.generate({
+      const result = ActionDispatcher.buildEventPayload({
         event: 'time.morning',
         scene: '现在是上午了，和用户说声早安',
         context: contextManager.get(),
         maxLength: 50,
         fallback: '早安，今天也要元气满满哦。'
       })
-      return result ? { text: result.text, eventPayload: result.eventPayload } : null
+      return result
     },
     'time.noon': async (contextManager: ContextManager) => {
-      const result = await this.replyGenerator.generate({
+      const result = ActionDispatcher.buildEventPayload({
         event: 'time.noon',
         scene: '现在是中午了，提醒用户休息一下',
         context: contextManager.get(),
         maxLength: 50,
         fallback: '中午好，记得补充能量。'
       })
-      return result ? { text: result.text, eventPayload: result.eventPayload } : null
+      return result
     },
     'time.afternoon': async (contextManager: ContextManager) => {
-      const result = await this.replyGenerator.generate({
+      const result = ActionDispatcher.buildEventPayload({
         event: 'time.afternoon',
         scene: '现在是下午了，和用户说声下午好',
         context: contextManager.get(),
         maxLength: 50,
         fallback: '下午好，继续加油哦。'
       })
-      return result ? { text: result.text, eventPayload: result.eventPayload } : null
+      return result
     },
     'time.night': async (contextManager: ContextManager) => {
-      const result = await this.replyGenerator.generate({
+      const result = ActionDispatcher.buildEventPayload({
         event: 'time.night',
         scene: '现在是晚上了，如果很晚了可以关心一下用户的休息',
         context: contextManager.get(),
         maxLength: 50,
         fallback: '夜深啦，别太辛苦，记得早点休息。'
       })
-      return result ? { text: result.text, eventPayload: result.eventPayload } : null
+      return result
     }
   }
 
@@ -94,7 +90,7 @@ export class TimeEventHandler implements IEventHandler {
     if (handler) {
       const result = await handler(contextManager)
       if (result) {
-        dispatcher.send(result)
+        await dispatcher.send(result)
       }
     }
   }

@@ -5,7 +5,6 @@ export interface Context {
   isInConversation?: boolean
   lastEventTime?: number
   lastEventType?: string
-  lastMessage?: string
   mouseEventStatus?: {
     idleDurationMs: number
     isIdle: boolean

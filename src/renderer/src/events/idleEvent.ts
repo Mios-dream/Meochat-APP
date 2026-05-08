@@ -1,12 +1,9 @@
 import { Context, ContextManager } from '../services/InteractionSystem/core/context'
-import { ActionDispatcher, OutputAction } from '../services/InteractionSystem/core/dispatcher'
+import { ActionDispatcher } from '../services/InteractionSystem/core/dispatcher'
 import { IEventHandler } from '../services/InteractionSystem/types/IEventHandler'
 import { EventModule } from '../services/InteractionSystem/types/eventModules'
 import { useConfigStore } from '../stores/useConfigStore'
-import {
-  EventReplyGenerator,
-  HandlerResult
-} from '../services/InteractionSystem/eventReplyGenerator'
+import { InteractionEventPayload } from '@renderer/services/ChatService'
 
 export class IdleEventModule extends EventModule {
   private idleEventsTimer: number | null = null
@@ -77,7 +74,7 @@ export class IdleEventModule extends EventModule {
 
 export class IdleEventHandler implements IEventHandler {
   eventType = 'idle'
-  private replyGenerator: EventReplyGenerator
+  cooldownMs = 0 // 空闲事件不设置全局冷却，由具体事件类型控制
 
   chatTheme = [
     '与用户互动，例如：想被摸摸头，主动捏捏用户的脸等',
@@ -93,22 +90,14 @@ export class IdleEventHandler implements IEventHandler {
     '其他'
   ]
 
-  constructor() {
-    this.replyGenerator = new EventReplyGenerator()
-  }
-
   responseHandlers: Record<
     string,
-    (contextManager: ContextManager) => Promise<OutputAction | null>
+    (contextManager: ContextManager) => Promise<InteractionEventPayload | null>
   > = {
     'idle.random': async (contextManager: ContextManager) => {
       const context = contextManager.get()
       const result = await this.generateAIMessage('random', '随机空闲时刻', context)
-      if (result) {
-        contextManager.update({ lastMessage: result.text })
-        return { text: result.text, eventPayload: result.eventPayload }
-      }
-      return null
+      return result
     }
   }
 
@@ -121,7 +110,7 @@ export class IdleEventHandler implements IEventHandler {
     if (handler) {
       const result = await handler(contextManager)
       if (result) {
-        dispatcher.send(result)
+        await dispatcher.send(result)
       }
     }
   }
@@ -131,9 +120,9 @@ export class IdleEventHandler implements IEventHandler {
     eventDescription: string,
 
     context: Context
-  ): Promise<HandlerResult | null> {
+  ): Promise<InteractionEventPayload | null> {
     const selectedTheme = this.chatTheme[Math.floor(Math.random() * this.chatTheme.length)]
-    return await this.replyGenerator.generate({
+    return ActionDispatcher.buildEventPayload({
       event: `idle.${eventType}`,
       scene: `空闲主动对话。主题:${selectedTheme}；事件描述:${eventDescription}`,
       context,

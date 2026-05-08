@@ -3,22 +3,14 @@ import { ActionDispatcher } from './dispatcher'
 import { IEventHandler } from '../types/IEventHandler'
 import { ContextManager, Context } from './context'
 import { ChatService } from '@renderer/services/ChatService'
-import { useConfigStore } from '@renderer/stores/useConfigStore'
-
-interface QueuedEvent {
-  event: string
-  context: Partial<Context>
-}
 
 export class EventSystem {
+  // 事件处理器实例
   private handlers: Map<string, IEventHandler> = new Map()
-  private lastDispatchAt: number = 0
   private lastDispatchByType: Map<string, number> = new Map()
   private chatService: ChatService
-  private pendingEventQueue: QueuedEvent[] = []
-  private readonly maxQueueSize = 3
+  // 正在分发事件时，忽略新的事件触发，避免重复分发和状态更新冲突
   private isDispatching = false
-  private dispatchComplete: Promise<void> = Promise.resolve()
 
   constructor(
     private eventCenter: EventCenter,
@@ -26,41 +18,42 @@ export class EventSystem {
     private dispatcher: ActionDispatcher
   ) {
     this.chatService = ChatService.getInstance()
-    this.chatService.onSpeechEnd(() => {
-      window.setTimeout(() => {
-        this.flushPendingEvents().catch((error) => {
-          console.error('清空待处理事件队列失败:', error)
-        })
-      }, 2000)
-    })
   }
 
+  /**
+   * 注册事件处理器：保存实例并设置事件监听器
+   * @param handler 事件处理器实例
+   */
   registerHandler(handler: IEventHandler): void {
     this.handlers.set(handler.eventType, handler)
     this.setupEventListeners(handler.eventType)
   }
 
+  /**
+   * 安装事件监听器：监听特定事件类型，触发时更新上下文并处理事件
+   * @param eventType 事件类型（如 "mouse", "app"），监听该类型的所有事件（如 "mouse.idle", "app.focus"）
+   */
   private setupEventListeners(eventType: string): void {
     this.eventCenter.on(`${eventType}.*`, (event: string, context?: Partial<Context>) => {
       if (context) {
         this.contextManager.update(context)
       }
 
-      this.handleIncomingEvent(event, context || {})
+      this.handleIncomingEvent(event)
     })
   }
 
   /**
-   * 处理传入事件：对话中排队，否则检查冷却后直接分发
+   * 处理传入事件：执行中忽略，对话中忽略，否则检查冷却后直接分发
+   * @param event 完整事件字符串（如 "mouse.idle"），根据类型检查冷却并分发事件
    */
-  private handleIncomingEvent(event: string, context: Partial<Context>): void {
+  private handleIncomingEvent(event: string): void {
     const passiveEvents = new Set(['mouse.idle', 'mouse.busy', 'system.battery-level'])
     if (passiveEvents.has(event)) {
       return
     }
 
     if (this.isDispatching) {
-      this.enqueueEvent(event, context)
       return
     }
 
@@ -68,77 +61,39 @@ export class EventSystem {
     this.contextManager.update({ isInConversation })
 
     if (isInConversation) {
-      this.enqueueEvent(event, context)
       return
     }
 
-    if (!this.checkCooldown(event)) {
+    const eventType = event.split('.')[0] || event
+    if (!this.checkCooldown(eventType)) {
       return
     }
 
     this.dispatchEvent(event)
   }
 
-  /**
-   * 将事件加入待处理队列，超出上限时移除最旧的事件
-   */
-  private enqueueEvent(event: string, context: Partial<Context>): void {
-    this.pendingEventQueue = this.pendingEventQueue.filter((e) => e.event !== event)
-    this.pendingEventQueue.push({ event, context })
-
-    while (this.pendingEventQueue.length > this.maxQueueSize) {
-      this.pendingEventQueue.shift()
-    }
-  }
-
-  /**
-   * 清空待处理事件队列，逐个分发
-   */
-  private async flushPendingEvents(): Promise<void> {
-    await this.dispatchComplete
-
-    const isInConversation = this.chatService.getReplyStatus()
-    if (isInConversation) {
-      return
+  private checkCooldown(eventType: string): boolean {
+    const handler = this.handlers.get(eventType)
+    const cooldownMs = handler?.cooldownMs ?? 0
+    if (cooldownMs <= 0) {
+      return true
     }
 
-    const queue = [...this.pendingEventQueue]
-    this.pendingEventQueue = []
-
-    for (const item of queue) {
-      if (this.chatService.getReplyStatus()) {
-        this.pendingEventQueue.push(item)
-        break
-      }
-
-      this.contextManager.update(item.context)
-      this.dispatchEvent(item.event)
-      await this.dispatchComplete
-    }
-  }
-
-  private checkCooldown(event: string): boolean {
-    const configStore = useConfigStore()
-    const globalCooldown = Math.max(500, Number(configStore.config.autoEventCooldownMs || 8000))
     const now = Date.now()
-
-    if (now - this.lastDispatchAt < globalCooldown) {
-      return false
-    }
-
-    const eventType = event.split('.')[0] || event
-    const typeCooldown = this.getTypeCooldownMs(eventType, globalCooldown)
     const lastTypeDispatchAt = this.lastDispatchByType.get(eventType) || 0
 
-    if (now - lastTypeDispatchAt < typeCooldown) {
+    if (now - lastTypeDispatchAt < cooldownMs) {
       return false
     }
 
-    this.lastDispatchAt = now
     this.lastDispatchByType.set(eventType, now)
     return true
   }
 
+  /**
+   * 分发事件：根据事件类型找到处理器，更新上下文并执行处理器逻辑，捕获错误
+   * @param event 完整事件字符串（如 "mouse.idle"），根据类型找到处理器并执行，更新上下文的 lastEventTime 和 lastEventType
+   */
   private dispatchEvent(event: string): void {
     const eventType = event.split('.')[0] || event
     const handler = this.handlers.get(eventType)
@@ -150,31 +105,19 @@ export class EventSystem {
       })
 
       this.isDispatching = true
-      this.dispatchComplete = (async () => {
-        try {
-          await handler.handle(event, this.contextManager, this.dispatcher)
-          await this.dispatcher.waitForDrain()
-        } catch (error) {
+      // 触发事件处理器逻辑，传入事件字符串、上下文管理器和动作分发器
+      handler
+        .handle(event, this.contextManager, this.dispatcher)
+        .catch((error) => {
           console.error('事件分发失败:', error)
-        } finally {
+        })
+        .finally(() => {
           this.isDispatching = false
-        }
-      })()
+        })
     }
   }
 
-  private getTypeCooldownMs(eventType: string, defaultCooldownMs: number): number {
-    if (eventType === 'system') {
-      return 5000
-    }
-
-    if (eventType === 'live2d') {
-      return Math.max(1500, Math.floor(defaultCooldownMs / 2))
-    }
-
-    return defaultCooldownMs
-  }
-
+  // 调试方法：注册一个监听所有事件的处理器，打印捕获的事件
   registerDebugEvents(): void {
     this.eventCenter.on('*', (e) => console.log('捕获事件', e))
   }

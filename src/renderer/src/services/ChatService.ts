@@ -377,9 +377,9 @@ class ChatService {
       await this.readStreamResponse(response)
 
       // 刷新助手数据以获取最新的好感度
-      this.assistantManager.refreshCurrentAssistant().catch((e) =>
-        console.warn('刷新助手好感度失败:', e)
-      )
+      this.assistantManager
+        .refreshCurrentAssistant()
+        .catch((e) => console.warn('刷新助手好感度失败:', e))
 
       return true
     } catch (error) {
@@ -448,9 +448,9 @@ class ChatService {
       await this.readStreamResponse(response)
 
       // 刷新助手数据以获取最新的好感度
-      this.assistantManager.refreshCurrentAssistant().catch((e) =>
-        console.warn('刷新助手好感度失败:', e)
-      )
+      this.assistantManager
+        .refreshCurrentAssistant()
+        .catch((e) => console.warn('刷新助手好感度失败:', e))
 
       return this.currentDisplayText.trim() || null
     } catch (error) {
@@ -514,9 +514,9 @@ class ChatService {
       }
 
       // 刷新助手数据以获取最新的好感度
-      this.assistantManager.refreshCurrentAssistant().catch((e) =>
-        console.warn('刷新助手好感度失败:', e)
-      )
+      this.assistantManager
+        .refreshCurrentAssistant()
+        .catch((e) => console.warn('刷新助手好感度失败:', e))
     } catch (error) {
       if ((error as Error).name !== 'AbortError') {
         console.error('发送消息失败:', error)
