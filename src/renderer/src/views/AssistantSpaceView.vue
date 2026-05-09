@@ -417,7 +417,11 @@ onMounted(async () => {
   // 当前窗口显示时隐藏助手窗口
   window.api.closeAssistant()
 
-  loadLive2DModel().then(async () => {
+  loadLive2DModel().then(async (code) => {
+    // 模型加载成功后再发送欢迎语并启动交互系统，确保欢迎语的动作和语音能够正常播放
+    if (!code) {
+      return
+    }
     await sendOnboardingWelcomeIfNeeded()
     interactionSystem.start()
     // 监听来自ChatBox的消息

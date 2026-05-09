@@ -203,6 +203,10 @@ const companionDaysText = computed(() => {
   return `你好，阁下！今天是我陪伴阁下的第${companionDays.value}天！`
 })
 
+/**
+ * 计算陪伴天数
+ * @param completedAt 时间戳，精确到毫秒
+ */
 const calcCompanionDays = (completedAt: number): number => {
   if (!Number.isFinite(completedAt) || completedAt <= 0) {
     return 1

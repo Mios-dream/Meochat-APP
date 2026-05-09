@@ -21,14 +21,13 @@ const onboardingSchema: Schema<OnboardingStoreShape> = {
   profile: {
     type: 'object',
     default: {
-      name: '',
       birthday: '',
       gender: '',
       occupation: ''
     }
   },
   completedAt: { type: 'number', default: 0 },
-  updatedAt: { type: 'number', default: Math.floor(Date.now() / 1000) }
+  updatedAt: { type: 'number', default: Date.now() }
 }
 
 class OnboardingStoreService {
@@ -69,7 +68,6 @@ class OnboardingStoreService {
 
   public saveProfile(profile: OnboardingProfile): OnboardingState {
     this.store.set('profile', {
-      name: profile.name,
       birthday: profile.birthday,
       gender: profile.gender,
       occupation: profile.occupation
@@ -79,7 +77,7 @@ class OnboardingStoreService {
   }
 
   public markCompleted(): OnboardingState {
-    const now = Math.floor(Date.now() / 1000)
+    const now = Date.now()
     this.store.set('completed', true)
     this.store.set('completedAt', now)
     this.store.set('updatedAt', now)
@@ -100,7 +98,7 @@ class OnboardingStoreService {
   }
 
   private touch(): void {
-    this.store.set('updatedAt', Math.floor(Date.now() / 1000))
+    this.store.set('updatedAt', Date.now())
   }
 }
 

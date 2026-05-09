@@ -8,7 +8,7 @@ import sakuraImgUrl from '../../assets/images/sakura.webp'
 
 const props = withDefaults(
   defineProps<{
-    mode: 'logstream' | 'sakura' | 'contract' | 'idle' | 'hidden'
+    mode?: 'logstream' | 'sakura' | 'contract' | 'idle' | 'hidden'
     density?: number
   }>(),
   { mode: 'idle', density: 1.0 }
@@ -46,13 +46,33 @@ sakuraImage.src = sakuraImgUrl
 const particles: Particle[] = []
 const MAX_PARTICLES = 220
 
-const LOG_COLORS_PINK = ['#f8bbd0', '#f48fb1', '#f06292', '#ec407a', '#fca5b9', '#ffcdd2', '#ef9a9a', '#fb7299']
-const SAKURA_COLORS = ['#f8bbd0', '#f48fb1', '#f06292', '#ec407a', '#e91e63', '#fce4ec', '#ffcdd2', '#ef9a9a', '#fb7299', '#ffc0d6']
+const LOG_COLORS_PINK = [
+  '#f8bbd0',
+  '#f48fb1',
+  '#f06292',
+  '#ec407a',
+  '#fca5b9',
+  '#ffcdd2',
+  '#ef9a9a',
+  '#fb7299'
+]
+const SAKURA_COLORS = [
+  '#f8bbd0',
+  '#f48fb1',
+  '#f06292',
+  '#ec407a',
+  '#e91e63',
+  '#fce4ec',
+  '#ffcdd2',
+  '#ef9a9a',
+  '#fb7299',
+  '#ffc0d6'
+]
 const SPARKLE_COLORS = ['#ffffff', '#fff9c4', '#ffecb3', '#ffe0b2', '#ffccbc', '#fff0f5']
 
 const NARRATIVE_LINES = [
   '正在加载温暖的心跳...',
-  '人格核心 v3.7.1 初始化中...',
+  '人格核心初始化中...',
   '搭建情感网络连接...',
   '同步心跳频率...',
   '校准温柔传感器...',
@@ -74,7 +94,7 @@ const NARRATIVE_LINES = [
   '等待初次接触...',
   '命运之线：已连接',
   '情感网络：同步完成',
-  '樱花协议：已激活',
+  '樱花协议：已激活'
 ]
 
 function initCanvas(): void {
@@ -244,15 +264,12 @@ function updateParticles(dt: number): void {
     p.rotation += p.rotationSpeed * cappedDt
 
     const fadeIn = Math.min(p.life / 1.5, 1.0)
-    const fadeOut = p.life > p.maxLife * 0.7 ? 1 - (p.life - p.maxLife * 0.7) / (p.maxLife * 0.3) : 1
+    const fadeOut =
+      p.life > p.maxLife * 0.7 ? 1 - (p.life - p.maxLife * 0.7) / (p.maxLife * 0.3) : 1
     p.alpha = p.targetAlpha * fadeIn * Math.max(0, fadeOut)
 
     const isOutOfBounds =
-      p.y < -80 ||
-      p.y > height + 80 ||
-      p.x < -200 ||
-      p.x > width + 200 ||
-      p.life > p.maxLife
+      p.y < -80 || p.y > height + 80 || p.x < -200 || p.x > width + 200 || p.life > p.maxLife
 
     if (isOutOfBounds) {
       particles.splice(i, 1)

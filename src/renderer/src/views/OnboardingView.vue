@@ -42,6 +42,25 @@
               :class="{ active: i <= logProgressDot }"
             ></div>
           </div>
+          <div class="log-toggle log-toggle-corner">
+            <button class="btn-log" @click="toggleLogDrawer">
+              {{ showLogDrawer ? '收起日志' : '查看日志' }}
+            </button>
+          </div>
+          <div v-if="showLogDrawer" class="log-modal" @click.self="toggleLogDrawer">
+            <div class="log-dialog">
+              <div class="log-dialog-header">
+                <span>启动日志</span>
+                <span class="log-drawer-sub">{{ logSourceText }}</span>
+              </div>
+              <div ref="logBodyRef" class="log-dialog-body">
+                <div v-if="logLines.length === 0" class="log-empty">暂无日志</div>
+                <div v-for="(line, index) in logLines" :key="index" class="log-line">
+                  {{ line }}
+                </div>
+              </div>
+            </div>
+          </div>
           <!-- error -->
           <div v-if="backendError" class="error-block">
             <p class="error-text">{{ backendError }}</p>
@@ -151,7 +170,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
 import { useConfigStore } from '../stores/useConfigStore'
@@ -257,6 +276,14 @@ const profile = reactive<OnboardingProfile>({
 
 const apiAddress = ref('')
 const sortedTasks = taskManager.tasks
+const showLogDrawer = ref(false)
+const logBodyRef = ref<HTMLElement | null>(null)
+const logLines = computed(() => taskManager.localStartupLogs.value)
+const logSourceText = computed(() => {
+  if (currentMode.value === 'api') return 'API 模式不提供本地日志'
+  if (sortedTasks.value.length === 0) return '未配置本地任务'
+  return `本地任务 ${sortedTasks.value.length} 项`
+})
 
 // ─── LOG_STREAM dot animation ───────────────────────────────────────────────
 
@@ -274,6 +301,27 @@ function stopLogDots(): void {
     logDotTimer = null
   }
 }
+
+function scrollLogToBottom(): void {
+  nextTick(() => {
+    const el = logBodyRef.value
+    if (!el) return
+    el.scrollTop = el.scrollHeight
+  })
+}
+
+function toggleLogDrawer(): void {
+  showLogDrawer.value = !showLogDrawer.value
+  if (showLogDrawer.value) {
+    scrollLogToBottom()
+  }
+}
+
+watch(logLines, () => {
+  if (showLogDrawer.value) {
+    scrollLogToBottom()
+  }
+})
 
 // ─── titlebar ───────────────────────────────────────────────────────────────
 
@@ -390,13 +438,17 @@ async function startLocalBackend(): Promise<boolean> {
 async function retryBackend(): Promise<void> {
   if (currentMode.value === 'api') {
     const ok = await connectApiMode()
-    if (ok) await loadAssistant()
+    if (ok) {
+      await loadAssistant()
+      await advanceAfterAssistantLoaded()
+    }
   } else {
     const ok = await startLocalBackend()
     if (ok) {
       currentMode.value = 'local-python'
       await window.api.onboarding.setMode('local-python')
       await loadAssistant()
+      await advanceAfterAssistantLoaded()
     }
   }
 }
@@ -412,12 +464,18 @@ async function switchMode(): Promise<void> {
     // give user a moment to see, then try to connect
     await wait(600)
     const ok = await connectApiMode()
-    if (ok) await loadAssistant()
+    if (ok) {
+      await loadAssistant()
+      await advanceAfterAssistantLoaded()
+    }
   } else {
     currentMode.value = 'local-python'
     await window.api.onboarding.setMode('local-python')
     await startLocalBackend()
-    if (!backendError.value) await loadAssistant()
+    if (!backendError.value) {
+      await loadAssistant()
+      await advanceAfterAssistantLoaded()
+    }
   }
 }
 
@@ -469,11 +527,15 @@ async function loadAssistant(): Promise<void> {
   await wait(400)
 }
 
+async function advanceAfterAssistantLoaded(): Promise<void> {
+  if (assistantLoadError.value) return
+  await startSakuraTransition()
+  await startFirstMeeting()
+}
+
 async function retryAssistantLoading(): Promise<void> {
   await loadAssistant()
-  if (!assistantLoadError.value) {
-    await startSakuraTransition()
-  }
+  await advanceAfterAssistantLoaded()
 }
 
 const personalityStatus = computed(() => {
@@ -608,12 +670,7 @@ async function runFlow(): Promise<void> {
   // 4. PERSONALITY_ONLINE → load assistant
   await loadAssistant()
   if (assistantLoadError.value) return // stay showing error
-
-  // 5. SAKURA_TRANSITION
-  await startSakuraTransition()
-
-  // 6. FIRST_MEETING
-  await startFirstMeeting()
+  await advanceAfterAssistantLoaded()
   // dialogue is user-driven; after last line, goState('PROFILE_SYNC') is called
 }
 
@@ -694,6 +751,7 @@ onUnmounted(() => {
 .screen {
   width: 100%;
   height: 100%;
+  position: relative;
 }
 
 /* ─── BOOT screen ───────────────────────────────────────────────────────── */
@@ -796,6 +854,99 @@ onUnmounted(() => {
   margin-top: 18px;
   display: flex;
   gap: 10px;
+}
+
+.log-toggle {
+  margin-bottom: 14px;
+}
+
+.log-toggle-corner {
+  position: absolute;
+  bottom: 24px;
+  right: 28px;
+  margin-top: 0;
+  z-index: 6;
+}
+
+.btn-log {
+  border: 1px solid rgba(251, 114, 153, 0.25);
+  border-radius: 12px;
+  padding: 6px 16px;
+  background: rgba(255, 255, 255, 0.7);
+  color: #b05473;
+  font-size: 12px;
+  cursor: pointer;
+  letter-spacing: 0.04em;
+  transition:
+    border-color 0.2s ease,
+    background 0.2s ease,
+    transform 0.15s ease;
+}
+
+.btn-log:hover {
+  border-color: rgba(251, 114, 153, 0.5);
+  background: rgba(255, 255, 255, 0.85);
+  transform: translateY(-1px);
+}
+
+.log-modal {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 245, 247, 0.55);
+  backdrop-filter: blur(2px);
+  z-index: 5;
+}
+
+.log-dialog {
+  width: min(680px, 90vw);
+  max-height: min(60vh, 480px);
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(251, 114, 153, 0.2);
+  border-radius: 20px;
+  box-shadow: 0 20px 48px rgba(180, 60, 90, 0.18);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.log-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 18px;
+  font-size: 12px;
+  color: #b05473;
+  background: rgba(255, 255, 255, 0.7);
+  border-bottom: 1px solid rgba(251, 114, 153, 0.12);
+  letter-spacing: 0.06em;
+}
+
+.log-drawer-sub {
+  color: rgba(176, 84, 115, 0.6);
+  font-size: 11px;
+}
+
+.log-dialog-body {
+  padding: 12px 18px 16px;
+  overflow: auto;
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-size: 12px;
+  color: #7b304a;
+}
+
+.log-empty {
+  color: rgba(176, 84, 115, 0.55);
+  text-align: center;
+  padding: 12px 0;
+}
+
+.log-line {
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .progress-dot {
