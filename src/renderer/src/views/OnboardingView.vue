@@ -11,104 +11,82 @@
       ></div>
     </div>
   </aside>
-  <div class="onboarding-root" :class="{ dissolving: isDissolving }">
-    <div class="onboarding-panel" :class="{ 'slogan-panel': currentStep === 'slogan' }">
-      <transition name="content-fade" mode="out-in">
-        <section :key="currentStep" class="step-content">
-          <template v-if="currentStep === 'local'">
-            <h2>正在检查环境</h2>
-            <p class="hint">这可能需要几分钟，阁下请耐心等待</p>
 
-            <ul class="task-list">
-              <li v-for="task in sortedTasks" :key="task.id" class="task-item">
-                <div class="task-info" @click="showLogs = !showLogs">
-                  <div class="task-header">
-                    <strong>智慧核心</strong>
-                    <span :class="['task-state', taskStateClass(task.id)]">
-                      {{ taskStateText(task.id) }}
-                    </span>
-                  </div>
-                  <small>助手运行的必须服务</small>
-                  <div class="task-progress">
-                    <div class="progress-bar-small">
-                      <div
-                        class="progress-fill-small"
-                        :class="{ 'progress-running': taskStateClass(task.id) === 'running' }"
-                      ></div>
-                    </div>
-                  </div>
-                </div>
-              </li>
-            </ul>
+  <div class="onboarding-root" :class="[`phase-${phaseClass}`, { dissolving: isDissolving }]">
+    <ParticleCanvas ref="particleRef" :mode="particleMode" :density="particleDensity" />
 
-            <div v-if="showLogs" class="log-box">
-              <div class="log-title">运行日志</div>
-              <div ref="logContainerRef" class="log-content">
-                <div v-for="(line, idx) in logLines" :key="idx" class="log-line">{{ line }}</div>
-              </div>
+    <div class="foreground-layer">
+      <Transition name="screen-fade" mode="out-in">
+        <!-- BOOT -->
+        <div v-if="currentState === 'BOOT'" key="boot" class="screen boot-screen">
+          <div class="boot-glitch-text">INITIALIZING</div>
+          <div class="boot-sub">SYSTEM BOOT SEQUENCE</div>
+        </div>
+
+        <!-- SYSTEM_WAKE -->
+        <div v-else-if="currentState === 'SYSTEM_WAKE'" key="wake" class="screen center-screen">
+          <div class="wake-pulse-ring"></div>
+          <div class="status-title">SIGNAL DETECTED</div>
+          <div class="status-sub">检测到苏醒信号...</div>
+        </div>
+
+        <!-- LOG_STREAM -->
+        <div v-else-if="currentState === 'LOG_STREAM'" key="logstream" class="screen center-screen">
+          <div class="status-title">{{ logStatusTitle }}</div>
+          <div class="status-sub">{{ logStatusSub }}</div>
+          <div class="progress-indicator">
+            <div
+              v-for="i in 5"
+              :key="i"
+              class="progress-dot"
+              :class="{ active: i <= logProgressDot }"
+            ></div>
+          </div>
+          <!-- error -->
+          <div v-if="backendError" class="error-block">
+            <p class="error-text">{{ backendError }}</p>
+            <div class="error-actions">
+              <button class="btn-cold btn-ghost-cold" @click="switchMode">切换 API 模式</button>
+              <button class="btn-cold" @click="retryBackend">重试</button>
             </div>
+          </div>
+        </div>
 
-            <p v-if="localError" class="error-text">{{ localError }}</p>
-
-            <div class="actions">
-              <button class="btn btn-ghost" :disabled="localRunning" @click="switchToApiMode">
-                切换 API 模式
-              </button>
-              <button class="btn" :disabled="localRunning" @click="retryLocalFlow">
-                {{ localRunning ? '正在重试...' : '重试' }}
-              </button>
+        <!-- PERSONALITY_ONLINE -->
+        <div
+          v-else-if="currentState === 'PERSONALITY_ONLINE'"
+          key="personality"
+          class="screen center-screen"
+        >
+          <div class="status-title">PERSONALITY CORE</div>
+          <div class="status-sub">{{ personalityStatus }}</div>
+          <div class="personality-bar-wrap">
+            <div class="personality-bar">
+              <div class="personality-fill" :style="{ width: `${assistantProgress}%` }"></div>
             </div>
-          </template>
+            <span class="personality-pct">{{ assistantProgress }}%</span>
+          </div>
+          <div v-if="assistantLoadError" class="error-block">
+            <p class="error-text">{{ assistantLoadError }}</p>
+            <button class="btn-cold" @click="retryAssistantLoading">重试</button>
+          </div>
+        </div>
 
-          <template v-else-if="currentStep === 'api'">
-            <h2>连接远程 API</h2>
-            <p class="hint">阁下，如果需要连接到远程 API 服务，请填写以下信息。</p>
+        <!-- SAKURA_TRANSITION -->
+        <div
+          v-else-if="currentState === 'SAKURA_TRANSITION'"
+          key="sakura"
+          class="screen center-screen"
+        >
+          <div class="sakura-text">SAKURA PROTOCOL</div>
+          <div class="sakura-sub">协议启动...</div>
+        </div>
 
-            <label class="field">
-              <span>API 地址（host:port）</span>
-              <input
-                v-model="apiAddress"
-                type="text"
-                placeholder="例如 127.0.0.1:8001"
-                :disabled="apiChecking"
-              />
-            </label>
-
-            <p class="sub-hint">健康检查地址：{{ apiHealthPreview }}</p>
-            <p v-if="apiError" class="error-text">{{ apiError }}</p>
-
-            <div class="actions">
-              <button class="btn btn-ghost" :disabled="apiChecking" @click="switchToLocalMode">
-                切换本地模式
-              </button>
-              <button class="btn" :disabled="apiChecking" @click="connectApiMode">
-                {{ apiChecking ? '连接中...' : '验证' }}
-              </button>
-            </div>
-          </template>
-
-          <template v-else-if="currentStep === 'loading'">
-            <h2>正在加载助手资料与资源</h2>
-            <p class="hint">马上就好，请稍作等待，我正在为阁下准备助手档案与资源文件。</p>
-
-            <div class="progress-wrap">
-              <div class="progress-bar">
-                <div class="progress-fill" :style="{ width: `${assistantProgress}%` }"></div>
-              </div>
-              <span>{{ assistantProgress }}%</span>
-            </div>
-
-            <p class="sub-hint">{{ assistantProgressHint }}</p>
-            <p v-if="assistantLoadError" class="error-text">{{ assistantLoadError }}</p>
-
-            <div v-if="assistantLoadError" class="actions">
-              <button class="btn" @click="retryAssistantLoading">重新加载</button>
-            </div>
-          </template>
-
-          <template v-else-if="currentStep === 'profile'">
-            <h2>完善阁下的资料</h2>
-            <p class="hint">初次见面，可以让我更多的了解一下阁下吗？</p>
+        <!-- FIRST_MEETING: centered profile card -->
+        <div v-else-if="currentState === 'FIRST_MEETING'" key="meeting" class="screen meeting-bg">
+          <div class="onboarding-panel" :class="{ 'panel-entering': showPanel }">
+            <h2 class="panel-title">完善阁下的资料</h2>
+            <p class="panel-hint">初次见面，可以让我更多的了解一下阁下吗？</p>
 
             <div class="profile-grid">
               <label class="field">
@@ -135,70 +113,141 @@
             <p v-if="profileError" class="error-text">{{ profileError }}</p>
 
             <div class="actions">
-              <button class="btn" :disabled="savingProfile" @click="submitProfile">
+              <button class="btn-submit" :disabled="savingProfile" @click="submitProfile">
                 {{ savingProfile ? '保存中...' : '完成' }}
               </button>
             </div>
-          </template>
+          </div>
+        </div>
 
-          <template v-else-if="currentStep === 'slogan'">
-            <div class="slogan-wrap">
-              <p class="slogan" :aria-label="sloganText">
-                <span
-                  v-for="(char, index) in sloganText"
-                  :key="`${char}-${index}`"
-                  class="slogan-char"
-                  :style="{ '--char-delay': `${index * 90}ms` }"
-                >
-                  {{ char }}
-                </span>
-              </p>
-            </div>
-          </template>
-        </section>
-      </transition>
+        <!-- PROFILE_SYNC -->
+        <div v-else-if="currentState === 'PROFILE_SYNC'" key="sync" class="screen center-screen">
+          <div class="sync-ring">
+            <div class="sync-ring-inner"></div>
+          </div>
+          <div class="status-title sync-title">正在同步契约数据...</div>
+          <div v-for="i in 3" :key="i" class="sync-sparkle" :style="syncSparkleStyle(i)"></div>
+        </div>
+
+        <!-- CONTRACT -->
+        <div v-else-if="currentState === 'CONTRACT'" key="contract" class="screen center-screen">
+          <div class="contract-glow"></div>
+          <div class="contract-icon">✦</div>
+          <div class="contract-title">契约成立</div>
+          <div class="contract-text">
+            从此刻起，澪将常驻于<br />
+            您的屏幕角落...
+          </div>
+          <button class="contract-btn" @click="acceptContract">
+            <span class="contract-btn-text">接受契约</span>
+          </button>
+        </div>
+
+        <!-- fallback -->
+        <div v-else key="empty" class="screen"></div>
+      </Transition>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 import { useConfigStore } from '../stores/useConfigStore'
 import { AssistantManager } from '../services/assistantManager'
 import TaskManager from '../services/TaskManager'
 import { OnboardingMode, OnboardingProfile } from '../types/onboarding'
+import ParticleCanvas from '../components/onboarding/ParticleCanvas.vue'
 
-type OnboardingStep = 'local' | 'api' | 'loading' | 'profile' | 'slogan'
+// ─── type helpers ───────────────────────────────────────────────────────────
+
+type OnboardingState =
+  | 'BOOT'
+  | 'SYSTEM_WAKE'
+  | 'LOG_STREAM'
+  | 'PERSONALITY_ONLINE'
+  | 'SAKURA_TRANSITION'
+  | 'FIRST_MEETING'
+  | 'PROFILE_SYNC'
+  | 'CONTRACT'
+  | 'HOME'
+
+// ─── services / singletons ──────────────────────────────────────────────────
 
 const router = useRouter()
 const configStore = useConfigStore()
 const assistantManager = AssistantManager.getInstance()
 const taskManager = TaskManager.getInstance()
+// ─── state machine ──────────────────────────────────────────────────────────
 
-const currentStep = ref<OnboardingStep>('loading')
+const currentState = ref<OnboardingState>('BOOT')
 const currentMode = ref<OnboardingMode>('')
-const localRunning = ref(false)
-const apiChecking = ref(false)
-const savingProfile = ref(false)
-// 是否正在消失
 const isDissolving = ref(false)
 
-const localError = ref('')
-const apiError = ref('')
-const profileError = ref('')
+// ─── particle canvas control ────────────────────────────────────────────────
+
+const particleRef = ref<InstanceType<typeof ParticleCanvas> | null>(null)
+
+const particleMode = computed(() => {
+  switch (currentState.value) {
+    case 'BOOT':
+      return 'hidden' as const
+    case 'SYSTEM_WAKE':
+      return 'idle' as const
+    case 'LOG_STREAM':
+    case 'PERSONALITY_ONLINE':
+      return 'logstream' as const
+    case 'SAKURA_TRANSITION':
+    case 'FIRST_MEETING':
+    case 'PROFILE_SYNC':
+      return 'sakura' as const
+    case 'CONTRACT':
+      return 'contract' as const
+    default:
+      return 'hidden' as const
+  }
+})
+
+const particleDensity = computed(() => {
+  switch (currentState.value) {
+    case 'CONTRACT':
+      return 1.4
+    case 'SAKURA_TRANSITION':
+      return 1.1
+    case 'FIRST_MEETING':
+      return 0.6
+    default:
+      return 1.0
+  }
+})
+
+const phaseClass = computed(() => {
+  switch (currentState.value) {
+    case 'BOOT':
+    case 'SYSTEM_WAKE':
+      return 'cold'
+    case 'LOG_STREAM':
+    case 'PERSONALITY_ONLINE':
+      return 'mid'
+    case 'SAKURA_TRANSITION':
+      return 'warming'
+    default:
+      return 'warm'
+  }
+})
+
+// ─── backend state ──────────────────────────────────────────────────────────
+
+const backendError = ref('')
 const assistantLoadError = ref('')
-
-const apiAddress = ref('')
 const assistantProgress = ref(0)
-const assistantProgressHint = ref('等待下载事件...')
-const logLines = computed(() => taskManager.localStartupLogs.value)
+const logStatusTitle = ref('正在启动核心服务...')
+const logStatusSub = ref('请稍候，这可能需要几分钟')
+const logProgressDot = ref(1)
+let logDotTimer: ReturnType<typeof setInterval> | null = null
 
-const logContainerRef = ref<HTMLElement | null>(null)
-const sortedTasks = taskManager.tasks
-const showLogs = ref(false)
-const sloganText = '澪将从此刻起，常驻于您的屏幕角落...'
+// ─── profile ────────────────────────────────────────────────────────────────
 
 const profile = reactive<OnboardingProfile>({
   birthday: '',
@@ -206,55 +255,38 @@ const profile = reactive<OnboardingProfile>({
   occupation: ''
 })
 
-const apiHealthPreview = computed(() => {
-  const addr = apiAddress.value.trim()
-  return addr ? `http://${addr}/api/health` : 'http://<host:port>/api/health'
-})
+const apiAddress = ref('')
+const sortedTasks = taskManager.tasks
+
+// ─── LOG_STREAM dot animation ───────────────────────────────────────────────
+
+function startLogDots(): void {
+  let i = 1
+  logDotTimer = setInterval(() => {
+    i = (i % 5) + 1
+    logProgressDot.value = i
+  }, 700)
+}
+
+function stopLogDots(): void {
+  if (logDotTimer) {
+    clearInterval(logDotTimer)
+    logDotTimer = null
+  }
+}
+
+// ─── titlebar ───────────────────────────────────────────────────────────────
 
 const titlebarIcons = [
-  {
-    color: '#f3bc4f',
-    text: '最小化',
-    action: () => {
-      window.api.minimizeApp()
-    }
-  },
-  {
-    color: '#64c857',
-    text: '最大化',
-    action: () => {
-      window.api.maximizeApp()
-    }
-  },
-  {
-    color: '#e97168',
-    text: '关闭',
-    action: () => {
-      window.api.hideApp()
-    }
-  }
+  { color: '#f3bc4f', text: '最小化', action: () => window.api.minimizeApp() },
+  { color: '#64c857', text: '最大化', action: () => window.api.maximizeApp() },
+  { color: '#e97168', text: '关闭', action: () => window.api.hideApp() }
 ]
 
-function taskStateClass(taskId: number): string {
-  return taskManager.getStartupTaskStateClass(taskId)
-}
+// ─── ui helpers ─────────────────────────────────────────────────────────────
 
-function taskStateText(taskId: number): string {
-  return taskManager.getStartupTaskStateText(taskId)
-}
-
-function appendLog(line: string): void {
-  if (!line) {
-    return
-  }
-
-  taskManager.appendLocalSystemLog(line.replace(/^\[系统\]\s*/, ''))
-
-  void nextTick(() => {
-    if (logContainerRef.value) {
-      logContainerRef.value.scrollTop = logContainerRef.value.scrollHeight
-    }
-  })
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 function normalizeApiAddress(address: string): string {
@@ -265,171 +297,211 @@ function normalizeApiAddress(address: string): string {
 }
 
 function validateApiAddress(address: string): boolean {
-  const pattern = /^[\w.-]+:\d+$/
-  return pattern.test(address)
-}
-
-function wait(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms)
-  })
+  return /^[\w.-]+:\d+$/.test(address)
 }
 
 async function checkApiHealth(address: string, attempts = 1): Promise<boolean> {
   const normalizedAddress = normalizeApiAddress(address)
-
   for (let i = 0; i < attempts; i++) {
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), 5000)
-
     try {
       const response = await fetch(`http://${normalizedAddress}/api/health`, {
         method: 'GET',
         signal: controller.signal
       })
       const result = await response.json()
-
       if (response.ok && result.status === 'ok') {
         clearTimeout(timeout)
         return true
       }
     } catch {
-      // 忽略当前轮次异常，继续重试
+      // continue
     } finally {
       clearTimeout(timeout)
     }
-
-    if (i < attempts - 1) {
-      await wait(1300)
-    }
+    if (i < attempts - 1) await wait(1300)
   }
-
   return false
 }
 
-function onAssistantDownloadProgress(
-  _event,
-  payload: { assistantName: string; progress: number }
-): void {
-  assistantProgress.value = Math.max(0, Math.min(100, payload.progress))
-  assistantProgressHint.value = `正在下载 ${payload.assistantName} 的资源...`
+// ─── state transitions ──────────────────────────────────────────────────────
+
+async function goState(next: OnboardingState, delay = 0): Promise<void> {
+  if (delay > 0) await wait(delay)
+  currentState.value = next
 }
 
-async function connectLocalMode(): Promise<void> {
-  currentStep.value = 'local'
-  currentMode.value = 'local-python'
-  await window.api.onboarding.setMode('local-python')
+async function startBootSequence(): Promise<void> {
+  currentState.value = 'BOOT'
+  await wait(1800)
+}
 
-  localRunning.value = true
-  localError.value = ''
+async function startSystemWake(): Promise<void> {
+  currentState.value = 'SYSTEM_WAKE'
+  await wait(1500)
+}
 
-  const address = normalizeApiAddress(configStore.config.baseUrl || '127.0.0.1:8001')
+// ─── backend: local service startup ─────────────────────────────────────────
+
+async function startLocalBackend(): Promise<boolean> {
+  currentState.value = 'LOG_STREAM'
+  backendError.value = ''
+  logStatusTitle.value = '正在启动核心服务...'
+  logStatusSub.value = '初始化智慧核心所需的基础设施'
+  startLogDots()
 
   try {
     const startResult = await taskManager.startLocalTasks(sortedTasks.value)
     if (!startResult.success) {
-      localError.value = startResult.error || '本地服务启动失败，请查看日志。'
-      return
+      backendError.value = startResult.error || '本地服务启动失败。'
+      stopLogDots()
+      return false
     }
 
-    appendLog('[系统] 开始检测 API 健康状态')
+    logStatusTitle.value = '正在唤醒澪的意识核心...'
+    logStatusSub.value = '检查神经网络连接状态'
+    const address = normalizeApiAddress(configStore.config.baseUrl || '127.0.0.1:8001')
     const healthOk = await checkApiHealth(address, 20)
 
     if (!healthOk) {
       const running = await taskManager.areTasksRunning(sortedTasks.value.map((task) => task.id))
       if (running) {
-        localError.value = '本地服务仍在预热中，API 暂未就绪，请稍后重试。'
-        appendLog('[系统] API 暂未就绪，服务仍在运行中')
+        backendError.value = '本地服务仍在预热中，API 暂未就绪，请稍后重试。'
       } else {
-        localError.value = '本地任务未保持运行，API 健康检查失败，请查看日志后重试。'
-        appendLog('[系统] API 健康检查失败，检测到本地任务已退出')
+        backendError.value = '核心服务未能保持运行，请查看日志后重试。'
       }
-      return
+      stopLogDots()
+      return false
     }
 
-    appendLog('[系统] API 健康检查成功，进入资源加载阶段')
-    await continueAfterConnection('local-python')
-  } finally {
-    localRunning.value = false
+    stopLogDots()
+    logStatusTitle.value = '核心服务就绪'
+    logStatusSub.value = '意识核心连接成功'
+    await wait(500)
+    return true
+  } catch (err) {
+    backendError.value = err instanceof Error ? err.message : '未知错误'
+    stopLogDots()
+    return false
   }
 }
 
-async function connectApiMode(): Promise<void> {
-  apiChecking.value = true
-  apiError.value = ''
-
-  try {
-    const normalizedAddress = normalizeApiAddress(apiAddress.value)
-    if (!normalizedAddress) {
-      apiError.value = '请输入 API 地址。'
-      return
+async function retryBackend(): Promise<void> {
+  if (currentMode.value === 'api') {
+    const ok = await connectApiMode()
+    if (ok) await loadAssistant()
+  } else {
+    const ok = await startLocalBackend()
+    if (ok) {
+      currentMode.value = 'local-python'
+      await window.api.onboarding.setMode('local-python')
+      await loadAssistant()
     }
-
-    if (!validateApiAddress(normalizedAddress)) {
-      apiError.value = '地址格式无效，请使用 host:port 形式。'
-      return
-    }
-
-    const ok = await checkApiHealth(normalizedAddress, 2)
-    if (!ok) {
-      apiError.value = '连接失败，请确认服务是否可访问。'
-      return
-    }
-
-    await configStore.updateConfig('baseUrl', normalizedAddress)
-    await continueAfterConnection('api')
-  } finally {
-    apiChecking.value = false
   }
 }
 
-async function switchToLocalMode(): Promise<void> {
-  currentStep.value = 'local'
-  currentMode.value = 'local-python'
-  await window.api.onboarding.setMode('local-python')
+async function switchMode(): Promise<void> {
+  if (currentMode.value === 'local-python' || currentMode.value === '') {
+    currentMode.value = 'api'
+    currentState.value = 'LOG_STREAM'
+    backendError.value = ''
+    apiAddress.value = configStore.config.baseUrl || '127.0.0.1:8001'
+    logStatusTitle.value = 'API 模式'
+    logStatusSub.value = `等待连接 ${apiAddress.value}...`
+    // give user a moment to see, then try to connect
+    await wait(600)
+    const ok = await connectApiMode()
+    if (ok) await loadAssistant()
+  } else {
+    currentMode.value = 'local-python'
+    await window.api.onboarding.setMode('local-python')
+    await startLocalBackend()
+    if (!backendError.value) await loadAssistant()
+  }
 }
 
-async function continueAfterConnection(mode: OnboardingMode): Promise<void> {
-  currentMode.value = mode
-  await window.api.onboarding.setMode(mode)
+// ─── backend: API mode ──────────────────────────────────────────────────────
 
-  currentStep.value = 'loading'
+async function connectApiMode(): Promise<boolean> {
+  backendError.value = ''
+  const normalizedAddress = normalizeApiAddress(apiAddress.value)
+  if (!normalizedAddress) {
+    backendError.value = '请输入 API 地址。'
+    return false
+  }
+  if (!validateApiAddress(normalizedAddress)) {
+    backendError.value = '地址格式无效，请使用 host:port 形式。'
+    return false
+  }
+
+  logStatusTitle.value = '正在连接远程核心...'
+  logStatusSub.value = `尝试连接 ${normalizedAddress}`
+
+  const ok = await checkApiHealth(normalizedAddress, 2)
+  if (!ok) {
+    backendError.value = '连接失败，请确认服务是否可访问。'
+    return false
+  }
+
+  await configStore.updateConfig('baseUrl', normalizedAddress)
+  logStatusTitle.value = '远程核心已连接'
+  logStatusSub.value = '意识同步通道已建立'
+  return true
+}
+
+// ─── backend: assistant loading ─────────────────────────────────────────────
+
+async function loadAssistant(): Promise<void> {
+  currentState.value = 'PERSONALITY_ONLINE'
   assistantLoadError.value = ''
   assistantProgress.value = 5
-  assistantProgressHint.value = '开始同步助手数据...'
 
   const result = await window.api.initAssistant()
   if (!result.success) {
     assistantLoadError.value = `助手数据加载失败：${result.error || '未知错误'}`
-    assistantProgressHint.value = '加载失败，请重试。'
     return
   }
 
   assistantProgress.value = Math.max(assistantProgress.value, 90)
-  assistantProgressHint.value = '正在整理助手信息...'
-
   await assistantManager.initialize()
-
   assistantProgress.value = 100
-  assistantProgressHint.value = '助手数据加载完成'
-
-  await wait(350)
-  currentStep.value = 'profile'
-}
-
-async function retryLocalFlow(): Promise<void> {
-  await connectLocalMode()
+  await wait(400)
 }
 
 async function retryAssistantLoading(): Promise<void> {
-  await continueAfterConnection(currentMode.value || 'api')
+  await loadAssistant()
+  if (!assistantLoadError.value) {
+    await startSakuraTransition()
+  }
 }
 
-async function switchToApiMode(): Promise<void> {
-  currentStep.value = 'api'
-  currentMode.value = 'api'
-  await window.api.onboarding.setMode('api')
-  apiError.value = ''
+const personalityStatus = computed(() => {
+  if (assistantLoadError.value) return '人格核心加载失败...'
+  if (assistantProgress.value >= 100) return '人格核心已上线'
+  if (assistantProgress.value >= 90) return '正在整理助手信息...'
+  if (assistantProgress.value > 5) return '正在加载人格数据...'
+  return '开始同步助手数据...'
+})
+
+// ─── transition: SAKURA ─────────────────────────────────────────────────────
+
+async function startSakuraTransition(): Promise<void> {
+  currentState.value = 'SAKURA_TRANSITION'
+  particleRef.value?.morphToSakura()
+  await wait(2800)
+}
+
+// ─── FIRST_MEETING ────────────────────────────────────────────────────────
+
+const showPanel = ref(false)
+const savingProfile = ref(false)
+const profileError = ref('')
+
+async function startFirstMeeting(): Promise<void> {
+  currentState.value = 'FIRST_MEETING'
+  await wait(400)
+  showPanel.value = true
 }
 
 async function submitProfile(): Promise<void> {
@@ -442,37 +514,114 @@ async function submitProfile(): Promise<void> {
       return
     }
 
+    await goState('PROFILE_SYNC')
+    showPanel.value = false
+    await wait(300)
+
     await window.api.onboarding.saveProfile({
       birthday: profile.birthday.trim(),
       gender: profile.gender.trim(),
       occupation: profile.occupation.trim()
     })
 
-    currentStep.value = 'slogan'
-    await wait(3000)
-
-    await finishOnboarding()
+    await wait(1500)
+    await startContract()
   } finally {
     savingProfile.value = false
   }
 }
 
-async function finishOnboarding(): Promise<void> {
+function syncSparkleStyle(i: number): Record<string, string> {
+  const angle = (i / 3) * Math.PI * 2 + Date.now() * 0.001
+  const r = 80 + Math.sin(Date.now() * 0.002 + i) * 20
+  const x = Math.cos(angle) * r
+  const y = Math.sin(angle) * r
+  return {
+    left: `calc(50% + ${x}px)`,
+    top: `calc(50% + ${y}px)`,
+    animationDelay: `${i * 0.2}s`
+  }
+}
+
+// ─── CONTRACT ───────────────────────────────────────────────────────────────
+
+async function startContract(): Promise<void> {
+  currentState.value = 'CONTRACT'
+}
+
+async function acceptContract(): Promise<void> {
   await window.api.onboarding.markCompleted()
   isDissolving.value = true
+  particleRef.value?.clearParticles()
   await nextTick()
   await wait(80)
 
   await router.replace({
     path: '/tabs',
-    query: {
-      tab: 'assistant-space',
-      welcome: 'true'
-    }
+    query: { tab: 'assistant-space', welcome: 'true' }
   })
 }
 
-async function bootstrap(): Promise<void> {
+// ─── IPC listener ───────────────────────────────────────────────────────────
+
+function onAssistantDownloadProgress(
+  _event,
+  payload: { assistantName: string; progress: number }
+): void {
+  assistantProgress.value = Math.max(0, Math.min(100, payload.progress))
+}
+
+// ─── main flow ──────────────────────────────────────────────────────────────
+
+async function runFlow(): Promise<void> {
+  // 1. BOOT
+  await startBootSequence()
+
+  // 2. SYSTEM_WAKE
+  await startSystemWake()
+
+  // 3. LOG_STREAM → start backend
+  if (sortedTasks.value.length > 0) {
+    currentMode.value = 'local-python'
+    await window.api.onboarding.setMode('local-python')
+    const ok = await startLocalBackend()
+    if (!ok) return // stay in LOG_STREAM showing error
+  } else {
+    // no local tasks → API mode
+    currentMode.value = 'api'
+    await window.api.onboarding.setMode('api')
+    apiAddress.value = configStore.config.baseUrl || '127.0.0.1:8001'
+    currentState.value = 'LOG_STREAM'
+    backendError.value = ''
+    logStatusTitle.value = 'API 模式'
+    logStatusSub.value = `等待连接 ${apiAddress.value}...`
+    startLogDots()
+    await wait(600)
+    const ok = await connectApiMode()
+    if (!ok) {
+      stopLogDots()
+      return
+    }
+    stopLogDots()
+  }
+
+  // 4. PERSONALITY_ONLINE → load assistant
+  await loadAssistant()
+  if (assistantLoadError.value) return // stay showing error
+
+  // 5. SAKURA_TRANSITION
+  await startSakuraTransition()
+
+  // 6. FIRST_MEETING
+  await startFirstMeeting()
+  // dialogue is user-driven; after last line, goState('PROFILE_SYNC') is called
+}
+
+// ─── bootstrap ──────────────────────────────────────────────────────────────
+
+onMounted(async () => {
+  window.api.ipcRenderer.on('assistant:download-progress', onAssistantDownloadProgress)
+
   const onboardingState = await window.api.onboarding.getState()
   if (onboardingState.completed) {
     await router.replace('/tabs')
@@ -488,597 +637,643 @@ async function bootstrap(): Promise<void> {
   }
 
   await taskManager.initService()
-
-  if (sortedTasks.value.length > 0) {
-    await connectLocalMode()
-    if (localError.value) {
-      currentStep.value = 'local'
-    }
-  } else {
-    currentStep.value = 'api'
-    currentMode.value = 'api'
-    await window.api.onboarding.setMode('api')
-  }
-}
-
-onMounted(async () => {
-  window.api.ipcRenderer.on('assistant:download-progress', onAssistantDownloadProgress)
-
-  watch(
-    logLines,
-    () => {
-      void nextTick(() => {
-        if (logContainerRef.value) {
-          logContainerRef.value.scrollTop = logContainerRef.value.scrollHeight
-        }
-      })
-    },
-    { deep: true }
-  )
-
-  await bootstrap()
+  await runFlow()
 })
 
 onUnmounted(() => {
   window.api.ipcRenderer.removeAllListeners('assistant:download-progress')
+  stopLogDots()
 })
 </script>
 
 <style scoped>
+/* ─── root ──────────────────────────────────────────────────────────────── */
+
 .onboarding-root {
   position: relative;
   width: 100vw;
   height: 100vh;
   overflow: hidden;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: #ff95ae;
+  transition: background 1.6s ease;
+}
+
+/* cold phase */
+.onboarding-root.phase-cold {
+  background: #fff5f7;
+}
+
+/* mid phase */
+.onboarding-root.phase-mid {
+  background: #fef0f5;
+}
+
+/* warming phase */
+.onboarding-root.phase-warming {
+  background: #fce4ec;
+}
+
+/* warm phase */
+.onboarding-root.phase-warm {
+  background: #fce4ec;
 }
 
 .onboarding-root.dissolving {
   animation: dissolveOut 0.8s ease forwards;
 }
 
-.bg-glow {
-  position: absolute;
-  border-radius: 999px;
-  filter: blur(50px);
-  opacity: 0.45;
-  pointer-events: none;
-}
-
-.bg-glow-a {
-  width: 380px;
-  height: 380px;
-  background: #ffffff;
-  top: -120px;
-  right: -100px;
-  animation: floatA 7s ease-in-out infinite;
-}
-
-.bg-glow-b {
-  width: 320px;
-  height: 320px;
-  background: #ffc7da;
-  bottom: -100px;
-  left: -90px;
-  animation: floatB 8s ease-in-out infinite;
-}
-
-.onboarding-panel {
+.foreground-layer {
   position: relative;
-  width: 480px;
-  height: auto;
-  overflow: hidden;
-  background: rgba(255, 255, 255, 0.92);
-  border: 1px solid rgba(255, 255, 255, 0.75);
-  border-radius: 30px;
-  box-shadow: 0 28px 70px rgba(171, 37, 93, 0.28);
-  backdrop-filter: blur(12px);
-  display: flex;
-  flex-direction: column;
-  padding: 30px;
-  animation: enterSoft 0.5s ease;
-}
-
-.onboarding-panel.slogan-panel {
+  z-index: 5;
   width: 100%;
   height: 100%;
-  padding: 0;
-  border: none;
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
-  backdrop-filter: none;
-}
-
-.panel-header {
-  text-align: center;
-  animation: enterSoft 0.5s ease;
-}
-
-.assistant-badge {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 999px;
-  padding: 8px 16px;
-  font-weight: 700;
-  color: #fff;
-  background: linear-gradient(120deg, #fb7299, #f95a8a);
-  box-shadow: 0 8px 20px rgba(249, 90, 138, 0.35);
-  margin-bottom: 12px;
 }
 
-.panel-header h1 {
-  margin: 0;
-  color: #7d2444;
-  font-size: clamp(1.45rem, 2.2vw, 2rem);
+.screen {
+  width: 100%;
+  height: 100%;
 }
 
-.panel-header p {
-  margin: 8px 0 0;
-  color: #a94468;
+/* ─── BOOT screen ───────────────────────────────────────────────────────── */
+
+.boot-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: #fff5f7;
+  overflow: hidden;
 }
 
-.step-strip {
-  margin-top: 22px;
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+.boot-screen::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(255, 200, 210, 0.04) 2px,
+    rgba(255, 200, 210, 0.04) 4px
+  );
+  pointer-events: none;
+  animation: scanlineMove 0.1s linear infinite;
+}
+
+.boot-glitch-text {
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-size: clamp(1.6rem, 3vw, 2.4rem);
+  color: #d4687c;
+  letter-spacing: 0.3em;
+  text-shadow:
+    0 0 20px rgba(251, 114, 153, 0.4),
+    2px 0 0 rgba(255, 150, 180, 0.35),
+    -2px 0 0 rgba(255, 200, 210, 0.3);
+  animation: bootGlitch 2.5s ease-in-out infinite;
+}
+
+.boot-sub {
+  margin-top: 16px;
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-size: 12px;
+  color: rgba(200, 120, 140, 0.55);
+  letter-spacing: 0.2em;
+}
+
+/* ─── center screen (shared by most states) ─────────────────────────────── */
+
+.center-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   gap: 12px;
 }
 
-.step-dot {
+/* ─── SYSTEM_WAKE ───────────────────────────────────────────────────────── */
+
+.wake-pulse-ring {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  border: 2px solid rgba(251, 114, 153, 0.35);
+  animation: wakePulse 1.4s ease-out infinite;
+  margin-bottom: 20px;
+}
+
+/* ─── status text (shared) ──────────────────────────────────────────────── */
+
+.status-title {
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-size: clamp(1rem, 1.8vw, 1.25rem);
+  letter-spacing: 0.12em;
+  color: #c2516b;
+}
+
+.phase-warm .status-title,
+.phase-warming .status-title {
+  color: #d4687c;
+  font-family: 'LoliFont', 'Microsoft YaHei', sans-serif;
+  letter-spacing: 0.08em;
+}
+
+.status-sub {
+  font-size: 14px;
+  color: rgba(180, 100, 120, 0.7);
+  letter-spacing: 0.05em;
+}
+
+.phase-warm .status-sub,
+.phase-warming .status-sub {
+  color: rgba(200, 130, 150, 0.7);
+}
+
+/* ─── progress indicator (LOG_STREAM) ───────────────────────────────────── */
+
+.progress-indicator {
+  margin-top: 18px;
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 5px;
-  padding: 10px 8px;
-  border-radius: 14px;
-  background: rgba(255, 240, 247, 0.8);
-  border: 1px solid rgba(249, 90, 138, 0.2);
-  transition: all 0.3s ease;
-}
-
-.step-dot span {
-  width: 28px;
-  height: 28px;
-  border-radius: 999px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: #ffd3e2;
-  color: #a73f66;
-  font-weight: 700;
-}
-
-.step-dot small {
-  color: #a54f70;
-  font-size: 12px;
-}
-
-.step-dot.active {
-  transform: translateY(-2px);
-  border-color: rgba(249, 90, 138, 0.45);
-  box-shadow: 0 8px 18px rgba(249, 90, 138, 0.2);
-}
-
-.step-dot.active span {
-  background: #fb7299;
-  color: #fff;
-}
-
-.step-content {
-  margin-top: 20px;
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-
-.slogan-panel .step-content {
-  margin-top: 0;
-  width: 100%;
-  height: 100%;
-  justify-content: center;
-  align-items: center;
-}
-
-.step-content h2 {
-  margin: 0;
-  color: #7b2141;
-  font-size: clamp(1.2rem, 1.9vw, 1.5rem);
-}
-
-.hint {
-  margin: 8px 0 14px;
-  color: #92506c;
-  line-height: 1.55;
-}
-
-.sub-hint {
-  margin-top: 8px;
-  color: #ab5f7d;
-  font-size: 13px;
-}
-
-.status-card {
-  background: rgba(255, 247, 250, 0.88);
-  border: 1px solid rgba(249, 90, 138, 0.2);
-  border-radius: 14px;
-  padding: 12px;
-}
-
-.status-line {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 10px;
-  color: #8f4460;
-  font-size: 13px;
-}
-
-.status-line + .status-line {
-  margin-top: 8px;
-}
-
-.status-line strong {
-  color: #70243f;
-  max-width: 60%;
-  text-align: right;
-  word-break: break-all;
-}
-
-.task-list {
-  list-style: none;
-  margin: 12px 0 0;
-  padding: 0;
-  display: grid;
-  gap: 8px;
-}
-
-.task-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: stretch;
-  gap: 14px;
-  padding: 12px;
-  border-radius: 12px;
-  background: #fff;
-  border: 1px solid rgba(249, 90, 138, 0.15);
-  transition: all 0.2s ease;
-  cursor: pointer;
-}
-
-.task-item:hover {
-  border-color: rgba(249, 90, 138, 0.25);
-  box-shadow: 0 4px 12px rgba(249, 90, 138, 0.1);
-}
-
-.task-info {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 0;
-}
-
-.task-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
   gap: 10px;
 }
 
-.task-header strong {
-  color: #742640;
-  font-weight: 700;
-  flex-shrink: 0;
-}
-
-.task-info small {
-  color: #a26480;
-  font-size: 12px;
-}
-
-.task-progress {
-  margin-top: 4px;
-}
-
-.progress-bar-small {
+.progress-dot {
+  width: 6px;
   height: 6px;
-  border-radius: 999px;
-  background: #ffe5ef;
+  border-radius: 50%;
+  background: rgba(251, 114, 153, 0.2);
+  transition:
+    background 0.35s ease,
+    box-shadow 0.35s ease;
+}
+
+.progress-dot.active {
+  background: #fb7299;
+  box-shadow: 0 0 10px rgba(251, 114, 153, 0.5);
+}
+
+/* ─── PERSONALITY_ONLINE ────────────────────────────────────────────────── */
+
+.personality-bar-wrap {
+  margin-top: 16px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 320px;
+  max-width: 70vw;
+}
+
+.personality-bar {
+  flex: 1;
+  height: 4px;
+  border-radius: 4px;
+  background: rgba(251, 114, 153, 0.1);
   overflow: hidden;
 }
 
-.progress-fill-small {
+.personality-fill {
   height: 100%;
-  background: linear-gradient(90deg, #f3d1dc, #e8b8cc);
-  transition: all 0.3s ease;
-  width: 0%;
-}
-
-.progress-fill-small.progress-running {
-  width: 65%;
   background: linear-gradient(90deg, #fb7299, #f95a8a);
-  animation: progressShimmer 1.5s ease-in-out infinite;
+  border-radius: 4px;
+  transition: width 0.4s ease;
+  box-shadow: 0 0 8px rgba(251, 114, 153, 0.35);
 }
 
-.log-actions {
-  margin-top: 12px;
+.personality-pct {
+  font-family: 'Consolas', monospace;
+  font-size: 12px;
+  color: #c2516b;
+  min-width: 36px;
+  text-align: right;
+}
+
+/* ─── SAKURA_TRANSITION ─────────────────────────────────────────────────── */
+
+.sakura-text {
+  font-family: 'LoliFont', 'Microsoft YaHei', sans-serif;
+  font-size: clamp(1.1rem, 2vw, 1.4rem);
+  letter-spacing: 0.15em;
+  color: #d4687c;
+  animation: sakuraGlow 1.5s ease-in-out infinite;
+}
+
+.sakura-sub {
+  font-size: 14px;
+  color: rgba(244, 143, 177, 0.65);
+  letter-spacing: 0.06em;
+}
+
+/* ─── FIRST_MEETING ─────────────────────────────────────────────────────── */
+
+.meeting-bg {
   display: flex;
+  align-items: center;
   justify-content: center;
+  pointer-events: auto;
+  background: radial-gradient(ellipse at 50% 45%, rgba(244, 143, 177, 0.08) 0%, transparent 60%);
 }
 
-.task-state {
-  font-size: 12px;
-  border-radius: 999px;
-  padding: 6px 10px;
-  white-space: nowrap;
+/* ─── panel (centered profile card) ──────────────────────────────────────── */
+
+.onboarding-panel {
+  position: relative;
+  width: 440px;
+  max-width: 90vw;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(251, 114, 153, 0.2);
+  border-radius: 24px;
+  padding: 32px 30px;
+  backdrop-filter: blur(14px);
+  box-shadow:
+    0 20px 56px rgba(180, 60, 90, 0.16),
+    0 0 0 1px rgba(255, 255, 255, 0.4) inset;
+  opacity: 0;
+  transform: translateY(12px);
+  transition:
+    opacity 0.45s ease,
+    transform 0.45s ease;
 }
 
-.task-state.idle {
-  background: #f6f0f3;
-  color: #8b7380;
+.onboarding-panel.panel-entering {
+  opacity: 1;
+  transform: translateY(0);
 }
 
-.task-state.warming {
-  background: #ffe8f1;
-  color: #b04a6f;
-  animation: pulse 1.2s ease-in-out infinite;
+.panel-title {
+  margin: 0 0 6px;
+  font-family: 'LoliFont', 'Microsoft YaHei', sans-serif;
+  font-size: 1.4rem;
+  color: #7d2444;
+  text-align: center;
+  letter-spacing: 0.06em;
 }
 
-.task-state.running {
-  background: #ffe1eb;
-  color: #902d51;
+.panel-hint {
+  margin: 0 0 22px;
+  color: #a96480;
+  font-size: 14px;
+  text-align: center;
+  letter-spacing: 0.03em;
 }
 
-.log-box {
-  margin-top: 12px;
-  border-radius: 12px;
-  border: 1px solid rgba(249, 90, 138, 0.18);
-  background: #fff;
-  display: flex;
-  flex-direction: column;
-  min-height: 170px;
-  flex: 1;
-  animation: slideDown 0.3s ease;
-}
+/* ─── profile form ───────────────────────────────────────────────────────── */
 
-.log-title {
-  padding: 10px 12px;
-  color: #8f4261;
-  font-weight: 700;
-  border-bottom: 1px solid rgba(249, 90, 138, 0.12);
-}
-
-.log-content {
-  max-height: 200px;
-  padding: 10px 12px;
-  overflow: auto;
-  flex: 1;
-}
-
-.log-line {
-  font-family: 'Consolas', 'Courier New', monospace;
-  color: #7e4461;
-  font-size: 12px;
-  line-height: 1.4;
-  animation: logIn 0.28s ease;
+.profile-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
 }
 
 .field {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin-top: 10px;
+  gap: 6px;
 }
 
 .field span {
   color: #8d4a67;
   font-weight: 600;
+  font-size: 13px;
 }
 
 .field input,
 .field select {
-  border: 1px solid #f3b6cd;
+  border: 1px solid #f3c0d2;
   border-radius: 12px;
-  padding: 11px 12px;
+  padding: 11px 14px;
   font-size: 14px;
   outline: none;
-  transition: all 0.2s ease;
-  background: #fff;
+  background: rgba(255, 248, 250, 0.9);
   color: #6f2c48;
+  font-family: inherit;
+  transition:
+    border-color 0.22s ease,
+    box-shadow 0.22s ease;
 }
 
 .field input:focus,
 .field select:focus {
   border-color: #fb7299;
-  box-shadow: 0 0 0 3px rgba(251, 114, 153, 0.18);
+  box-shadow: 0 0 0 3px rgba(251, 114, 153, 0.14);
 }
 
-.profile-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+.field input::placeholder {
+  color: rgba(160, 100, 120, 0.35);
 }
 
 .field-full {
   grid-column: span 2;
 }
 
-.progress-wrap {
-  margin-top: 10px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.progress-wrap span {
-  min-width: 46px;
-  text-align: right;
-  color: #8e4866;
-  font-weight: 600;
-}
-
-.progress-bar {
-  height: 14px;
-  flex: 1;
-  border-radius: 999px;
-  background: #ffe5ef;
-  overflow: hidden;
-}
-
-.progress-fill {
-  height: 100%;
-  background: linear-gradient(90deg, #fb7299, #f95a8a);
-  transition: width 0.35s ease;
-}
-
-.slogan-wrap {
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-}
-
-.slogan {
-  margin: 0;
-  font-size: clamp(1.35rem, 3.2vw, 2.2rem);
-  line-height: 1.5;
-  color: #fff;
-  text-shadow: 0 6px 24px rgba(110, 20, 52, 0.42);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.01em;
-  animation: sloganFadeOut 0.7s ease forwards;
-  animation-delay: 2.45s;
-}
-
-.slogan-char {
-  display: inline-block;
-  opacity: 0;
-  transform: translateX(-16px) translateY(8px);
-  filter: blur(6px);
-  animation: sloganCharIn 0.5s ease forwards;
-  animation-delay: var(--char-delay);
-}
+/* ─── actions ────────────────────────────────────────────────────────────── */
 
 .actions {
-  position: relative;
-  margin-top: 14px;
+  margin-top: 22px;
   display: flex;
   justify-content: flex-end;
-  gap: 10px;
 }
 
-.btn {
+.btn-submit {
   border: none;
-  border-radius: 12px;
-  padding: 10px 18px;
+  border-radius: 14px;
+  padding: 12px 40px;
   cursor: pointer;
-  background: linear-gradient(130deg, #fb7299, #f95a8a);
+  background: linear-gradient(135deg, #fb7299, #f95a8a);
   color: #fff;
   font-weight: 700;
+  font-size: 15px;
+  font-family: inherit;
+  letter-spacing: 0.04em;
   transition:
     transform 0.16s ease,
     box-shadow 0.2s ease;
-  box-shadow: 0 8px 18px rgba(249, 90, 138, 0.26);
+  box-shadow: 0 8px 22px rgba(249, 90, 138, 0.28);
 }
 
-.btn:hover:not(:disabled) {
+.btn-submit:hover:not(:disabled) {
   transform: translateY(-1px);
+  box-shadow: 0 12px 28px rgba(249, 90, 138, 0.36);
 }
 
-.btn:disabled {
-  opacity: 0.65;
+.btn-submit:disabled {
+  opacity: 0.6;
   cursor: not-allowed;
 }
 
-.btn-ghost {
-  background: #fff;
-  color: #9b4264;
-  border: 1px solid #f2bfd1;
-  box-shadow: none;
+/* ─── PROFILE_SYNC ──────────────────────────────────────────────────────── */
+
+.sync-ring {
+  position: relative;
+  width: 60px;
+  height: 60px;
+  margin-bottom: 18px;
+}
+
+.sync-ring::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid rgba(244, 143, 177, 0.3);
+  border-top-color: #ec407a;
+  animation: syncSpin 1s linear infinite;
+}
+
+.sync-ring-inner {
+  position: absolute;
+  inset: 10px;
+  border-radius: 50%;
+  background: rgba(244, 143, 177, 0.06);
+}
+
+.sync-title {
+  color: #f8bbd0;
+}
+
+.sync-sparkle {
+  position: absolute;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: #fce4ec;
+  box-shadow: 0 0 6px rgba(252, 228, 236, 0.6);
+  animation: syncSparkleFloat 2s ease-in-out infinite;
+}
+
+/* ─── CONTRACT ──────────────────────────────────────────────────────────── */
+
+.contract-glow {
+  position: absolute;
+  width: 300px;
+  height: 300px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(251, 114, 153, 0.18) 0%, transparent 70%);
+  animation: glowPulse 3s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.contract-icon {
+  font-size: 32px;
+  color: #f48fb1;
+  animation: contractIconFloat 2s ease-in-out infinite;
+  margin-bottom: 8px;
+}
+
+.contract-title {
+  font-family: 'LoliFont', 'Microsoft YaHei', sans-serif;
+  font-size: clamp(1.6rem, 3vw, 2.2rem);
+  color: #7d2444;
+  letter-spacing: 0.15em;
+  text-shadow: 0 0 30px rgba(251, 114, 153, 0.35);
+}
+
+.contract-text {
+  margin-top: 14px;
+  font-size: 15px;
+  color: rgba(120, 50, 70, 0.7);
+  text-align: center;
+  line-height: 1.8;
+  letter-spacing: 0.06em;
+}
+
+.contract-btn {
+  position: relative;
+  margin-top: 36px;
+  border: none;
+  border-radius: 30px;
+  padding: 14px 48px;
+  background: linear-gradient(135deg, #fb7299, #f95a8a);
+  cursor: pointer;
+  overflow: hidden;
+  box-shadow: 0 8px 24px rgba(249, 90, 138, 0.3);
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.3s ease;
+}
+
+.contract-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 32px rgba(249, 90, 138, 0.45);
+}
+
+.contract-btn-text {
+  position: relative;
+  z-index: 1;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  font-family: 'Microsoft YaHei', sans-serif;
+}
+
+/* ─── error block ───────────────────────────────────────────────────────── */
+
+.error-block {
+  margin-top: 22px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
 }
 
 .error-text {
-  margin: 10px 0 0;
-  color: #e85d82;
-  font-weight: 600;
+  color: #ef5350;
   font-size: 14px;
+  text-align: center;
 }
 
-.content-fade-enter-active,
-.content-fade-leave-active {
+.error-actions {
+  display: flex;
+  gap: 10px;
+}
+
+/* ─── cold buttons ──────────────────────────────────────────────────────── */
+
+.btn-cold {
+  border: 1px solid rgba(251, 114, 153, 0.35);
+  border-radius: 10px;
+  padding: 9px 22px;
+  background: rgba(251, 114, 153, 0.08);
+  color: #c2516b;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  letter-spacing: 0.04em;
   transition:
-    opacity 0.28s ease,
-    transform 0.28s ease;
+    background 0.22s ease,
+    border-color 0.22s ease,
+    transform 0.15s ease;
 }
 
-.content-fade-enter-from,
-.content-fade-leave-to {
+.btn-cold:hover {
+  background: rgba(251, 114, 153, 0.18);
+  border-color: rgba(251, 114, 153, 0.55);
+  transform: translateY(-1px);
+}
+
+.btn-ghost-cold {
+  background: transparent;
+  border-color: rgba(251, 114, 153, 0.2);
+  color: rgba(180, 100, 120, 0.7);
+}
+
+.btn-ghost-cold:hover {
+  background: rgba(251, 114, 153, 0.06);
+  color: #c2516b;
+}
+
+/* ─── screen transition ─────────────────────────────────────────────────── */
+
+.screen-fade-enter-active,
+.screen-fade-leave-active {
+  transition:
+    opacity 0.45s ease,
+    transform 0.45s ease;
+}
+
+.screen-fade-enter-from {
   opacity: 0;
-  transform: translateY(8px);
+  transform: translateY(10px);
 }
 
-@keyframes pulse {
+.screen-fade-leave-to {
+  opacity: 0;
+  transform: translateY(-10px);
+}
+
+/* ─── keyframes ─────────────────────────────────────────────────────────── */
+
+@keyframes bootGlitch {
+  0%,
+  90%,
+  94%,
+  100% {
+    transform: translate(0);
+    opacity: 1;
+  }
+  91% {
+    transform: translate(-3px, 1px);
+    opacity: 0.75;
+  }
+  92% {
+    transform: translate(3px, -1px);
+    opacity: 0.8;
+  }
+  93% {
+    transform: translate(-1px, -1px);
+    opacity: 0.7;
+  }
+}
+
+@keyframes scanlineMove {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(4px);
+  }
+}
+
+@keyframes wakePulse {
+  0% {
+    transform: scale(0.8);
+    opacity: 0.8;
+  }
+  100% {
+    transform: scale(1.8);
+    opacity: 0;
+  }
+}
+
+@keyframes sakuraGlow {
   0%,
   100% {
+    text-shadow: 0 0 16px rgba(251, 114, 153, 0.35);
+  }
+  50% {
+    text-shadow: 0 0 32px rgba(251, 114, 153, 0.6);
+  }
+}
+
+@keyframes syncSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes syncSparkleFloat {
+  0%,
+  100% {
+    opacity: 0;
+    transform: translateY(0);
+  }
+  50% {
+    opacity: 0.8;
+    transform: translateY(-8px);
+  }
+}
+
+@keyframes glowPulse {
+  0%,
+  100% {
+    opacity: 0.6;
     transform: scale(1);
   }
   50% {
-    transform: scale(1.03);
+    opacity: 1;
+    transform: scale(1.08);
   }
 }
 
-@keyframes sloganGlow {
+@keyframes contractIconFloat {
   0%,
   100% {
-    opacity: 0.85;
+    transform: translateY(0);
   }
   50% {
-    opacity: 1;
-  }
-}
-
-@keyframes sloganCharIn {
-  0% {
-    opacity: 0;
-    transform: translateX(-16px) translateY(8px);
-    filter: blur(6px);
-  }
-  100% {
-    opacity: 1;
-    transform: translateX(0) translateY(0);
-    filter: blur(0);
-  }
-}
-
-@keyframes sloganFadeOut {
-  0%,
-  72% {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-  100% {
-    opacity: 0;
-    transform: translateY(-4px) scale(0.98);
-  }
-}
-
-@keyframes enterSoft {
-  from {
-    opacity: 0;
-    transform: translateY(-8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
+    transform: translateY(-5px);
   }
 }
 
@@ -1092,103 +1287,6 @@ onUnmounted(() => {
     opacity: 0;
     filter: blur(16px);
     transform: scale(1.03);
-  }
-}
-
-@keyframes floatA {
-  0%,
-  100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(15px);
-  }
-}
-
-@keyframes floatB {
-  0%,
-  100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-13px);
-  }
-}
-
-@keyframes logIn {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes progressShimmer {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.7;
-  }
-}
-
-@keyframes slideDown {
-  from {
-    opacity: 0;
-    transform: translateY(-8px);
-    max-height: 0;
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-    max-height: 400px;
-  }
-}
-
-@media (max-width: 900px) {
-  .onboarding-panel {
-    border-radius: 20px;
-    padding: 20px 18px;
-    width: calc(100vw - 20px);
-    min-height: calc(100vh - 20px);
-    max-height: calc(100vh - 20px);
-  }
-
-  .step-strip {
-    gap: 8px;
-  }
-
-  .step-dot small {
-    font-size: 11px;
-  }
-
-  .profile-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .field-full {
-    grid-column: span 1;
-  }
-
-  .actions {
-    justify-content: stretch;
-  }
-
-  .btn {
-    width: 100%;
-  }
-
-  .task-header {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .btn-toggle-log {
-    width: 100%;
   }
 }
 </style>

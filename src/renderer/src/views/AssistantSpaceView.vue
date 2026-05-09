@@ -32,10 +32,6 @@
       </div>
     </div>
     <div id="toolbar-right-bottom">
-      <!-- <div class="circle-button" @click="toggleLock">
-        <font-awesome-icon v-if="isLocked" icon="fa-solid fa-lock" />
-        <font-awesome-icon v-else icon="fa-solid fa-lock-open" />
-      </div> -->
       <div
         class="circle-button diary-button"
         :class="{ 'is-locked': !canViewDiary }"
@@ -809,7 +805,7 @@ async function saveShortcut(shortcut: string): Promise<void> {
 
 <style scoped>
 #background-container {
-  margin-top: 30px;
+  /* margin-top: 30px; */
   /* background-color: #fff9f9; */
   background-color: #ffeef0;
   background-image: url('../assets/images/background_circle.png');

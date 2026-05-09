@@ -230,22 +230,23 @@ main {
 }
 
 .titlebar {
-  position: absolute;
+  position: fixed;
+  z-index: 100;
   top: 0;
   height: 40px;
   user-select: none;
   width: 100%;
-  /* background-color: #eeeef6bd; */
   -webkit-app-region: drag;
   app-region: drag;
 }
 
 .titlebar-icons {
+  display: flex;
+  gap: 8px;
   position: absolute;
   right: 0;
   width: 100px;
   height: 30px;
-  display: flex;
   justify-content: space-between;
   align-items: center;
   flex-direction: row;
@@ -256,10 +257,17 @@ main {
 }
 
 .titlebar-item {
-  width: 15px;
-  height: 15px;
   border-radius: 100%;
   cursor: pointer;
+  width: 13px;
+  height: 13px;
+  cursor: pointer;
+  opacity: 0.85;
+  transition: opacity 0.18s ease;
+}
+
+.titlebar-item:hover {
+  opacity: 1;
 }
 
 #tabs-container {

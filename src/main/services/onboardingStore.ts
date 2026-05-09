@@ -21,6 +21,7 @@ const onboardingSchema: Schema<OnboardingStoreShape> = {
   profile: {
     type: 'object',
     default: {
+      name: '',
       birthday: '',
       gender: '',
       occupation: ''
@@ -68,6 +69,7 @@ class OnboardingStoreService {
 
   public saveProfile(profile: OnboardingProfile): OnboardingState {
     this.store.set('profile', {
+      name: profile.name,
       birthday: profile.birthday,
       gender: profile.gender,
       occupation: profile.occupation
