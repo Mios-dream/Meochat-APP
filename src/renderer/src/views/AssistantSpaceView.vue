@@ -50,53 +50,55 @@
     </div>
 
     <ChatBox :is-visible="isVisible" />
-    <transition name="modal-fade">
-      <div v-if="showHistoryModal" class="modal-overlay" @click="closeHistoryModal">
-        <div class="chat-history-modal" @click.stop>
-          <div class="modal-header">
-            <h2>聊天历史</h2>
-          </div>
-          <div class="modal-body">
-            <div v-if="historyLoading" class="no-history">正在加载聊天历史...</div>
-            <div v-else-if="historyError" class="no-history">{{ historyError }}</div>
-            <div v-else-if="chatHistory.length === 0" class="no-history">暂无聊天历史</div>
-            <div v-else class="history-list">
-              <div v-for="(message, index) in chatHistory" :key="index">
-                <div v-if="message.role === 'assistant'" class="message-item">
-                  <div
-                    class="assistant-chat-avatar"
-                    :style="{
-                      backgroundImage: `url(${currentAssistant?.avatar ? 'app-resource://' + currentAssistant?.avatar : '../assets/images/assistant_avatar_small.png'})`
-                    }"
-                  ></div>
-                  <div class="message-content">
-                    <div class="message-info">
-                      <div class="assistant-name">{{ currentAssistant?.name }}</div>
-                      <div class="message-time">{{ formatTime(message.timestamp) }}</div>
+    <teleport to="body">
+      <transition name="modal-fade">
+        <div v-if="showHistoryModal" class="modal-overlay" @click="closeHistoryModal">
+          <div class="chat-history-modal" @click.stop>
+            <div class="modal-header">
+              <h2>聊天历史</h2>
+            </div>
+            <div class="modal-body">
+              <div v-if="historyLoading" class="no-history">正在加载聊天历史...</div>
+              <div v-else-if="historyError" class="no-history">{{ historyError }}</div>
+              <div v-else-if="chatHistory.length === 0" class="no-history">暂无聊天历史</div>
+              <div v-else class="history-list">
+                <div v-for="(message, index) in chatHistory" :key="index">
+                  <div v-if="message.role === 'assistant'" class="message-item">
+                    <div
+                      class="assistant-chat-avatar"
+                      :style="{
+                        backgroundImage: `url(${currentAssistant?.avatar ? 'app-resource://' + currentAssistant?.avatar : '../assets/images/assistant_avatar_small.png'})`
+                      }"
+                    ></div>
+                    <div class="message-content">
+                      <div class="message-info">
+                        <div class="assistant-name">{{ currentAssistant?.name }}</div>
+                        <div class="message-time">{{ formatTime(message.timestamp) }}</div>
+                      </div>
+                      <MessageContent :content="message.content" :role="message.role" />
                     </div>
-                    <MessageContent :content="message.content" :role="message.role" />
                   </div>
-                </div>
-                <div v-else>
-                  <div class="message-content">
-                    <MessageContent :content="message.content" :role="message.role" />
+                  <div v-else>
+                    <div class="message-content">
+                      <MessageContent :content="message.content" :role="message.role" />
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
           </div>
         </div>
-      </div>
-    </transition>
-    <DiaryNotebookModal
-      :visible="showDiaryModal"
-      :loading="diaryLoading"
-      :error="diaryError"
-      :records="diaryRecords"
-      :pagination="diaryPagination"
-      :format-timestamp="formatDiaryTimestamp"
-      @close="closeDiaryModal"
-    />
+      </transition>
+      <DiaryNotebookModal
+        :visible="showDiaryModal"
+        :loading="diaryLoading"
+        :error="diaryError"
+        :records="diaryRecords"
+        :pagination="diaryPagination"
+        :format-timestamp="formatDiaryTimestamp"
+        @close="closeDiaryModal"
+      />
+    </teleport>
     <BlurModal v-model="isVisibleSetting" @close="closeHistoryModal">
       <div class="setting-container">
         <div class="setting-title">助手设置</div>
