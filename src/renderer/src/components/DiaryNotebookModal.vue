@@ -186,7 +186,7 @@ function buildPageHTML(page: DiaryPage): string {
         <span class="pf-continued-tag">续页</span>
       </div>`
     : `
-      <h2 class="pf-title">${entry.day || '日记'}</h2>
+      <h2 class="pf-title">日记</h2>
       <div class="pf-divider"><div class="pf-divider-line"></div><span class="pf-divider-dot">✦</span></div>
       <div class="pf-memory-card">
         <div class="pf-memory-glow"></div>

@@ -6,7 +6,7 @@ import { useConfigStore } from '../stores/useConfigStore'
 import { InteractionEventPayload } from '@renderer/services/ChatService'
 
 export class IdleEventModule extends EventModule {
-  private idleEventsTimer: number | null = null
+  private idleEventsTimer: ReturnType<typeof setTimeout> | null = null
 
   start(): void {
     const configStore = useConfigStore()

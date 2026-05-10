@@ -67,7 +67,7 @@ const interactionSystem = InteractionSystem.getInstance()
 // 唤醒词服务实例
 const wakewordService = WakewordService.getInstance()
 // Tips更新定时器,定时更新Tips内容以保持与语音输出同步
-let tipsUpdateInterval: number | null = null
+let tipsUpdateInterval: ReturnType<typeof setTimeout> | null = null
 
 // 计算属性
 const contextMenuItems = computed(() => [

@@ -5,7 +5,7 @@ import { EventModule } from '../services/InteractionSystem/types/eventModules'
 import { InteractionEventPayload } from '@renderer/services/ChatService'
 
 export class TimeEventModule extends EventModule {
-  private timeEventsTimer: number | null = null
+  private timeEventsTimer: ReturnType<typeof setTimeout> | null = null
 
   start(): void {
     this.scheduleTimeEvents()

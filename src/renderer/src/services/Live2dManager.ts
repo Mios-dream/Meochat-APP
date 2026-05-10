@@ -34,19 +34,19 @@ export class Live2DManager {
   // 聚焦的状态,是否可以聚焦
   private isFocusEnabled = false
   // 聚焦超时定时器
-  private focusTimeout: number | null = null
+  private focusTimeout: ReturnType<typeof setTimeout> | null = null
   // 聚焦超时,用于全局
   public focus_timeout_ms = 5000 // 5秒无点击后取消聚焦
   // 用于控制忽略状态。是否点击的空白区域
   private ignoreState = false
   // 恢复模型可交互状态的定时器
-  private restoreTimer: number | null = null
+  private restoreTimer: ReturnType<typeof setTimeout> | null = null
 
   // 用于画布内鼠标跟踪
   // 鼠标点击和长按状态
   private isMousePressed = false
   // 鼠标按下的定时器
-  private mousePressTimer: number | null = null
+  private mousePressTimer: ReturnType<typeof setTimeout> | null = null
   // 鼠标长按触发时间
   private longPressDuration = 50 // 长按触发时间（毫秒）
   // 拖动相关
@@ -351,152 +351,168 @@ export class Live2DManager {
     const interactionSystem = InteractionSystem.getInstance()
 
     // 鼠标按下事件
-    this.canvasElement!.addEventListener('mousedown', (e) => {
-      // 长按触发模型注视，短按则正常处理点击
-      this.isMousePressed = true
-      // 记录拖动起始位置
-      this.dragStartX = e.clientX
-      this.dragStartY = e.clientY
-      // 重置触摸轨迹数据
-      this.strokeStartAt = Date.now()
-      // 触摸开始时重置距离和起始点
-      this.strokeDistance = 0
-      // 记录当前点为起始点
-      this.lastStrokePoint = { x: e.clientX, y: e.clientY }
-      // 重置交互位移跟踪
-      this.interactionMaxDisplacement = 0
-      // 检测交互是否起始于模型非透明区域
-      this.interactionStartedOnTransparent = this.isPixelTransparentFromEvent(e)
-      // 仅在点击模型区域时触发 tap
-      if (!this.interactionStartedOnTransparent) {
-        this.model!.tap(e.x, e.y)
-      }
-      // 设置长按定时器
-      this.mousePressTimer = setTimeout(() => {
-        // 长按触发，如果已锁定则启用注视
-        if (this.isMousePressed && this.model && this.isLocked) {
-          this.isFocusEnabled = true
-        }
-      }, this.longPressDuration)
-    }, { signal })
-
-    // 鼠标移动事件
-    this.canvasElement!.addEventListener('mousemove', (e) => {
-      // 长按期间持续更新模型视线（仅在锁定且启用注视时）
-      if (this.isMousePressed && this.isFocusEnabled && this.model && this.isLocked) {
-        const rect = this.canvasElement!.getBoundingClientRect()
-        const relativeX = e.clientX - rect.left
-        const relativeY = e.clientY - rect.top
-        this.model.focus(relativeX, relativeY, false)
-      }
-
-      // 拖动模型（仅在未锁定和非桌宠模式时可用）
-      if (this.isMousePressed && !this.isLocked && !options.isPetMode && this.model) {
-        const deltaX = e.clientX - this.dragStartX
-        const deltaY = e.clientY - this.dragStartY
-
-        this.model.x += deltaX
-        this.model.y += deltaY
-
+    this.canvasElement!.addEventListener(
+      'mousedown',
+      (e) => {
+        // 长按触发模型注视，短按则正常处理点击
+        this.isMousePressed = true
+        // 记录拖动起始位置
         this.dragStartX = e.clientX
         this.dragStartY = e.clientY
-      }
-      // 计算触摸轨迹距离（仅在长按期间）
-      if (this.isMousePressed && this.lastStrokePoint) {
-        const dx = e.clientX - this.lastStrokePoint.x
-        const dy = e.clientY - this.lastStrokePoint.y
-        const delta = Math.hypot(dx, dy)
-        this.strokeDistance += delta
-        this.interactionMaxDisplacement += delta
+        // 重置触摸轨迹数据
+        this.strokeStartAt = Date.now()
+        // 触摸开始时重置距离和起始点
+        this.strokeDistance = 0
+        // 记录当前点为起始点
         this.lastStrokePoint = { x: e.clientX, y: e.clientY }
-      }
-    }, { signal })
+        // 重置交互位移跟踪
+        this.interactionMaxDisplacement = 0
+        // 检测交互是否起始于模型非透明区域
+        this.interactionStartedOnTransparent = this.isPixelTransparentFromEvent(e)
+        // 仅在点击模型区域时触发 tap
+        if (!this.interactionStartedOnTransparent) {
+          this.model!.tap(e.x, e.y)
+        }
+        // 设置长按定时器
+        this.mousePressTimer = setTimeout(() => {
+          // 长按触发，如果已锁定则启用注视
+          if (this.isMousePressed && this.model && this.isLocked) {
+            this.isFocusEnabled = true
+          }
+        }, this.longPressDuration)
+      },
+      { signal }
+    )
+
+    // 鼠标移动事件
+    this.canvasElement!.addEventListener(
+      'mousemove',
+      (e) => {
+        // 长按期间持续更新模型视线（仅在锁定且启用注视时）
+        if (this.isMousePressed && this.isFocusEnabled && this.model && this.isLocked) {
+          const rect = this.canvasElement!.getBoundingClientRect()
+          const relativeX = e.clientX - rect.left
+          const relativeY = e.clientY - rect.top
+          this.model.focus(relativeX, relativeY, false)
+        }
+
+        // 拖动模型（仅在未锁定和非桌宠模式时可用）
+        if (this.isMousePressed && !this.isLocked && !options.isPetMode && this.model) {
+          const deltaX = e.clientX - this.dragStartX
+          const deltaY = e.clientY - this.dragStartY
+
+          this.model.x += deltaX
+          this.model.y += deltaY
+
+          this.dragStartX = e.clientX
+          this.dragStartY = e.clientY
+        }
+        // 计算触摸轨迹距离（仅在长按期间）
+        if (this.isMousePressed && this.lastStrokePoint) {
+          const dx = e.clientX - this.lastStrokePoint.x
+          const dy = e.clientY - this.lastStrokePoint.y
+          const delta = Math.hypot(dx, dy)
+          this.strokeDistance += delta
+          this.interactionMaxDisplacement += delta
+          this.lastStrokePoint = { x: e.clientX, y: e.clientY }
+        }
+      },
+      { signal }
+    )
 
     // 鼠标抬起事件
-    this.canvasElement!.addEventListener('mouseup', (e) => {
-      // 仅在交互起始于模型非透明区域时处理
-      if (!this.interactionStartedOnTransparent) {
-        const strokeDurationMs = Date.now() - this.strokeStartAt
-        const displacement = this.interactionMaxDisplacement
+    this.canvasElement!.addEventListener(
+      'mouseup',
+      (e) => {
+        // 仅在交互起始于模型非透明区域时处理
+        if (!this.interactionStartedOnTransparent) {
+          const strokeDurationMs = Date.now() - this.strokeStartAt
+          const displacement = this.interactionMaxDisplacement
 
-        if (displacement < 5) {
-          // 几乎无移动 → 点击，按位置映射身体部位
-          this.handleModelClick(e)
-        } else if (displacement >= 12 && strokeDurationMs >= 120) {
-          // 明显滑动 → 仅在头部区域触发摸头事件
-          const rect = this.canvasElement!.getBoundingClientRect()
-          const cssX = e.clientX - rect.left
-          const cssY = e.clientY - rect.top
+          if (displacement < 5) {
+            // 几乎无移动 → 点击，按位置映射身体部位
+            this.handleModelClick(e)
+          } else if (displacement >= 12 && strokeDurationMs >= 120) {
+            // 明显滑动 → 仅在头部区域触发摸头事件
+            const rect = this.canvasElement!.getBoundingClientRect()
+            const cssX = e.clientX - rect.left
+            const cssY = e.clientY - rect.top
 
-          if (this.isPositionOnModelHead(cssX, cssY)) {
-            const speedPxPerSecond = (this.strokeDistance / strokeDurationMs) * 1000
-            const configStore = useConfigStore()
-            const speedThreshold = Math.max(
-              60,
-              Number(configStore.config.live2dStrokeSpeedThreshold || 360)
-            )
-            interactionSystem.triggerEvent(
-              speedPxPerSecond >= speedThreshold
-                ? 'live2d.stroke.head.heavy'
-                : 'live2d.stroke.head.light'
-            )
+            if (this.isPositionOnModelHead(cssX, cssY)) {
+              const speedPxPerSecond = (this.strokeDistance / strokeDurationMs) * 1000
+              const configStore = useConfigStore()
+              const speedThreshold = Math.max(
+                60,
+                Number(configStore.config.live2dStrokeSpeedThreshold || 360)
+              )
+              interactionSystem.triggerEvent(
+                speedPxPerSecond >= speedThreshold
+                  ? 'live2d.stroke.head.heavy'
+                  : 'live2d.stroke.head.light'
+              )
+            }
           }
+          // 中间位移（5-11px）静默忽略，避免误触发
         }
-        // 中间位移（5-11px）静默忽略，避免误触发
-      }
 
-      // 释放，重置所有交互状态
-      this.isMousePressed = false
-      this.strokeDistance = 0
-      this.lastStrokePoint = null
-      this.interactionStartedOnTransparent = false
-      this.interactionMaxDisplacement = 0
+        // 释放，重置所有交互状态
+        this.isMousePressed = false
+        this.strokeDistance = 0
+        this.lastStrokePoint = null
+        this.interactionStartedOnTransparent = false
+        this.interactionMaxDisplacement = 0
 
-      // 清除长按定时器
-      if (this.mousePressTimer) {
-        clearTimeout(this.mousePressTimer)
-        this.mousePressTimer = null
-      }
+        // 清除长按定时器
+        if (this.mousePressTimer) {
+          clearTimeout(this.mousePressTimer)
+          this.mousePressTimer = null
+        }
 
-      // 取消注视，平滑过渡回中心（仅在锁定模式下）
-      if (this.isFocusEnabled && this.isLocked) {
-        this.smoothDisableFocus(500)
-      }
-    }, { signal })
+        // 取消注视，平滑过渡回中心（仅在锁定模式下）
+        if (this.isFocusEnabled && this.isLocked) {
+          this.smoothDisableFocus(500)
+        }
+      },
+      { signal }
+    )
 
-    this.canvasElement!.addEventListener('mouseleave', () => {
-      // 重置状态
-      this.isMousePressed = false
-      // 离开画布时重置触摸轨迹数据
-      this.strokeDistance = 0
-      // 离开画布时重置最后触摸点
-      this.lastStrokePoint = null
-      this.interactionStartedOnTransparent = false
-      this.interactionMaxDisplacement = 0
+    this.canvasElement!.addEventListener(
+      'mouseleave',
+      () => {
+        // 重置状态
+        this.isMousePressed = false
+        // 离开画布时重置触摸轨迹数据
+        this.strokeDistance = 0
+        // 离开画布时重置最后触摸点
+        this.lastStrokePoint = null
+        this.interactionStartedOnTransparent = false
+        this.interactionMaxDisplacement = 0
 
-      // 清除长按定时器
-      if (this.mousePressTimer) {
-        clearTimeout(this.mousePressTimer)
-        this.mousePressTimer = null
-      }
+        // 清除长按定时器
+        if (this.mousePressTimer) {
+          clearTimeout(this.mousePressTimer)
+          this.mousePressTimer = null
+        }
 
-      // 取消注视（仅在锁定模式下）
-      if (this.isFocusEnabled && this.isLocked) {
-        this.smoothDisableFocus(500)
-      }
+        // 取消注视（仅在锁定模式下）
+        if (this.isFocusEnabled && this.isLocked) {
+          this.smoothDisableFocus(500)
+        }
 
-      // 重置模型可交互状态
-      this.ignoreState = false
-      // 设置模型忽略鼠标事件，避免在模型区域外触发交互
-      if (options.isPetMode) {
-        window.api.setIgnoreMouse(false)
-      }
-      // 清除检查是否进入交互状态定时器
-      if (this.restoreTimer) {
-        clearTimeout(this.restoreTimer)
-        this.restoreTimer = null
-      }
-    }, { signal })
+        // 重置模型可交互状态
+        this.ignoreState = false
+        // 设置模型忽略鼠标事件，避免在模型区域外触发交互
+        if (options.isPetMode) {
+          window.api.setIgnoreMouse(false)
+        }
+        // 清除检查是否进入交互状态定时器
+        if (this.restoreTimer) {
+          clearTimeout(this.restoreTimer)
+          this.restoreTimer = null
+        }
+      },
+      { signal }
+    )
 
     // 只有在非桌宠模式下才启用缩放功能，宠物模式下保持固定大小，使用面板调整
     if (!options.isPetMode) {
