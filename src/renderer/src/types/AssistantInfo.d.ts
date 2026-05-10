@@ -76,6 +76,18 @@ interface AssistantSettings {
   contextLength: number
 }
 
+// 用户私有状态信息（存储在 user_state.yaml 中）
+interface UserStateInfo {
+  // 初次相遇时间，存储为时间戳
+  firstMeetTime: number
+  // 好感度
+  love: number
+  // 用户状态最后更新时间，存储为时间戳
+  updatedAt: number
+  // 资产最后修改时间，存储为时间戳
+  assetsLastModified: number
+}
+
 interface AssistantInfo extends AssistantBaseInfo {
   // 助手名称
   name: string
@@ -97,18 +109,12 @@ interface AssistantInfo extends AssistantBaseInfo {
   description: string
   // 用户的设定，用于在提示词中填充用户的信息，进行个性化对话
   mask: string
-  // 初次相遇时间，存储为时间戳
-  firstMeetTime: number
-  // 好感度
-  love: number
   // 对话案例
   messageExamples: string[]
   // 额外描述
   extraDescription: string
-  // 更新,存储为时间戳
-  updatedAt: number
-  // 资产最后修改时间,存储为时间戳
-  assetsLastModified: number
+  // 用户私有状态（好感度、首次相遇时间、更新时间、资源修改时间）
+  userState: UserStateInfo
   // 自定义提示词
   customPrompt: string
   // 开场白，数组形式

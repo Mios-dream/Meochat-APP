@@ -66,6 +66,33 @@ class AssistantService {
   }
 
   /**
+   * 工具函数，规范化助手数据结构，兼容云端接口和本地文件中可能存在的用户状态字段
+   * @param assistant 原始助手数据，可能来自云端接口或本地文件，包含可选的 userState 字段
+   * @return 规范化后的助手数据，确保 userState 字段完整且优先使用云端接口中的数据
+   */
+  // private normalizeAssistantUserState(
+  //   assistant: Partial<AssistantInfo> & { userState?: Partial<UserStateInfo> | null }
+  // ): AssistantInfo {
+  //   const { userState, love, firstMeetTime, updatedAt, assetsLastModified, ...rest } =
+  //     assistant as Partial<AssistantInfo> & {
+  //       love?: number
+  //       firstMeetTime?: number
+  //       updatedAt?: number
+  //       assetsLastModified?: number
+  //     }
+
+  //   return {
+  //     ...(rest as AssistantInfo),
+  //     userState: {
+  //       love: userState?.love ?? love ?? 0,
+  //       firstMeetTime: userState?.firstMeetTime ?? firstMeetTime ?? 0,
+  //       updatedAt: userState?.updatedAt ?? updatedAt ?? 0,
+  //       assetsLastModified: userState?.assetsLastModified ?? assetsLastModified ?? 0
+  //     }
+  //   }
+  // }
+
+  /**
    * 注册聊天框快捷键
    */
   public registerChatShortcut(shortcut: string): boolean {
@@ -121,7 +148,7 @@ class AssistantService {
     try {
       const url = `http://${getConfig('baseUrl')}/api/assistant/current`
       const response = await axios.get(url)
-      return response.data.data || null
+      return response.data.data
     } catch (error) {
       log.error('获取当前助手失败:', (error as Error).message)
       return null
@@ -314,7 +341,7 @@ class AssistantService {
   private updateAssistantAssetsLastModified(assistantName: string): boolean {
     const assistant = this.getAssistantInfo(assistantName)
     if (assistant) {
-      assistant.assetsLastModified = Math.floor(Date.now() / 1000)
+      assistant.userState.assetsLastModified = Math.floor(Date.now() / 1000)
       this.saveAssistantToLocal(assistant)
       return true
     } else {
@@ -331,7 +358,7 @@ class AssistantService {
     try {
       const response = await axios.post(url, {
         name: assistant.name,
-        lastModified: assistant.assetsLastModified
+        lastModified: assistant.userState.assetsLastModified
       })
       return response.data.needsUpdate
     } catch (error) {
@@ -355,8 +382,10 @@ class AssistantService {
         user: assistant.user || '阁下',
         settings: assistant.settings,
         gsvSetting: assistant.gsvSetting,
-        // 更新时间戳
-        updatedAt: Math.floor(Date.now() / 1000)
+        userState: {
+          ...assistant.userState,
+          updatedAt: Math.floor(Date.now() / 1000)
+        }
       }
 
       // 上传到云端
@@ -430,9 +459,11 @@ class AssistantService {
         startWith: assistant.startWith || [],
         settings: assistant.settings,
         gsvSetting: assistant.gsvSetting,
-        // 更新时间戳
-        updatedAt: Math.floor(Date.now() / 1000),
-        assetsLastModified: Math.floor(Date.now() / 1000)
+        userState: {
+          ...assistant.userState,
+          updatedAt: Math.floor(Date.now() / 1000),
+          assetsLastModified: Math.floor(Date.now() / 1000)
+        }
       }
 
       // 上传到云端
@@ -510,8 +541,8 @@ class AssistantService {
             const localAssistant = localAssistants.get(assistantName)
 
             if (localAssistant) {
-              const cloudTime = new Date(cloudAssistant.updatedAt).getTime()
-              const localTime = new Date(localAssistant.updatedAt).getTime()
+              const cloudTime = new Date(cloudAssistant.userState.updatedAt).getTime()
+              const localTime = new Date(localAssistant.userState.updatedAt).getTime()
 
               if (cloudTime > localTime) {
                 // 云端更新，覆盖本地
@@ -523,7 +554,10 @@ class AssistantService {
                   await axios.post(url, localAssistant)
                   log.info(`已将本地助手 ${assistantName} 的更新推送到云端`)
                 } catch (pushError) {
-                  log.error(`推送本地助手 ${assistantName} 到云端失败:`, (pushError as Error).message)
+                  log.error(
+                    `推送本地助手 ${assistantName} 到云端失败:`,
+                    (pushError as Error).message
+                  )
                 }
               }
             } else {

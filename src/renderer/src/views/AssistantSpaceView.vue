@@ -325,7 +325,7 @@ const interactionSystem = InteractionSystem.getInstance()
 
 const currentAssistant: Ref<AssistantInfo | null> = ref(null)
 // 当前助手的好感度
-const currentLove = computed(() => currentAssistant.value?.love || 0) // 当前好感度值
+const currentLove = computed(() => currentAssistant.value?.userState.love || 0) // 当前好感度值
 const canViewDiary = computed(() => currentLove.value > 100)
 
 // 将任意数值限制在0到1之间

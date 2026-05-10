@@ -12,3 +12,4 @@ test/*.ts
 tsconfig.web.tsbuildinfo
 .claude/settings.local.json
 .vscode
+.sisyphus

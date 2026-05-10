@@ -643,13 +643,15 @@ function createNullAssistant(): AssistantInfo {
     height: 0,
     weight: 0,
     description: '',
-    firstMeetTime: 0,
-    love: 0,
     personality: '',
     messageExamples: [],
     extraDescription: '',
-    updatedAt: 0,
-    assetsLastModified: 0,
+    userState: {
+      firstMeetTime: 0,
+      love: 0,
+      updatedAt: 0,
+      assetsLastModified: 0
+    },
     mask: '',
     customPrompt: '',
     startWith: [],
@@ -1611,7 +1613,10 @@ const handleSubmit = async (): Promise<void> => {
       const updatedAssistant: AssistantInfo = {
         ...props.editingAssistant,
         ...plainProcessedFormData,
-        updatedAt: Math.floor(Date.now() / 1000)
+        userState: {
+          ...props.editingAssistant.userState,
+          updatedAt: Math.floor(Date.now() / 1000)
+        }
       }
 
       const shouldUploadAssets = assetsDirty.value
@@ -1656,10 +1661,12 @@ const handleSubmit = async (): Promise<void> => {
       // 添加模式：创建新助手
       const assistantInfo: AssistantInfo = {
         ...plainProcessedFormData,
-        firstMeetTime: Math.floor(Date.now() / 1000),
-        love: 0,
-        updatedAt: Math.floor(Date.now() / 1000),
-        assetsLastModified: Math.floor(Date.now() / 1000)
+        userState: {
+          firstMeetTime: Math.floor(Date.now() / 1000),
+          love: 0,
+          updatedAt: Math.floor(Date.now() / 1000),
+          assetsLastModified: Math.floor(Date.now() / 1000)
+        }
       }
 
       // 添加新助手

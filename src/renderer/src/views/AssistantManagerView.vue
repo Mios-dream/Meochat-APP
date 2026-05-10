@@ -14,9 +14,9 @@
               <div class="content">
                 <div id="work-time">
                   {{
-                    assistantInfo?.firstMeetTime
+                    assistantInfo?.userState.firstMeetTime
                       ? Math.floor(
-                          (Date.now() / 1000 - assistantInfo.firstMeetTime) / (60 * 60 * 24)
+                          (Date.now() / 1000 - assistantInfo.userState.firstMeetTime) / (60 * 60 * 24)
                         )
                       : 0
                   }}天
@@ -159,8 +159,8 @@
                   <div class="progress-bar-background">
                     <div
                       class="progress-bar-fill"
-                      :style="{
-                        width: `${(assistant.love / 200) * 100}%`
+                    :style="{
+                        width: `${(assistant.userState.love / 200) * 100}%`
                       }"
                     ></div>
                   </div>
@@ -259,7 +259,7 @@ const assistantManager = AssistantManager.getInstance()
 const assistantInfo = ref<AssistantInfo | null>(assistantManager.getCurrentAssistant())
 const nextAssistantInfo = ref<AssistantInfo | null>()
 // 当前助手的好感度
-const currentLove = computed(() => assistantInfo.value?.love || 0) // 当前好感度值
+const currentLove = computed(() => assistantInfo.value?.userState.love || 0) // 当前好感度值
 // 助手列表
 const assistantList = ref(assistantManager.getAssistants())
 // 是否可见添加助手对话框
