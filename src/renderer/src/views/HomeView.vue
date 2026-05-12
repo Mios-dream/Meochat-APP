@@ -75,22 +75,23 @@
       <!-- 核心状态文字 -->
       <div class="core-whisper" :class="{ visible: showSidePanels }">
         <div class="whisper-line name">智慧核心</div>
-        <div class="whisper-line version" v-if="kernelState.currentVersion">
-          v{{ kernelState.currentVersion }}
-        </div>
+
         <div class="whisper-line status" :class="statusClass">
           {{ statusText }}
         </div>
+        <div v-if="kernelState.currentVersion" class="whisper-line version">
+          v{{ kernelState.currentVersion }}
+        </div>
         <div
+          v-if="isServiceDown || isServiceStarting"
           class="whisper-line service-hint"
           :class="serviceStatusClass"
-          v-if="isServiceDown || isServiceStarting"
         >
           {{ serviceStatusText }}
         </div>
         <div
-          class="whisper-line hint"
           v-if="kernelState.updateAvailable && !isOperating && !isServiceDown"
+          class="whisper-line hint"
         >
           新的内核更新可用...
         </div>
@@ -191,7 +192,7 @@
               <span>{{
                 envCheckResult.allPassed
                   ? '和谐共鸣'
-                  : `${envCheckResult.items.filter((i) => !i.passed).length} 处断裂`
+                  : `${envCheckResult.items.filter((i) => !i.passed).length} 处错误`
               }}</span>
             </div>
             <div
@@ -1331,9 +1332,10 @@ onUnmounted(() => {
 .whisper-line.name {
   font-size: 20px;
   font-weight: 300;
-  color: #4f4f4f;
+  color: #5a5a5ab0;
   letter-spacing: 0.15em;
   text-shadow: 0 0 20px rgba(251, 114, 153, 0.3);
+  font-family: 'KaTongFont';
 }
 
 .whisper-line.version {
@@ -1753,9 +1755,9 @@ onUnmounted(() => {
 }
 
 .overall-pass {
-  color: rgba(34, 197, 94, 0.9);
-  background: rgba(34, 197, 94, 0.06);
-  border: 1px solid rgba(34, 197, 94, 0.12);
+  color: rgba(251, 114, 153, 0.9);
+  background: rgba(251, 114, 153, 0.06);
+  border: 1px solid rgba(251, 114, 153, 0.12);
 }
 
 .overall-fail {
@@ -1788,7 +1790,7 @@ onUnmounted(() => {
 }
 
 .item-pass .panel-item-icon {
-  color: rgba(34, 197, 94, 0.8);
+  color: rgba(251, 114, 153, 0.8);
 }
 
 .item-fail .panel-item-icon {

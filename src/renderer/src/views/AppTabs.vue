@@ -14,7 +14,11 @@
     </aside>
 
     <main :style="{ backdropFilter: uiStore.isHomePanelOpen ? 'blur(2px)' : 'none' }">
-      <component :is="currentComponent" v-if="currentComponent" />
+      <Transition name="tab-slide" mode="out-in">
+        <div :key="activeTab" class="tab-content-wrapper">
+          <component :is="currentComponent" v-if="currentComponent" />
+        </div>
+      </Transition>
     </main>
     <div id="tabs-container">
       <div id="tabs">
@@ -366,5 +370,28 @@ main {
   image-rendering: -webkit-optimize-contrast;
   image-rendering: smooth;
   image-rendering: auto;
+}
+
+.tab-content-wrapper {
+  width: 100%;
+  height: 100%;
+}
+
+/* 标签页切换过渡动画 */
+.tab-slide-enter-active,
+.tab-slide-leave-active {
+  transition:
+    opacity 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+    transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.tab-slide-enter-from {
+  opacity: 0;
+  transform: translateY(12px);
+}
+
+.tab-slide-leave-to {
+  opacity: 0;
+  transform: translateY(-8px);
 }
 </style>

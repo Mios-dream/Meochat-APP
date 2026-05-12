@@ -636,7 +636,8 @@ async function loadChatHistory(): Promise<void> {
  */
 function formatTime(timestamp: Date | null): string {
   if (!timestamp) {
-    return '----/--/--'
+    // return '----/--/--'
+    return ''
   }
   // 格式化时间显示为年月日
   return timestamp.toLocaleDateString([], {
