@@ -1,6 +1,9 @@
 <!-- HomeView.vue -->
 <template>
   <div class="universe">
+    <!-- 樱花飘落画布 -->
+    <canvas ref="sakuraCanvas" class="sakura-canvas"></canvas>
+
     <!-- 主视觉区域 -->
     <div class="core-sanctuary">
       <!-- 伊卡洛斯光环 -->
@@ -269,11 +272,129 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import MarkdownRenderer from '../components/MarkdownRenderer.vue'
 import { useUIStore } from '../stores/useUIStore'
 import type { KernelUpdateState, EnvironmentCheckResult, KernelLogEntry } from '../types/KernelInfo'
+import sakuraImg from '../assets/images/sakura.webp'
 
 // ─── 状态 ──────────────────────────────────────
 
 const showReleaseNotes = ref(false)
 const showSidePanels = ref(false)
+
+// ─── 樱花飘落 ──────────────────────────────────────
+const sakuraCanvas = ref<HTMLCanvasElement | null>(null)
+let sakuraAnimFrameId: number | null = null
+let sakuraImage: HTMLImageElement | null = null
+const PETAL_COUNT = 12
+
+interface SakuraPetal {
+  x: number
+  y: number
+  size: number
+  rotation: number
+  rotationSpeed: number
+  fallSpeed: number
+  swayPhase: number
+  swayAmplitude: number
+  swaySpeed: number
+  opacity: number
+}
+
+let petals: SakuraPetal[] = []
+
+function initPetals(canvas: HTMLCanvasElement): void {
+  const { width, height } = canvas
+  petals = Array.from({ length: PETAL_COUNT }, () => ({
+    x: Math.random() * width,
+    y: Math.random() * height - height, // start above viewport
+    size: 14 + Math.random() * 14, // 14~28px
+    rotation: Math.random() * Math.PI * 2,
+    rotationSpeed: (Math.random() - 0.5) * 0.015,
+    fallSpeed: 0.3 + Math.random() * 0.5, // moderate speed
+    swayPhase: Math.random() * Math.PI * 2,
+    swayAmplitude: 20 + Math.random() * 30,
+    swaySpeed: 0.005 + Math.random() * 0.008,
+    opacity: 0.5 + Math.random() * 0.5
+  }))
+}
+
+function startSakuraAnimation(): void {
+  const canvas = sakuraCanvas.value
+  if (!canvas) return
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return
+
+  const resizeCanvas = (): void => {
+    const parent = canvas.parentElement
+    if (!parent) return
+    const rect = parent.getBoundingClientRect()
+    const dpr = window.devicePixelRatio || 1
+    canvas.width = rect.width * dpr
+    canvas.height = rect.height * dpr
+    canvas.style.width = rect.width + 'px'
+    canvas.style.height = rect.height + 'px'
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+  }
+
+  const preloadImage = (): Promise<void> => {
+    return new Promise((resolve) => {
+      sakuraImage = new Image()
+      sakuraImage.onload = () => resolve()
+      sakuraImage.onerror = () => resolve() // silently ignore
+      sakuraImage.src = sakuraImg
+    })
+  }
+
+  const animate = (): void => {
+    sakuraAnimFrameId = requestAnimationFrame(animate)
+
+    const w = canvas.width / (window.devicePixelRatio || 1)
+    const h = canvas.height / (window.devicePixelRatio || 1)
+
+    ctx.clearRect(0, 0, w, h)
+
+    const img = sakuraImage
+    if (!img || !img.complete) return
+
+    for (const p of petals) {
+      // update position
+      p.y += p.fallSpeed
+      p.swayPhase += p.swaySpeed
+      p.x += Math.sin(p.swayPhase) * 0.3
+      p.rotation += p.rotationSpeed
+
+      // reset when off screen
+      if (p.y > h + p.size) {
+        p.y = -p.size
+        p.x = Math.random() * w
+      }
+      if (p.x > w + p.size) p.x = -p.size
+      if (p.x < -p.size) p.x = w + p.size
+
+      // draw
+      ctx.save()
+      ctx.globalAlpha = p.opacity
+      ctx.translate(p.x, p.y)
+      ctx.rotate(p.rotation)
+      ctx.drawImage(img, -p.size / 2, -p.size / 2, p.size, p.size)
+      ctx.restore()
+    }
+  }
+
+  resizeCanvas()
+  window.addEventListener('resize', resizeCanvas)
+  preloadImage().then(() => {
+    initPetals(canvas)
+    sakuraAnimFrameId = requestAnimationFrame(animate)
+  })
+}
+
+function stopSakuraAnimation(): void {
+  if (sakuraAnimFrameId !== null) {
+    cancelAnimationFrame(sakuraAnimFrameId)
+    sakuraAnimFrameId = null
+  }
+  petals = []
+  sakuraImage = null
+}
 
 const uiStore = useUIStore()
 
@@ -626,6 +747,8 @@ watch(showSidePanels, (val) => {
 // ─── 生命周期 ──────────────────────────────────────
 
 onMounted(async () => {
+  startSakuraAnimation()
+
   try {
     const state = await window.api.kernel.getState()
     kernelState.value = state
@@ -656,6 +779,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  stopSakuraAnimation()
   // 清除模糊滤镜
   uiStore.isHomePanelOpen = false
   unsubKernelState?.()
@@ -681,6 +805,17 @@ onUnmounted(() => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
+}
+
+/* ─── 樱花飘落画布 ──────────────────────────────────── */
+
+.sakura-canvas {
+  position: absolute;
+  inset: 0;
+  z-index: 15;
+  pointer-events: none;
+  width: 100%;
+  height: 100%;
 }
 
 .star {
