@@ -1,9 +1,15 @@
 <!-- HomeView.vue -->
 <template>
-  <div class="universe">
-    <!-- 樱花飘落画布 -->
-    <canvas ref="sakuraCanvas" class="sakura-canvas"></canvas>
+  <!-- 樱花飘落画布 -->
+  <canvas ref="sakuraCanvas" class="sakura-canvas"></canvas>
 
+  <!-- 左上角问候语 -->
+  <div class="greeting-corner">
+    <h1 class="page-title">核心空间</h1>
+    <p class="page-title-description">你好，阁下！今天是我与阁下相识的第{{ onboardingDays }}天</p>
+  </div>
+
+  <div class="universe">
     <!-- 主视觉区域 -->
     <div class="core-sanctuary">
       <!-- 伊卡洛斯光环 -->
@@ -215,7 +221,7 @@
         <div class="panel-header">
           <font-awesome-icon icon="fa-solid fa-scroll" class="panel-header-icon" />
           <span>内核日志</span>
-          <button class="panel-refresh" @click="fetchLogs" title="刷新日志">
+          <button class="panel-refresh" title="刷新日志" @click="fetchLogs">
             <font-awesome-icon icon="fa-solid fa-rotate" :class="{ 'fa-spin': isFetchingLogs }" />
           </button>
         </div>
@@ -278,6 +284,7 @@ import sakuraImg from '../assets/images/sakura.webp'
 
 const showReleaseNotes = ref(false)
 const showSidePanels = ref(false)
+const onboardingDays = ref(0)
 
 // ─── 樱花飘落 ──────────────────────────────────────
 const sakuraCanvas = ref<HTMLCanvasElement | null>(null)
@@ -776,6 +783,22 @@ onMounted(async () => {
   startHealthPolling()
 
   handleCheckEnv()
+
+  // 计算与阁下相识的天数
+  try {
+    const state = await window.api.onboarding.getState()
+    if (state.completed && state.completedAt > 0) {
+      const startDate = new Date(state.completedAt)
+      const today = new Date()
+      // 重置到当天0点计算天数差
+      const startDay = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate())
+      const todayDay = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+      const diffMs = todayDay.getTime() - startDay.getTime()
+      onboardingDays.value = Math.max(1, Math.floor(diffMs / (1000 * 60 * 60 * 24)) + 1)
+    }
+  } catch {
+    // 静默失败，onboardingDays 保持 0
+  }
 })
 
 onUnmounted(() => {
@@ -790,17 +813,10 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-/* ═══════════════════════════════════════════════════
-   HomeView - 伊卡洛斯可变双翼系统
-   无边界流体设计 · 悬浮 · 发光 · 粒子
-   ═══════════════════════════════════════════════════ */
-
 .universe {
   width: 100%;
   height: 100%;
-  position: relative;
-  overflow: hidden;
-  /* background: linear-gradient(180deg, #fdf5f7 0%, #ffeef0 50%, #fff0f5 100%); */
+  /* position: relative; */
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -816,6 +832,16 @@ onUnmounted(() => {
   pointer-events: none;
   width: 100%;
   height: 100%;
+}
+
+/* ─── 左上角问候语 ──────────────────────────────────── */
+
+.greeting-corner {
+  position: absolute;
+  top: 25px;
+  left: 55px;
+  display: flex;
+  flex-direction: column;
 }
 
 .star {
@@ -1631,8 +1657,6 @@ onUnmounted(() => {
 
 .side-panel {
   position: absolute;
-  /* top: 16%;
-  bottom: 16%; */
   width: 300px;
   height: 435px;
   z-index: 25;

@@ -424,7 +424,7 @@ function change<K extends keyof typeof config.value>(
 
 .setting-item {
   display: flex;
-  background-color: white;
+  background-color: rgba(255, 255, 255, 0.8);
   border-radius: 15px;
   padding: 20px;
   flex-direction: column;

@@ -16,7 +16,8 @@
                   {{
                     assistantInfo?.userState.firstMeetTime
                       ? Math.floor(
-                          (Date.now() / 1000 - assistantInfo.userState.firstMeetTime) / (60 * 60 * 24)
+                          (Date.now() / 1000 - assistantInfo.userState.firstMeetTime) /
+                            (60 * 60 * 24)
                         )
                       : 0
                   }}天
@@ -159,7 +160,7 @@
                   <div class="progress-bar-background">
                     <div
                       class="progress-bar-fill"
-                    :style="{
+                      :style="{
                         width: `${(assistant.userState.love / 200) * 100}%`
                       }"
                     ></div>

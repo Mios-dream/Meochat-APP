@@ -13,7 +13,7 @@
       </div>
     </aside>
 
-    <main :style="{ backdropFilter: uiStore.isHomePanelOpen ? 'blur(5px)' : 'none' }">
+    <main :style="{ backdropFilter: uiStore.isHomePanelOpen ? 'blur(2px)' : 'none' }">
       <component :is="currentComponent" v-if="currentComponent" />
     </main>
     <div id="tabs-container">
@@ -208,6 +208,7 @@ main {
   width: 100%;
   height: 100%;
   transition: backdrop-filter 0.6s ease;
+  will-change: backdrop-filter;
 }
 
 #container {
