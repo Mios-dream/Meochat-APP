@@ -8,6 +8,7 @@ import { createTray } from './tray/appTray'
 import { startAutoService } from './utils/autoService'
 import { registerFileProtocol, handleFileProtocol } from './protocol/fileProtocol'
 import setupUpdaterIPC from './ipc/updaterHandlers'
+import setupKernelIPC from './ipc/kernelHandlers'
 import { setupSystemEventIPC } from './ipc/assistantEventHandlers'
 import log from './utils/logger'
 
@@ -16,6 +17,8 @@ try {
   setupMainIPC()
   // 设置更新器IPC
   setupUpdaterIPC()
+  // 设置内核管理IPC
+  setupKernelIPC()
   // 设置配置IPC
   setupConfigIPC()
   // 设置助手Together IPC

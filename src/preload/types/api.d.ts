@@ -2,6 +2,7 @@ import type { MainWindowApi } from './modules/mainWindowApi'
 import type { AssistantApi } from './modules/assistantApi'
 import type { ConfigApi } from './modules/appConfig'
 import type { ChatBoxApi } from './modules/chatBoxApi'
+import type { KernelApi } from './modules/kernelApi'
 
 interface IpcRenderer {
   ipcRenderer: {
@@ -40,7 +41,7 @@ interface IpcRenderer {
 
 declare global {
   interface Window {
-    api: MainWindowApi & AssistantApi & ConfigApi & ChatBoxApi & IpcRenderer
+    api: MainWindowApi & AssistantApi & ConfigApi & ChatBoxApi & KernelApi & IpcRenderer
   }
 }
 

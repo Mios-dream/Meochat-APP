@@ -25,9 +25,10 @@ await configStore.loadConfig()
 configStore.listenForChanges()
 
 // 根据onboarding状态决定初始路由
+// 第一次启动：显示 OnboardingView（完整的引导流程）
+// 非第一次启动：走默认路由 / → /startup（等待后端服务启动后进入主界面）
 const onboardingState = await window.api.onboarding.getState()
-console.log('当前路由:', router.currentRoute.value.path)
-if (!onboardingState.completed && router.currentRoute.value.path === '/tabs') {
+if (!onboardingState.completed) {
   await router.replace('/onboarding')
 }
 // 注册全局组件

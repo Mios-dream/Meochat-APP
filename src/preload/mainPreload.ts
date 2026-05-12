@@ -47,6 +47,41 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('updater:update-progress', (_, percent) => callback(percent)),
   checkCloudVersion: () => ipcRenderer.invoke('updater:check-cloud-version'),
 
+  // 内核管理 API
+  kernel: {
+    getState: () => ipcRenderer.invoke('kernel:get-state'),
+    getCurrentVersion: () => ipcRenderer.invoke('kernel:get-current-version'),
+    getInstalled: () => ipcRenderer.invoke('kernel:get-installed'),
+    getActivePath: () => ipcRenderer.invoke('kernel:get-active-path'),
+    getPythonConfig: () => ipcRenderer.invoke('kernel:get-python-config'),
+    checkUpdate: () => ipcRenderer.invoke('kernel:check-update'),
+    updateToLatest: () => ipcRenderer.invoke('kernel:update-to-latest'),
+    onStateUpdate: (callback) => {
+      const handler = (_event: Electron.IpcRendererEvent, state: unknown): void => callback(state)
+      ipcRenderer.on('kernel:state-update', handler)
+      return () => ipcRenderer.removeListener('kernel:state-update', handler)
+    },
+    onNeedRestart: (callback) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: unknown): void => callback(data)
+      ipcRenderer.on('kernel:need-restart', handler)
+      return () => ipcRenderer.removeListener('kernel:need-restart', handler)
+    },
+    checkEnvironment: () => ipcRenderer.invoke('kernel:check-environment'),
+    setupEnvironment: () => ipcRenderer.invoke('kernel:setup-environment'),
+    getLogs: () => ipcRenderer.invoke('kernel:get-logs'),
+    startBackend: () => ipcRenderer.invoke('kernel:start-backend'),
+    stopBackend: () => ipcRenderer.invoke('kernel:stop-backend'),
+    restartBackend: () => ipcRenderer.invoke('kernel:restart-backend'),
+    getBackendStatus: () => ipcRenderer.invoke('kernel:get-backend-status'),
+    getBackendLogs: () => ipcRenderer.invoke('kernel:get-backend-logs'),
+    checkBackendHealth: () => ipcRenderer.invoke('kernel:check-backend-health'),
+    onServiceState: (callback) => {
+      const handler = (_event: Electron.IpcRendererEvent, state: unknown): void => callback(state)
+      ipcRenderer.on('kernel:service-state', handler)
+      return () => ipcRenderer.removeListener('kernel:service-state', handler)
+    }
+  },
+
   // 助手相关 API
   initAssistant: () => ipcRenderer.invoke('assistant:init'),
   // 下载助手资产

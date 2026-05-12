@@ -48,6 +48,10 @@ export interface AppConfig {
   // Python服务配置
   pythonTasks: PythonTask[]
 
+  // 内核管理
+  /** 当前激活的内核版本号 */
+  activeKernelVersion?: string
+
   performanceMode: 'high' | 'balanced' | 'low'
 
   assistantWindowBounds?: Electron.Rectangle

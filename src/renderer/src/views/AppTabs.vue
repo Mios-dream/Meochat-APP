@@ -13,7 +13,7 @@
       </div>
     </aside>
 
-    <main style="backdrop-filter: blur(20px)">
+    <main :style="{ backdropFilter: uiStore.isHomePanelOpen ? 'blur(5px)' : 'none' }">
       <component :is="currentComponent" v-if="currentComponent" />
     </main>
     <div id="tabs-container">
@@ -49,6 +49,7 @@
 <script setup lang="ts">
 import { computed, ref, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
+import { useUIStore } from '../stores/useUIStore'
 import HomeView from './HomeView.vue'
 import AssistantManagerView from './AssistantManagerView.vue'
 import PluginsView from './PluginManagerView.vue'
@@ -59,6 +60,7 @@ import { NotificationService } from '../services/NotificationService'
 
 const notificationService = NotificationService.getInstance()
 const route = useRoute()
+const uiStore = useUIStore()
 
 const activeTab = ref(0)
 
@@ -205,28 +207,17 @@ body {
 main {
   width: 100%;
   height: 100%;
+  transition: backdrop-filter 0.6s ease;
 }
 
 #container {
   width: 100vw;
   height: 100vh;
   display: flex;
-  /* background-color: #eff4f9; */
-  /* background-color: rgba(255, 255, 255, 0.4); */
   overflow: hidden;
-  background-image: url('../assets/images/app_background.png');
-  background-size: cover;
-  background-position: center;
-}
-
-#container::before {
-  position: absolute;
-  content: '';
-  width: 100vw;
-  height: 100vh;
-  display: flex;
-  /* background-color: #eff4f9; */
-  background-color: rgba(255, 255, 255, 0.6);
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0.3)),
+    url('../assets/images/app_background.png') center / cover;
 }
 
 .titlebar {

@@ -422,13 +422,13 @@ class ChatService {
       this.expectMotionForStream = useMotionGenerate
 
       this.abortController = new AbortController()
-      console.log(
-        '发送交互事件消息',
-        JSON.stringify({
-          ...payload,
-          generation_motion: useMotionGenerate
-        })
-      )
+      // console.log(
+      //   '发送交互事件消息',
+      //   JSON.stringify({
+      //     ...payload,
+      //     generation_motion: useMotionGenerate
+      //   })
+      // )
       const response = await fetch(this.apiUrl.value + '/api/interaction/message', {
         method: 'POST',
         headers: {
