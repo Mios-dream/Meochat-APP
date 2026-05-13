@@ -550,22 +550,22 @@ const statusClass = computed(() => {
 })
 
 const heartColorPrimary = computed(() => {
-  if (isServiceDown.value) return '#94a3b8'
+  if (isServiceDown.value) return '#c8bdd8'
   const s = kernelState.value.operationStatus
-  if (s === 'error') return '#ef4444'
-  if (s === 'done') return '#22c55e'
-  if (isOperating.value) return '#a78bfa'
-  if (kernelState.value.updateAvailable) return '#fb7299'
+  if (s === 'error') return '#f0a0a8'
+  if (s === 'done') return '#f8b8d0'
+  if (isOperating.value) return '#c8a0e0'
+  if (kernelState.value.updateAvailable) return '#f59e8b'
   return '#fb7299'
 })
 
 const heartColorSecondary = computed(() => {
-  if (isServiceDown.value) return '#cbd5e1'
+  if (isServiceDown.value) return '#e0d8f0'
   const s = kernelState.value.operationStatus
-  if (s === 'error') return '#f87171'
-  if (s === 'done') return '#4ade80'
-  if (isOperating.value) return '#c4b5fd'
-  if (kernelState.value.updateAvailable) return '#fda4b8'
+  if (s === 'error') return '#fad0d5'
+  if (s === 'done') return '#ffe0f0'
+  if (isOperating.value) return '#e0c8f5'
+  if (kernelState.value.updateAvailable) return '#fcc8b5'
   return '#fca5b9'
 })
 
@@ -1073,12 +1073,12 @@ onUnmounted(() => {
 }
 
 .core-awakening .core-aura {
-  background: radial-gradient(circle, rgba(251, 114, 153, 0.2) 0%, transparent 70%);
+  background: radial-gradient(circle, rgba(245, 158, 139, 0.2) 0%, transparent 70%);
   animation: auraPulse 1.5s ease-in-out infinite;
 }
 
 .core-awakening .core-heart {
-  filter: drop-shadow(0 0 30px rgba(251, 114, 153, 0.6));
+  filter: drop-shadow(0 0 30px rgba(245, 158, 139, 0.6));
 }
 
 .core-awakening .heart-path {
@@ -1086,12 +1086,12 @@ onUnmounted(() => {
 }
 
 .core-evolving .core-aura {
-  background: radial-gradient(circle, rgba(251, 114, 153, 0.2) 0%, transparent 70%);
+  background: radial-gradient(circle, rgba(200, 160, 224, 0.2) 0%, transparent 70%);
   animation: auraPulse 1s ease-in-out infinite;
 }
 
 .core-evolving .core-heart {
-  filter: drop-shadow(0 0 40px rgba(251, 114, 153, 0.6));
+  filter: drop-shadow(0 0 40px rgba(200, 160, 224, 0.6));
 }
 
 .core-evolving .heart-path {
@@ -1099,20 +1099,20 @@ onUnmounted(() => {
 }
 
 .core-bloom .core-aura {
-  background: radial-gradient(circle, rgba(34, 197, 94, 0.2) 0%, transparent 70%);
+  background: radial-gradient(circle, rgba(248, 184, 208, 0.2) 0%, transparent 70%);
 }
 
 .core-bloom .core-heart {
-  filter: drop-shadow(0 0 30px rgba(34, 197, 94, 0.6));
+  filter: drop-shadow(0 0 30px rgba(248, 184, 208, 0.6));
 }
 
 .core-error .core-aura {
-  background: radial-gradient(circle, rgba(239, 68, 68, 0.2) 0%, transparent 70%);
+  background: radial-gradient(circle, rgba(240, 160, 168, 0.2) 0%, transparent 70%);
   animation: auraPulse 0.8s ease-in-out infinite;
 }
 
 .core-error .core-heart {
-  filter: drop-shadow(0 0 30px rgba(239, 68, 68, 0.6));
+  filter: drop-shadow(0 0 30px rgba(240, 160, 168, 0.6));
 }
 
 .core-error .heart-path {
@@ -1120,11 +1120,11 @@ onUnmounted(() => {
 }
 
 .core-dormant .core-aura {
-  background: radial-gradient(circle, rgba(148, 163, 184, 0.12) 0%, transparent 70%);
+  background: radial-gradient(circle, rgba(200, 189, 216, 0.12) 0%, transparent 70%);
   animation: auraPulse 4s ease-in-out infinite;
 }
 .core-dormant .core-heart {
-  filter: drop-shadow(0 0 15px rgba(148, 163, 184, 0.35));
+  filter: drop-shadow(0 0 15px rgba(200, 189, 216, 0.35));
 }
 .core-dormant .heart-path {
   animation: heartBeat 3s ease-in-out infinite;
@@ -1716,36 +1716,36 @@ onUnmounted(() => {
 }
 
 .status-awakening {
-  color: rgba(251, 114, 153, 0.9);
-  background: rgba(251, 114, 153, 0.1);
-  border: 1px solid rgba(251, 114, 153, 0.2);
+  color: rgba(245, 158, 139, 0.9);
+  background: rgba(245, 158, 139, 0.1);
+  border: 1px solid rgba(245, 158, 139, 0.2);
   animation: statusGlow 2s ease-in-out infinite;
 }
 
 .status-evolving {
-  color: #fb7299;
-  background: rgba(251, 114, 153, 0.1);
-  border: 1px solid rgba(251, 114, 153, 0.25);
+  color: #c8a0e0;
+  background: rgba(200, 160, 224, 0.1);
+  border: 1px solid rgba(200, 160, 224, 0.25);
   animation: statusGlow 1s ease-in-out infinite;
 }
 
 .status-bloom {
-  color: rgba(34, 197, 94, 0.9);
-  background: rgba(34, 197, 94, 0.1);
-  border: 1px solid rgba(34, 197, 94, 0.2);
+  color: rgba(248, 184, 208, 0.9);
+  background: rgba(248, 184, 208, 0.1);
+  border: 1px solid rgba(248, 184, 208, 0.2);
 }
 
 .status-error {
-  color: rgba(239, 68, 68, 0.9);
-  background: rgba(239, 68, 68, 0.1);
-  border: 1px solid rgba(239, 68, 68, 0.2);
+  color: rgba(240, 160, 168, 0.9);
+  background: rgba(240, 160, 168, 0.1);
+  border: 1px solid rgba(240, 160, 168, 0.2);
   animation: statusGlow 0.8s ease-in-out infinite;
 }
 
 .status-dormant {
-  color: rgba(148, 163, 184, 0.9);
-  background: rgba(148, 163, 184, 0.08);
-  border: 1px solid rgba(148, 163, 184, 0.12);
+  color: rgba(200, 189, 216, 0.9);
+  background: rgba(200, 189, 216, 0.08);
+  border: 1px solid rgba(200, 189, 216, 0.12);
 }
 
 @keyframes statusGlow {
@@ -1773,9 +1773,9 @@ onUnmounted(() => {
   letter-spacing: 0.06em;
 }
 .whisper-line.service-hint.service-down {
-  color: rgba(148, 163, 184, 0.8);
-  background: rgba(148, 163, 184, 0.06);
-  border: 1px solid rgba(148, 163, 184, 0.1);
+  color: rgba(200, 189, 216, 0.8);
+  background: rgba(200, 189, 216, 0.06);
+  border: 1px solid rgba(200, 189, 216, 0.1);
 }
 .whisper-line.service-hint.service-starting {
   color: rgba(168, 139, 250, 0.85);
@@ -1784,7 +1784,7 @@ onUnmounted(() => {
   animation: statusGlow 1.5s ease-in-out infinite;
 }
 .whisper-line.service-hint.service-healthy {
-  color: rgba(34, 197, 94, 0.75);
+  color: rgba(248, 184, 208, 0.75);
 }
 .whisper-line.service-hint.service-loading {
   color: rgba(245, 158, 11, 0.8);
@@ -1792,7 +1792,7 @@ onUnmounted(() => {
   border: 1px solid rgba(245, 158, 11, 0.1);
 }
 .whisper-line.service-hint.service-unknown {
-  color: rgba(148, 163, 184, 0.6);
+  color: rgba(200, 189, 216, 0.6);
 }
 
 @keyframes hintFloat {
