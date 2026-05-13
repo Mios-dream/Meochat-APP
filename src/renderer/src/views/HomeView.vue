@@ -12,7 +12,7 @@
   <div class="universe">
     <!-- 主视觉区域 -->
     <div class="core-sanctuary">
-      <!-- 伊卡洛斯光环 -->
+      <!-- 光环 -->
       <div class="halo-ring" :class="{ active: isOperating }">
         <div class="halo-inner"></div>
         <div class="halo-outer"></div>
@@ -51,24 +51,64 @@
 
         <!-- 可变双翼 - 左 -->
         <div class="wing wing-left" :class="{ spread: isOperating || showSidePanels }">
-          <div class="wing-feather f1"></div>
-          <div class="wing-feather f2"></div>
-          <div class="wing-feather f3"></div>
-          <div class="wing-feather f4"></div>
-          <div class="wing-feather f5"></div>
-          <div class="wing-feather f6"></div>
-          <div class="wing-feather f7"></div>
+          <div class="wing-layer layer-inner">
+            <div class="wing-flap">
+              <div class="wing-feather f1"></div>
+              <div class="wing-feather f2"></div>
+              <div class="wing-feather f3"></div>
+              <div class="wing-feather f4"></div>
+            </div>
+          </div>
+          <div class="wing-layer layer-mid">
+            <div class="wing-flap">
+              <div class="wing-feather f1"></div>
+              <div class="wing-feather f2"></div>
+              <div class="wing-feather f3"></div>
+              <div class="wing-feather f4"></div>
+            </div>
+          </div>
+          <div class="wing-layer layer-outer">
+            <div class="wing-flap">
+              <div class="wing-feather f1"></div>
+              <div class="wing-feather f2"></div>
+              <div class="wing-feather f3"></div>
+              <div class="wing-feather f4"></div>
+              <div class="wing-feather f5"></div>
+              <div class="wing-feather f6"></div>
+              <div class="wing-feather f7"></div>
+            </div>
+          </div>
         </div>
 
         <!-- 可变双翼 - 右 -->
         <div class="wing wing-right" :class="{ spread: isOperating || showSidePanels }">
-          <div class="wing-feather f1"></div>
-          <div class="wing-feather f2"></div>
-          <div class="wing-feather f3"></div>
-          <div class="wing-feather f4"></div>
-          <div class="wing-feather f5"></div>
-          <div class="wing-feather f6"></div>
-          <div class="wing-feather f7"></div>
+          <div class="wing-layer layer-inner">
+            <div class="wing-flap">
+              <div class="wing-feather f1"></div>
+              <div class="wing-feather f2"></div>
+              <div class="wing-feather f3"></div>
+              <div class="wing-feather f4"></div>
+            </div>
+          </div>
+          <div class="wing-layer layer-mid">
+            <div class="wing-flap">
+              <div class="wing-feather f1"></div>
+              <div class="wing-feather f2"></div>
+              <div class="wing-feather f3"></div>
+              <div class="wing-feather f4"></div>
+            </div>
+          </div>
+          <div class="wing-layer layer-outer">
+            <div class="wing-flap">
+              <div class="wing-feather f1"></div>
+              <div class="wing-feather f2"></div>
+              <div class="wing-feather f3"></div>
+              <div class="wing-feather f4"></div>
+              <div class="wing-feather f5"></div>
+              <div class="wing-feather f6"></div>
+              <div class="wing-feather f7"></div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -102,9 +142,9 @@
     <div class="floating-actions" :class="{ visible: showSidePanels }">
       <button
         class="float-btn orbit-btn"
-        @click="handleCheckUpdate"
         :disabled="isCheckingUpdate || isOperating"
         title="检查更新"
+        @click="handleCheckUpdate"
       >
         <span class="orbit-ring"></span>
         <font-awesome-icon icon="fa-solid fa-satellite" :class="{ 'fa-spin': isCheckingUpdate }" />
@@ -113,9 +153,9 @@
       <button
         v-if="kernelState.updateAvailable && !isOperating"
         class="float-btn evolve-btn"
-        @click="handleUpdateToLatest"
         :disabled="isUpdating"
         title="更新内核"
+        @click="handleUpdateToLatest"
       >
         <span class="evolve-particles"></span>
         <font-awesome-icon icon="fa-solid fa-wand-magic-sparkles" />
@@ -124,9 +164,9 @@
       <button
         v-if="kernelState.updateAvailable && kernelState.operationStatus === 'error'"
         class="float-btn retry-btn"
-        @click="handleUpdateToLatest"
         :disabled="isUpdating"
         title="重试更新"
+        @click="handleUpdateToLatest"
       >
         <span class="retry-ring"></span>
         <font-awesome-icon icon="fa-solid fa-rotate-right" />
@@ -135,9 +175,9 @@
       <button
         v-if="isServiceDown && !isServiceStarting"
         class="float-btn start-btn"
-        @click="handleStartBackend"
         :disabled="isStartingBackend"
         title="启动核心"
+        @click="handleStartBackend"
       >
         <span class="start-pulse"></span>
         <font-awesome-icon icon="fa-solid fa-play" />
@@ -146,9 +186,9 @@
       <button
         v-if="backendService.running && !isServiceStarting"
         class="float-btn restart-btn"
-        @click="handleRestartBackend"
         :disabled="isRestartingBackend"
         title="重启核心"
+        @click="handleRestartBackend"
       >
         <span class="restart-ring"></span>
         <font-awesome-icon icon="fa-solid fa-rotate-right" />
@@ -161,9 +201,9 @@
       <button
         v-if="isServiceDown && !isServiceStarting"
         class="float-btn sync-btn"
-        @click="handleSyncDeps"
         :disabled="isSyncingDeps"
         title="同步共鸣依赖"
+        @click="handleSyncDeps"
       >
         <font-awesome-icon icon="fa-solid fa-download" :class="{ 'fa-bounce': isSyncingDeps }" />
       </button>
@@ -444,11 +484,11 @@ const serviceStatusClass = computed(() => {
 const serviceStatusText = computed(() => {
   if (isSyncingDeps.value) return '共鸣同步中...'
   if (isStartingBackend.value) return '苏醒中...'
-  if (isRestartingBackend.value) return '重生展开...'
+  if (isRestartingBackend.value) return '重启中...'
   if (isServiceDown.value) return '沉眠中'
   if (backendHealthy.value === true) return '共鸣中'
   if (backendHealthy.value === false && backendService.value.running) return '苏醒中...'
-  return '感知中断'
+  return '更新中断'
 })
 
 // ─── 内核状态 ──────────────────────────────────────
@@ -488,12 +528,12 @@ const statusText = computed(() => {
   const map: Record<string, string> = {
     idle: '宁静中',
     checking: '感知中',
-    downloading: '汲取中',
-    installing: '蜕变中',
+    downloading: '下载中',
+    installing: '安装中',
     settingUpEnv: '共鸣中',
-    restarting: '重生中',
-    done: '绽放',
-    error: '痛苦'
+    restarting: '重启中',
+    done: '完成',
+    error: '错误！'
   }
   return map[s] || kernelState.value.statusText || '未知'
 })
@@ -1095,24 +1135,26 @@ onUnmounted(() => {
 .wing {
   position: absolute;
   top: 50%;
-  width: 200px;
-  height: 160px;
+  width: 220px;
+  height: 190px;
   pointer-events: none;
-  transition: all 1.2s cubic-bezier(0.25, 1, 0.4, 1);
+  transition:
+    opacity 0.9s ease,
+    transform 1.2s cubic-bezier(0.25, 1, 0.4, 1);
   z-index: -1;
 }
 
 .wing-left {
-  right: 75%;
+  right: 78%;
   transform-origin: right center;
-  transform: translateY(-50%) scale(0.1) rotate(-45deg);
+  transform: translateY(-50%) scale(0.1) rotate(-38deg);
   opacity: 0;
 }
 
 .wing-right {
-  left: 75%;
+  left: 78%;
   transform-origin: left center;
-  transform: translateY(-50%) scale(0.1) rotate(45deg);
+  transform: translateY(-50%) scale(0.1) rotate(38deg);
   opacity: 0;
 }
 
@@ -1121,189 +1163,502 @@ onUnmounted(() => {
 }
 
 .wing-left.spread {
-  transform: translateY(-50%) scale(1) rotate(-8deg);
+  transform: translateY(-50%) scale(1) rotate(-6deg);
 }
 
 .wing-right.spread {
-  transform: translateY(-50%) scale(1) rotate(8deg);
+  transform: translateY(-50%) scale(1) rotate(6deg);
+}
+
+.wing-layer {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform-origin: center;
+}
+
+.wing-flap {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transform-origin: center;
+  animation: wingFlap 4.8s ease-in-out infinite;
+}
+
+.wing-left .wing-flap {
+  transform-origin: right 55%;
+}
+
+.wing-right .wing-flap {
+  transform-origin: left 55%;
+}
+
+.layer-inner {
+  transform: translateY(-6px) scale(0.74);
+
+  opacity: 1;
+  filter: blur(0.2px);
+  z-index: 3;
+}
+
+.layer-mid {
+  transform: translateY(6px) scale(0.88);
+  opacity: 0.92;
+  z-index: 2;
+}
+
+.layer-outer {
+  transform: translateY(16px) scale(1);
+  opacity: 0.85;
+  z-index: 1;
+}
+
+.layer-inner .wing-flap {
+  animation-delay: -0.6s;
+}
+
+.layer-mid .wing-flap {
+  animation-delay: -0.3s;
+}
+
+.layer-outer .wing-flap {
+  animation-delay: 0s;
 }
 
 .wing-feather {
   position: absolute;
-  height: 36px;
+  height: 32px;
+  border-radius: 999px;
+  -webkit-mask-image: radial-gradient(closest-side, rgba(0, 0, 0, 1) 92%, rgba(0, 0, 0, 0) 100%);
+  mask-image: radial-gradient(closest-side, rgba(0, 0, 0, 1) 92%, rgba(0, 0, 0, 0) 100%);
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-size: 100% 100%;
+  mask-size: 100% 100%;
   background: linear-gradient(
     135deg,
-    rgba(255, 255, 255, 0.96) 0%,
-    rgba(255, 236, 242, 0.9) 40%,
-    rgba(251, 114, 153, 0.5) 100%
+    rgba(255, 255, 255, 0.97) 0%,
+    rgba(255, 240, 245, 0.88) 30%,
+    rgba(251, 114, 153, 0.48) 55%,
+    rgba(200, 155, 225, 0.35) 80%,
+    rgba(255, 245, 250, 0.82) 100%
   );
-  border: 1px solid rgba(255, 255, 255, 0.75);
   box-shadow:
-    0 8px 24px rgba(251, 114, 153, 0.2),
-    inset 0 3px 6px rgba(255, 255, 255, 0.9);
-  backdrop-filter: blur(6px);
-  transition: all 0.8s cubic-bezier(0.25, 1, 0.4, 1);
+    0 6px 18px rgba(251, 114, 153, 0.12),
+    0 2px 6px rgba(200, 155, 225, 0.08),
+    inset 0 2px 8px rgba(255, 255, 255, 0.75);
+  transition:
+    transform 0.8s cubic-bezier(0.25, 1, 0.4, 1),
+    box-shadow 0.8s cubic-bezier(0.25, 1, 0.4, 1),
+    filter 0.8s cubic-bezier(0.25, 1, 0.4, 1);
 }
 
+/* ─── 羽轴 (Rachis) ──────────────────────────────── */
+/* 中央纵向亮线，模拟真实羽毛的羽轴 */
 .wing-feather::before {
   content: '';
   position: absolute;
-  inset: 2px 6px;
-  border-radius: inherit;
-  background: linear-gradient(90deg, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0));
-  opacity: 0.7;
+  top: 50%;
+  height: 1.5px;
+  transform: translateY(-50%);
+  z-index: 3;
   pointer-events: none;
+  border-radius: 1px;
+  opacity: 0.65;
 }
 
+/* ─── 羽枝纹理 (Barbs) ────────────────────────────── */
+/* 斜向细纹模拟羽枝从羽轴向两侧辐射 */
 .wing-feather::after {
   content: '';
   position: absolute;
-  inset: 8px 10px;
-  border-radius: inherit;
-  border-top: 1px solid rgba(255, 255, 255, 0.8);
-  opacity: 0.6;
+  inset: 3px 0;
+  z-index: 1;
   pointer-events: none;
+  opacity: 0.22;
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent 0%,
+    rgba(0, 0, 0, 0.5) 12%,
+    rgba(0, 0, 0, 0.75) 35%,
+    rgba(0, 0, 0, 0.4) 70%,
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to right,
+    transparent 0%,
+    rgba(0, 0, 0, 0.5) 12%,
+    rgba(0, 0, 0, 0.75) 35%,
+    rgba(0, 0, 0, 0.4) 70%,
+    transparent 100%
+  );
 }
 
 .wing-left .wing-feather {
-  border-radius: 100% 0% 90% 10% / 90% 40% 60% 20%;
+  /* 左翼羽毛轮廓: 基部在右(100%)，尖端在左(0%) */
+  /* 上缘窄(leading edge)，下缘宽(trailing edge)，模拟真实飞羽的不对称 */
+  clip-path: polygon(
+    100% 38%,
+    100% 62%,
+    92% 70%,
+    80% 78%,
+    66% 86%,
+    50% 92%,
+    34% 90%,
+    20% 82%,
+    10% 70%,
+    6% 58%,
+    8% 46%,
+    14% 34%,
+    26% 24%,
+    44% 16%,
+    62% 12%,
+    78% 16%,
+    90% 26%
+  );
   transform-origin: right center;
   right: 0;
 }
 
 .wing-right .wing-feather {
-  border-radius: 10% 90% 80% 10% / 10% 60% 40% 10%;
+  /* 右翼羽毛轮廓: 基部在左(0%)，尖端在右(100%) —— 左翼的水平镜像 */
+  clip-path: polygon(
+    0% 38%,
+    0% 62%,
+    8% 70%,
+    20% 78%,
+    34% 86%,
+    50% 92%,
+    66% 90%,
+    80% 82%,
+    90% 70%,
+    94% 58%,
+    92% 46%,
+    86% 34%,
+    74% 24%,
+    56% 16%,
+    38% 12%,
+    22% 16%,
+    10% 26%
+  );
   transform-origin: left center;
   left: 0;
 }
 
-/* 左翼羽毛排布：更长、更丰富的展开形态 */
-.wing-left .f1 {
-  width: 80px;
-  top: -10px;
-  right: 20px;
-  transform: rotate(-50deg);
-  z-index: 5;
-}
-.wing-left .f2 {
-  width: 130px;
-  top: 15px;
-  right: 15px;
-  transform: rotate(-30deg);
-  z-index: 4;
-}
-.wing-left .f3 {
-  width: 180px;
-  top: 50px;
-  right: 10px;
-  transform: rotate(-10deg);
-  z-index: 3;
-}
-.wing-left .f4 {
-  width: 150px;
-  top: 85px;
-  right: 20px;
-  transform: rotate(15deg);
-  z-index: 2;
-}
-.wing-left .f5 {
-  width: 100px;
-  top: 110px;
-  right: 35px;
-  transform: rotate(40deg);
-  z-index: 1;
-}
-.wing-left .f6 {
-  width: 70px;
-  top: 135px;
-  right: 52px;
-  transform: rotate(55deg);
-  z-index: 0;
-  opacity: 0.9;
-}
-.wing-left .f7 {
-  width: 120px;
-  top: 70px;
-  right: 0;
-  transform: rotate(-22deg);
-  z-index: 2;
-  opacity: 0.95;
-}
-
-/* 右翼羽毛排布：对称调整 */
-.wing-right .f1 {
-  width: 80px;
-  top: -10px;
-  left: 20px;
-  transform: rotate(50deg);
-  z-index: 5;
-}
-.wing-right .f2 {
-  width: 130px;
-  top: 15px;
-  left: 15px;
-  transform: rotate(30deg);
-  z-index: 4;
-}
-.wing-right .f3 {
-  width: 180px;
-  top: 50px;
-  left: 10px;
-  transform: rotate(10deg);
-  z-index: 3;
-}
-.wing-right .f4 {
-  width: 150px;
-  top: 85px;
-  left: 20px;
-  transform: rotate(-15deg);
-  z-index: 2;
-}
-.wing-right .f5 {
-  width: 100px;
-  top: 110px;
-  left: 35px;
-  transform: rotate(-40deg);
-  z-index: 1;
-}
-.wing-right .f6 {
-  width: 70px;
-  top: 135px;
-  left: 52px;
-  transform: rotate(-55deg);
-  z-index: 0;
-  opacity: 0.9;
-}
-.wing-right .f7 {
-  width: 120px;
-  top: 70px;
+/* ─── 左翼羽轴方向: 从基部(右)延伸到尖部(左) ─────── */
+.wing-left .wing-feather::before {
   left: 0;
-  transform: rotate(22deg);
-  z-index: 2;
-  opacity: 0.95;
-}
-
-.wing.spread .wing-feather {
-  box-shadow:
-    0 10px 30px rgba(251, 114, 153, 0.4),
-    inset 0 4px 10px rgba(255, 255, 255, 1);
-}
-
-.wing-left .wing-feather {
+  right: 3px;
   background: linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 0.98) 0%,
-    rgba(255, 235, 240, 0.9) 42%,
-    rgba(251, 114, 153, 0.55) 100%
+    to right,
+    rgba(255, 255, 255, 0.08) 0%,
+    rgba(255, 255, 255, 0.75) 22%,
+    rgba(255, 255, 255, 0.95) 50%,
+    rgba(255, 255, 255, 0.5) 82%,
+    rgba(255, 255, 255, 0.12) 100%
   );
 }
 
+/* ─── 右翼羽轴方向: 从基部(左)延伸到尖部(右) ─────── */
+.wing-right .wing-feather::before {
+  left: 3px;
+  right: 0;
+  background: linear-gradient(
+    to left,
+    rgba(255, 255, 255, 0.08) 0%,
+    rgba(255, 255, 255, 0.75) 22%,
+    rgba(255, 255, 255, 0.95) 50%,
+    rgba(255, 255, 255, 0.5) 82%,
+    rgba(255, 255, 255, 0.12) 100%
+  );
+}
+
+/* ─── 左翼羽枝: 斜纹向尖端汇聚 ────────────────────── */
+.wing-left .wing-feather::after {
+  background: repeating-linear-gradient(
+    72deg,
+    transparent,
+    transparent 2px,
+    rgba(255, 255, 255, 0.45) 2px,
+    rgba(255, 255, 255, 0.45) 2.5px
+  );
+}
+
+/* ─── 右翼羽枝: 镜像斜纹 ──────────────────────────── */
+.wing-right .wing-feather::after {
+  background: repeating-linear-gradient(
+    -72deg,
+    transparent,
+    transparent 2px,
+    rgba(255, 255, 255, 0.45) 2px,
+    rgba(255, 255, 255, 0.45) 2.5px
+  );
+}
+
+/* 3层羽毛排布：从内到外递进，羽毛朝外、长度自上而下递减 */
+.wing-left .layer-inner .f1 {
+  width: 95px;
+  top: 40px;
+  right: -10px;
+  transform: rotate(20deg);
+  z-index: 4;
+}
+.wing-left .layer-inner .f2 {
+  width: 86px;
+  top: 80px;
+  right: 10px;
+  transform: rotate(10deg);
+  z-index: 3;
+}
+.wing-left .layer-inner .f3 {
+  width: 76px;
+  top: 110px;
+  right: 0px;
+  transform: rotate(0deg);
+  z-index: 2;
+}
+.wing-left .layer-inner .f4 {
+  width: 64px;
+  top: 150px;
+  right: -20px;
+  transform: rotate(-10deg);
+  z-index: 1;
+}
+
+.wing-left .layer-mid .f1 {
+  width: 138px;
+  top: 20px;
+  right: 20px;
+  transform: rotate(20deg);
+  z-index: 4;
+}
+.wing-left .layer-mid .f2 {
+  width: 124px;
+  top: 50px;
+  right: 14px;
+  transform: rotate(10deg);
+  z-index: 3;
+}
+.wing-left .layer-mid .f3 {
+  width: 108px;
+  top: 80px;
+  right: 20px;
+  transform: rotate(0deg);
+  z-index: 2;
+}
+.wing-left .layer-mid .f4 {
+  width: 92px;
+  top: 110px;
+  right: 14px;
+  transform: rotate(-10deg);
+  z-index: 1;
+}
+
+.wing-left .layer-outer .f1 {
+  width: 188px;
+  top: 20px;
+  right: 20px;
+  transform: rotate(22deg);
+  z-index: 4;
+}
+.wing-left .layer-outer .f2 {
+  width: 172px;
+  top: 30px;
+  right: 14px;
+  transform: rotate(10deg);
+  z-index: 3;
+}
+.wing-left .layer-outer .f3 {
+  width: 154px;
+  top: 68px;
+  right: 10px;
+  transform: rotate(0deg);
+  z-index: 2;
+}
+.wing-left .layer-outer .f4 {
+  width: 134px;
+  top: 104px;
+  right: 14px;
+  transform: rotate(-15deg);
+  z-index: 1;
+}
+
+.wing-left .layer-outer .f5 {
+  width: 120px;
+  top: 10px;
+  left: 14px;
+  transform: rotate(10deg);
+  z-index: 1;
+}
+.wing-left .layer-outer .f6 {
+  width: 134px;
+  top: 50px;
+  left: 14px;
+  transform: rotate(5deg);
+  z-index: 1;
+}
+.wing-left .layer-outer .f7 {
+  width: 134px;
+  top: 85px;
+  left: 30px;
+  transform: rotate(-10deg);
+  z-index: 1;
+}
+
+.wing-right .layer-inner .f1 {
+  width: 95px;
+  top: 40px;
+  left: -10px;
+  transform: rotate(-20deg);
+  z-index: 4;
+}
+.wing-right .layer-inner .f2 {
+  width: 86px;
+  top: 80px;
+  left: 10px;
+  transform: rotate(-10deg);
+  z-index: 3;
+}
+.wing-right .layer-inner .f3 {
+  width: 76px;
+  top: 110px;
+  left: 0px;
+  transform: rotate(0deg);
+  z-index: 2;
+}
+.wing-right .layer-inner .f4 {
+  width: 64px;
+  top: 150px;
+  left: -20px;
+  transform: rotate(10deg);
+  z-index: 1;
+}
+
+.wing-right .layer-mid .f1 {
+  width: 138px;
+  top: 20px;
+  left: 20px;
+  transform: rotate(-20deg);
+  z-index: 4;
+}
+.wing-right .layer-mid .f2 {
+  width: 124px;
+  top: 50px;
+  left: 14px;
+  transform: rotate(-10deg);
+  z-index: 3;
+}
+.wing-right .layer-mid .f3 {
+  width: 108px;
+  top: 80px;
+  left: 20px;
+  transform: rotate(0deg);
+  z-index: 2;
+}
+.wing-right .layer-mid .f4 {
+  width: 92px;
+  top: 110px;
+  left: 14px;
+  transform: rotate(10deg);
+  z-index: 1;
+}
+
+.wing-right .layer-outer .f1 {
+  width: 188px;
+  top: 20px;
+  left: 20px;
+  transform: rotate(-22deg);
+  z-index: 4;
+}
+.wing-right .layer-outer .f2 {
+  width: 172px;
+  top: 30px;
+  left: 14px;
+  transform: rotate(-10deg);
+  z-index: 3;
+}
+.wing-right .layer-outer .f3 {
+  width: 154px;
+  top: 68px;
+  left: 10px;
+  transform: rotate(0deg);
+  z-index: 2;
+}
+.wing-right .layer-outer .f4 {
+  width: 134px;
+  top: 104px;
+  left: 14px;
+  transform: rotate(15deg);
+  z-index: 1;
+}
+
+.wing-right .layer-outer .f5 {
+  width: 120px;
+  top: 20px;
+  left: 80px;
+  transform: rotate(-10deg);
+  z-index: 1;
+}
+.wing-right .layer-outer .f6 {
+  width: 134px;
+  top: 50px;
+  left: 50px;
+  transform: rotate(-5deg);
+  z-index: 1;
+}
+.wing-right .layer-outer .f7 {
+  width: 134px;
+  top: 85px;
+  left: 30px;
+  transform: rotate(10deg);
+  z-index: 1;
+}
+
+.wing.spread .wing-feather {
+  /* 展开态增强光效: 多层霓虹 glow + 虹彩色调 */
+  box-shadow:
+    0 12px 36px rgba(251, 114, 153, 0.45),
+    0 4px 16px rgba(200, 155, 225, 0.3),
+    0 0 60px rgba(251, 114, 153, 0.15),
+    inset 0 3px 12px rgba(255, 255, 255, 0.95);
+}
+
+@keyframes wingFlap {
+  0%,
+  100% {
+    transform: rotate(0deg) translateY(0);
+  }
+  35% {
+    transform: rotate(2deg) translateY(-2px);
+  }
+  65% {
+    transform: rotate(-1.5deg) translateY(1px);
+  }
+}
+
+/* 左翼虹彩渐变: 基底已设，此处微调方向与饱和度 */
+.wing-left .wing-feather {
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.97) 0%,
+    rgba(255, 238, 245, 0.85) 35%,
+    rgba(251, 114, 153, 0.5) 60%,
+    rgba(200, 155, 225, 0.38) 85%,
+    rgba(255, 245, 250, 0.8) 100%
+  );
+}
+
+/* 右翼虹彩渐变: 方向镜像，保持左右视觉一致 */
 .wing-right .wing-feather {
   background: linear-gradient(
-    45deg,
-    rgba(255, 255, 255, 0.98) 0%,
-    rgba(255, 235, 240, 0.9) 42%,
-    rgba(251, 114, 153, 0.55) 100%
+    225deg,
+    rgba(255, 255, 255, 0.97) 0%,
+    rgba(255, 238, 245, 0.85) 35%,
+    rgba(251, 114, 153, 0.5) 60%,
+    rgba(200, 155, 225, 0.38) 85%,
+    rgba(255, 245, 250, 0.8) 100%
   );
 }
 
