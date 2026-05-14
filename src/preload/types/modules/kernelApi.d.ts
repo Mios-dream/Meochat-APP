@@ -1,4 +1,8 @@
-import type { KernelUpdateState, KernelInfo, EnvironmentCheckResult, KernelLogEntry } from '../../../renderer/src/types/KernelInfo'
+import type {
+  KernelUpdateState,
+  EnvironmentCheckResult,
+  KernelLogEntry
+} from '../../../renderer/src/types/KernelInfo'
 
 export interface KernelApi {
   kernel: {
@@ -6,8 +10,6 @@ export interface KernelApi {
     getState: () => Promise<KernelUpdateState>
     /** 获取当前内核版本 */
     getCurrentVersion: () => Promise<string | null>
-    /** 获取已安装内核列表 */
-    getInstalled: () => Promise<KernelInfo[]>
     /** 获取当前激活内核的路径 */
     getActivePath: () => Promise<string | null>
     /** 获取当前激活内核的 Python 配置（workDir, venvPython, scriptPath） */
@@ -23,8 +25,14 @@ export interface KernelApi {
     onStateUpdate: (callback: (state: KernelUpdateState) => void) => () => void
     /** 监听需要重启服务的通知 */
     onNeedRestart: (callback: (data: { version: string }) => void) => () => void
+    /** 重置内核状态到默认（idle），更新完成后调用 */
+    resetState: () => Promise<{ success: boolean }>
     /** 检查内核运行环境（Python, uv, venv, 磁盘空间） */
-    checkEnvironment: () => Promise<{ success: boolean; data?: EnvironmentCheckResult; error?: string }>
+    checkEnvironment: () => Promise<{
+      success: boolean
+      data?: EnvironmentCheckResult
+      error?: string
+    }>
     /** 设置内核运行环境（运行 uv sync 安装依赖） */
     setupEnvironment: () => Promise<{ success: boolean; error?: string }>
     /** 获取内核操作日志 */
@@ -42,6 +50,8 @@ export interface KernelApi {
     /** 检查后端健康状态 */
     checkBackendHealth: () => Promise<{ success: boolean; healthy: boolean; error?: string }>
     /** 监听后端服务状态变化 */
-    onServiceState: (callback: (state: { running: boolean; pid: number; logs: string[] }) => void) => () => void
+    onServiceState: (
+      callback: (state: { running: boolean; pid: number; logs: string[] }) => void
+    ) => () => void
   }
 }

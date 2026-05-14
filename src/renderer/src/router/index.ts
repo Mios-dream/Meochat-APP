@@ -7,19 +7,13 @@ import ChatBoxView from '../views/ChatBoxView.vue'
 import AssistantView from '../views/AssistantView.vue'
 import TipsView from '../views/TipsView.vue'
 import OnboardingView from '../views/OnboardingView.vue'
-import StartupView from '../views/StartupView.vue'
 
 const router = createRouter({
   history: createWebHashHistory('/'),
   routes: [
     {
       path: '/',
-      redirect: '/startup'
-    },
-    {
-      path: '/startup',
-      name: 'startup',
-      component: StartupView
+      redirect: '/tabs'
     },
     {
       path: '/tabs',

@@ -5,14 +5,8 @@ import { AssistantService } from '../services/assistantService'
 import log from '../utils/logger'
 import { AssistantAssets } from '../../renderer/src/types/AssistantInfo'
 import { OnboardingMode, OnboardingProfile } from '../../renderer/src/types/onboarding'
-import { PythonServiceManager, PythonTask } from '../services/pythonService'
 import { OnboardingStoreService } from '../services/onboardingStore'
-import { SystemMonitor } from '../utils/systemMonitor'
-import { PerformanceMode, PerformanceManager } from '../services/performanceManager'
 
-const pythonServiceManager = PythonServiceManager.getInstance()
-const systemMonitor = SystemMonitor.getInstance()
-const performanceModeManager = PerformanceManager.getInstance()
 const onboardingStore = OnboardingStoreService.getInstance()
 /**
  * 设置助手服务IPC
@@ -403,141 +397,6 @@ function setupUtilityIPC(): void {
   })
 }
 
-function setupPythonServiceIPC(): void {
-  ipcMain.handle('pythonService:start', async (_event, serviceId: number) => {
-    try {
-      await pythonServiceManager.startService(serviceId)
-      return { success: true }
-    } catch (error) {
-      return { success: false, error: (error as Error).message }
-    }
-  })
-  ipcMain.handle('pythonService:stop', async (_event, serviceId: number) => {
-    try {
-      await pythonServiceManager.stopService(serviceId)
-      PerformanceManager.getInstance().refreshTaskConfigs()
-      return { success: true }
-    } catch (error) {
-      return { success: false, error: (error as Error).message }
-    }
-  })
-  ipcMain.handle('pythonService:restart', async (_event, serviceId: number) => {
-    try {
-      await pythonServiceManager.restartService(serviceId)
-      return { success: true }
-    } catch (error) {
-      return { success: false, error: (error as Error).message }
-    }
-  })
-  ipcMain.handle('pythonService:create', async (_event, pythonTask: PythonTask) => {
-    try {
-      const serviceId = await pythonServiceManager.createService(pythonTask)
-      PerformanceManager.getInstance().refreshTaskConfigs()
-      return { success: true, data: serviceId }
-    } catch (error) {
-      return { success: false, error: (error as Error).message }
-    }
-  })
-
-  // 添加删除任务的IPC处理程序
-  ipcMain.handle('pythonService:remove', async (_event, serviceId: number) => {
-    try {
-      const success = pythonServiceManager.removeService(serviceId)
-      return { success }
-    } catch (error) {
-      return { success: false, error: (error as Error).message }
-    }
-  })
-  ipcMain.handle('pythonService:getStatus', async (_event, serviceId: number) => {
-    try {
-      return await pythonServiceManager.getServiceStatus(serviceId)
-    } catch (error) {
-      return { success: false, error: (error as Error).message }
-    }
-  })
-  ipcMain.handle('pythonService:stopAll', async () => {
-    try {
-      await pythonServiceManager.stopAllServices()
-      return { success: true }
-    } catch (error) {
-      return { success: false, error: (error as Error).message }
-    }
-  })
-  ipcMain.handle('pythonService:getAll', async () => {
-    try {
-      return pythonServiceManager.getAllServicesInfo()
-    } catch (error) {
-      return { success: false, error: (error as Error).message }
-    }
-  })
-
-  ipcMain.handle(
-    'pythonService:updateAutoStart',
-    async (_event, serviceId: number, autoStart: boolean) => {
-      try {
-        const success = pythonServiceManager.updateAutoStart(serviceId, autoStart)
-        return { success }
-      } catch (error) {
-        return { success: false, error: (error as Error).message }
-      }
-    }
-  )
-
-  ipcMain.handle(
-    'pythonService:update',
-    async (_event, serviceId: number, serviceData: Partial<PythonTask>) => {
-      try {
-        const success = pythonServiceManager.updateService(serviceId, serviceData)
-        return { success }
-      } catch (error) {
-        return { success: false, error: (error as Error).message }
-      }
-    }
-  )
-}
-
-function setupSystemMonitorIPC(): void {
-  /**
-   * 获取系统资源状态
-   */
-  ipcMain.handle('system:get-resources', async () => {
-    try {
-      const resources = await systemMonitor.getSystemResources()
-      return { success: true, data: resources }
-    } catch (error) {
-      log.error('获取系统资源失败:', error)
-      return { success: false, error: (error as Error).message }
-    }
-  })
-
-  /**
-   * 设置性能模式
-   */
-  ipcMain.handle('system:set-performance-mode', async (_event, mode: PerformanceMode) => {
-    try {
-      log.info(`设置性能模式: ${mode}`)
-      await performanceModeManager.setPerformanceMode(mode)
-      return { success: true }
-    } catch (error) {
-      log.error('设置性能模式失败:', error)
-      return { success: false, error: (error as Error).message }
-    }
-  })
-
-  /**
-   * 获取当前性能模式
-   */
-  ipcMain.handle('system:get-performance-mode', async () => {
-    try {
-      const mode = performanceModeManager.getPerformanceMode()
-      return { success: true, data: mode }
-    } catch (error) {
-      log.error('获取性能模式失败:', error)
-      return { success: false, error: (error as Error).message }
-    }
-  })
-}
-
 function setupOnboardingIPC(): void {
   ipcMain.handle('onboarding:get-state', async () => {
     return onboardingStore.getState()
@@ -595,8 +454,6 @@ function setupMainIPC(): void {
   setupUtilityIPC()
   setupAssistantServerIPC()
   setupLoggerIPC()
-  setupPythonServiceIPC()
-  setupSystemMonitorIPC()
   setupOnboardingIPC()
 }
 

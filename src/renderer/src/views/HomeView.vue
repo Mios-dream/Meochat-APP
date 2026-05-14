@@ -50,7 +50,7 @@
         </div>
 
         <!-- 可变双翼 - 左 -->
-        <div class="wing wing-left" :class="{ spread: isOperating || showSidePanels }">
+        <div class="wing wing-left" :class="{ spread: shouldWingsSpread }">
           <div class="wing-layer layer-inner">
             <div class="wing-flap">
               <div class="wing-feather f1"></div>
@@ -81,7 +81,7 @@
         </div>
 
         <!-- 可变双翼 - 右 -->
-        <div class="wing wing-right" :class="{ spread: isOperating || showSidePanels }">
+        <div class="wing wing-right" :class="{ spread: shouldWingsSpread }">
           <div class="wing-layer layer-inner">
             <div class="wing-flap">
               <div class="wing-feather f1"></div>
@@ -123,7 +123,7 @@
           v{{ kernelState.currentVersion }}
         </div>
         <div
-          v-if="isServiceDown || isServiceStarting"
+          v-if="(isServiceDown || isServiceStarting) && !isUpdating && !isOperating"
           class="whisper-line service-hint"
           :class="serviceStatusClass"
         >
@@ -285,49 +285,21 @@
         </div>
       </div>
     </Transition>
-
-    <!-- 更新日志弹窗 -->
-    <Teleport to="body">
-      <Transition name="mist-modal">
-        <div
-          v-if="showReleaseNotes && kernelState.latestVersion"
-          class="modal-void"
-          @click.self="showReleaseNotes = false"
-        >
-          <div class="modal-nebula">
-            <div class="modal-header">
-              <h3>进化记忆 v{{ kernelState.latestVersion.version }}</h3>
-              <button class="modal-close" @click="showReleaseNotes = false">
-                <font-awesome-icon icon="fa-solid fa-xmark" />
-              </button>
-            </div>
-            <div class="modal-body">
-              <MarkdownRenderer :markdown="kernelState.latestVersion.releaseNotes" />
-            </div>
-            <div class="modal-footer">
-              <button class="ambient-btn" @click="showReleaseNotes = false">关闭</button>
-            </div>
-          </div>
-        </div>
-      </Transition>
-    </Teleport>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import MarkdownRenderer from '../components/MarkdownRenderer.vue'
 import { useUIStore } from '../stores/useUIStore'
 import type { KernelUpdateState, EnvironmentCheckResult, KernelLogEntry } from '../types/KernelInfo'
 import sakuraImg from '../assets/images/sakura.webp'
 
-// ─── 状态 ──────────────────────────────────────
-
-const showReleaseNotes = ref(false)
+// 是否展示侧面吧
 const showSidePanels = ref(false)
+// 与用户相识的天数
 const onboardingDays = ref(0)
 
-// ─── 樱花飘落 ──────────────────────────────────────
+// 樱花飘落相关
 const sakuraCanvas = ref<HTMLCanvasElement | null>(null)
 let sakuraAnimFrameId: number | null = null
 let sakuraImage: HTMLImageElement | null = null
@@ -348,6 +320,7 @@ interface SakuraPetal {
 
 let petals: SakuraPetal[] = []
 
+// 初始化樱花瓣数据
 function initPetals(canvas: HTMLCanvasElement): void {
   const { width, height } = canvas
   petals = Array.from({ length: PETAL_COUNT }, () => ({
@@ -364,6 +337,7 @@ function initPetals(canvas: HTMLCanvasElement): void {
   }))
 }
 
+// 启动樱花动画
 function startSakuraAnimation(): void {
   const canvas = sakuraCanvas.value
   if (!canvas) return
@@ -435,6 +409,7 @@ function startSakuraAnimation(): void {
   })
 }
 
+// 停止樱花动画并清理资源
 function stopSakuraAnimation(): void {
   if (sakuraAnimFrameId !== null) {
     cancelAnimationFrame(sakuraAnimFrameId)
@@ -444,27 +419,36 @@ function stopSakuraAnimation(): void {
   sakuraImage = null
 }
 
+// UI 状态管理，与背景模糊等交互
 const uiStore = useUIStore()
 
+// 切换侧边面板显示状态
 function toggleSidePanels(): void {
   showSidePanels.value = !showSidePanels.value
   uiStore.isHomePanelOpen = showSidePanels.value
 }
 
+// 后端服务状态
 const backendService = ref({
   running: false,
   pid: -1
 })
+// 后端服务健康状态：null=未知，true=健康，false=不健康
 const backendHealthy = ref<boolean | null>(null)
-const isCheckingBackend = ref(false)
+// 是否正在启动后端服务
 const isStartingBackend = ref(false)
+// 是否正在重启后端服务
 const isRestartingBackend = ref(false)
+// 是否正在同步依赖
 const isSyncingDeps = ref(false)
-const isDepsSynced = ref<boolean | null>(null)
 
+// 监听后端服务状态变化的取消函数
 let unsubServiceState: (() => void) | null = null
+// 监听内核状态变化的取消函数
+let unsubNeedRestart: (() => void) | null = null
 let healthCheckTimer: ReturnType<typeof setInterval> | null = null
 
+// 服务是否正在运行
 const isServiceDown = computed(() => {
   return !backendService.value.running
 })
@@ -497,7 +481,6 @@ const kernelState = ref<KernelUpdateState>({
   currentVersion: null,
   latestVersion: null,
   updateAvailable: false,
-  installedKernels: [], // 向后兼容：升级后始终只包含当前内核
   operationStatus: 'idle',
   progress: 0,
   statusText: '',
@@ -515,56 +498,82 @@ const coreStateClass = computed(() => {
   const s = kernelState.value.operationStatus
   if (s === 'error') return 'core-error'
   if (isServiceStarting.value) return 'core-evolving'
+  if (isOperating.value || isUpdating.value) return 'core-evolving'
   if (isServiceDown.value) return 'core-dormant'
   if (s === 'done') return 'core-bloom'
-  if (isOperating.value) return 'core-evolving'
   if (kernelState.value.updateAvailable) return 'core-awakening'
   return 'core-peace'
 })
 
+/**
+ * 双翼展开规则：
+ * - 仅在用户点击核心 且 核心正常（peace）或完成（bloom）时展开
+ * - 休眠、错误、演进中等状态即使点击也不展开
+ * - 未点击时始终收缩
+ */
+const shouldWingsSpread = computed(() => {
+  if (!showSidePanels.value) return false
+  const cls = coreStateClass.value
+  return cls === 'core-peace' || cls === 'core-bloom'
+})
+
 const statusText = computed(() => {
-  if (isServiceDown.value || isServiceStarting.value) return serviceStatusText.value
+  if (isServiceStarting.value) return serviceStatusText.value
   const s = kernelState.value.operationStatus
+  if (isOperating.value || isUpdating.value) {
+    const map: Record<string, string> = {
+      idle: '更新中...',
+      checking: '感知中',
+      downloading: '下载中',
+      installing: '安装中',
+      settingUpEnv: '共鸣中',
+      restarting: '重启中',
+      done: '完成',
+      error: '错误！'
+    }
+    return map[s] || kernelState.value.statusText || '更新中...'
+  }
+  if (isServiceDown.value) return '沉眠中'
   const map: Record<string, string> = {
     idle: '宁静中',
-    checking: '感知中',
-    downloading: '下载中',
-    installing: '安装中',
-    settingUpEnv: '共鸣中',
-    restarting: '重启中',
     done: '完成',
     error: '错误！'
   }
-  return map[s] || kernelState.value.statusText || '未知'
+  return map[s] || kernelState.value.statusText || '宁静中'
 })
 
 const statusClass = computed(() => {
-  if (isServiceDown.value) return 'status-dormant'
   if (isServiceStarting.value) return 'status-evolving'
+  if (isOperating.value || isUpdating.value) {
+    const s = kernelState.value.operationStatus
+    if (s === 'error') return 'status-error'
+    if (s === 'done') return 'status-bloom'
+    return 'status-evolving'
+  }
+  if (isServiceDown.value) return 'status-dormant'
   const s = kernelState.value.operationStatus
   if (s === 'error') return 'status-error'
   if (s === 'done') return 'status-bloom'
-  if (isOperating.value) return 'status-evolving'
   if (kernelState.value.updateAvailable) return 'status-awakening'
   return 'status-peace'
 })
 
 const heartColorPrimary = computed(() => {
-  if (isServiceDown.value) return '#c8bdd8'
   const s = kernelState.value.operationStatus
   if (s === 'error') return '#f0a0a8'
+  if (isOperating.value || isUpdating.value) return '#c8a0e0'
+  if (isServiceDown.value) return '#c8bdd8'
   if (s === 'done') return '#f8b8d0'
-  if (isOperating.value) return '#c8a0e0'
   if (kernelState.value.updateAvailable) return '#f59e8b'
   return '#fb7299'
 })
 
 const heartColorSecondary = computed(() => {
-  if (isServiceDown.value) return '#e0d8f0'
   const s = kernelState.value.operationStatus
   if (s === 'error') return '#fad0d5'
+  if (isOperating.value || isUpdating.value) return '#e0c8f5'
+  if (isServiceDown.value) return '#e0d8f0'
   if (s === 'done') return '#ffe0f0'
-  if (isOperating.value) return '#e0c8f5'
   if (kernelState.value.updateAvailable) return '#fcc8b5'
   return '#fca5b9'
 })
@@ -591,10 +600,34 @@ async function handleCheckUpdate(): Promise<void> {
 async function handleUpdateToLatest(): Promise<void> {
   isUpdating.value = true
   try {
+    // 1. 停止后端服务，避免文件锁定导致更新失败
+    if (backendService.value.running) {
+      const stopResult = await window.api.kernel.stopBackend()
+      if (!stopResult.success) {
+        console.warn('停止后端服务失败，继续更新')
+      }
+    }
+
+    // 2. 下载并安装内核更新（主进程执行完整流程：下载→解压→安装依赖）
     const result = await window.api.kernel.updateToLatest()
     if (!result.success) {
       console.error('更新失败:', result.error)
+      return
     }
+
+    // 3. 重启后端服务，使用新内核
+    const restartResult = await window.api.kernel.restartBackend()
+    if (!restartResult.success) {
+      console.error('重启后端服务失败:', restartResult.error)
+    }
+
+    // 4. 重置内核状态到默认状态（idle）
+    await window.api.kernel.resetState()
+
+    // 等待后端服务稳定后检查状态
+    setTimeout(() => {
+      void checkBackendStatus()
+    }, 3000)
   } catch (e) {
     console.error('更新异常:', (e as Error).message)
   } finally {
@@ -627,7 +660,6 @@ async function handleCheckEnv(): Promise<void> {
 // ─── 后端服务管理 ──────────────────────────────────────
 
 async function checkBackendStatus(): Promise<void> {
-  isCheckingBackend.value = true
   try {
     const status = await window.api.kernel.getBackendStatus()
     backendService.value = { running: status.running, pid: status.pid }
@@ -639,8 +671,6 @@ async function checkBackendStatus(): Promise<void> {
     }
   } catch (e) {
     console.error('检查后端服务状态异常:', (e as Error).message)
-  } finally {
-    isCheckingBackend.value = false
   }
 }
 
@@ -663,9 +693,7 @@ async function handleStartBackend(): Promise<void> {
     const envResult = await window.api.kernel.setupEnvironment()
     isSyncingDeps.value = false
 
-    if (envResult.success) {
-      isDepsSynced.value = true
-    } else {
+    if (!envResult.success) {
       console.warn('依赖同步部分失败，继续启动:', envResult.error)
     }
 
@@ -706,9 +734,7 @@ async function handleSyncDeps(): Promise<void> {
   isSyncingDeps.value = true
   try {
     const result = await window.api.kernel.setupEnvironment()
-    if (result.success) {
-      isDepsSynced.value = true
-    } else {
+    if (!result.success) {
       console.error('依赖同步失败:', result.error)
     }
   } catch (e) {
@@ -819,6 +845,19 @@ onMounted(async () => {
     }
   })
 
+  // 监听内核更新完成后需要重启服务的通知
+  unsubNeedRestart = window.api.kernel.onNeedRestart(() => {
+    window.api.kernel.restartBackend().then((restartResult) => {
+      if (restartResult.success) {
+        window.api.kernel.resetState().then(() => {
+          setTimeout(() => {
+            void checkBackendStatus()
+          }, 3000)
+        })
+      }
+    })
+  })
+
   // 自动检查后端服务状态
   await checkBackendStatus()
   startHealthPolling()
@@ -848,6 +887,7 @@ onUnmounted(() => {
   uiStore.isHomePanelOpen = false
   unsubKernelState?.()
   unsubServiceState?.()
+  unsubNeedRestart?.()
   stopHealthPolling()
   stopLogPolling()
 })
@@ -2291,231 +2331,5 @@ onUnmounted(() => {
 .panel-slide-right-enter-from,
 .panel-slide-right-leave-to {
   transform: translateX(calc(100% + 20px));
-}
-
-/* ─── 迷雾过渡动画 ───────────────────────────────── */
-
-.mist-enter-active,
-.mist-leave-active {
-  transition: all 0.5s cubic-bezier(0.23, 1, 0.32, 1);
-}
-
-.mist-enter-from,
-.mist-leave-to {
-  opacity: 0;
-  transform: translateY(-10px);
-}
-
-/* ─── 弹窗虚空 ──────────────────────────────────── */
-
-.modal-void {
-  position: fixed;
-  inset: 0;
-  z-index: 1000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(0, 0, 0, 0.2);
-  backdrop-filter: blur(8px);
-}
-
-.modal-nebula {
-  background: #fff;
-  border-radius: 20px;
-  width: 520px;
-  max-width: 90vw;
-  max-height: 80vh;
-  display: flex;
-  flex-direction: column;
-  border: 1px solid rgba(251, 114, 153, 0.1);
-  box-shadow:
-    0 20px 60px rgba(0, 0, 0, 0.1),
-    0 0 40px rgba(251, 114, 153, 0.08);
-  overflow: hidden;
-}
-
-.modal-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 18px 24px;
-  border-bottom: 1px solid #f0e8ea;
-}
-
-.modal-header h3 {
-  margin: 0;
-  font-size: 15px;
-  font-weight: 500;
-  color: #fb7299;
-  letter-spacing: 0.05em;
-}
-
-.modal-close {
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: #bbb;
-  font-size: 16px;
-  padding: 4px 8px;
-  border-radius: 8px;
-  transition: all 0.2s ease;
-}
-
-.modal-close:hover {
-  color: #4f4f4f;
-  background: rgba(251, 114, 153, 0.05);
-}
-
-.modal-body {
-  padding: 20px 24px;
-  overflow-y: auto;
-  flex: 1;
-  font-size: 13px;
-  color: #555;
-  line-height: 1.7;
-}
-
-.modal-body :deep(h2) {
-  font-size: 15px;
-  margin-top: 16px;
-  margin-bottom: 8px;
-  color: #4f4f4f;
-  font-weight: 500;
-}
-
-.modal-body :deep(h3) {
-  font-size: 14px;
-  margin-top: 14px;
-  margin-bottom: 6px;
-  color: #666;
-  font-weight: 500;
-}
-
-.modal-body :deep(ul),
-.modal-body :deep(ol) {
-  padding-left: 20px;
-  margin: 8px 0;
-}
-
-.modal-body :deep(li) {
-  margin-bottom: 4px;
-}
-
-.modal-body :deep(code) {
-  background: rgba(251, 114, 153, 0.06);
-  padding: 1px 6px;
-  border-radius: 4px;
-  font-size: 12px;
-  color: #fb7299;
-}
-
-.modal-body :deep(pre) {
-  background: #f9f6f7;
-  padding: 12px;
-  border-radius: 8px;
-  overflow-x: auto;
-  border: 1px solid #f0e8ea;
-}
-
-.modal-footer {
-  padding: 14px 24px;
-  border-top: 1px solid #f0e8ea;
-  display: flex;
-  justify-content: flex-end;
-}
-
-/* 弹窗迷雾过渡 */
-.mist-modal-enter-active,
-.mist-modal-leave-active {
-  transition: opacity 0.3s ease;
-}
-
-.mist-modal-enter-active .modal-nebula,
-.mist-modal-leave-active .modal-nebula {
-  transition:
-    transform 0.3s ease,
-    opacity 0.3s ease;
-}
-
-.mist-modal-enter-from,
-.mist-modal-leave-to {
-  opacity: 0;
-}
-
-.mist-modal-enter-from .modal-nebula {
-  transform: scale(0.95) translateY(10px);
-  opacity: 0;
-}
-
-.mist-modal-leave-to .modal-nebula {
-  transform: scale(0.95) translateY(10px);
-  opacity: 0;
-}
-
-/* ─── 响应式 ────────────────────────────────────── */
-
-@media (max-width: 768px) {
-  .wisdom-core {
-    width: 120px;
-    height: 120px;
-  }
-
-  .core-heart {
-    width: 75px;
-    height: 75px;
-  }
-
-  .halo-ring {
-    width: 240px;
-    height: 240px;
-  }
-
-  .wing {
-    width: 80px;
-    height: 60px;
-  }
-
-  .whisper-line.name {
-    font-size: 16px;
-  }
-
-  .side-panel {
-    width: 220px;
-    top: 10%;
-    bottom: 10%;
-  }
-
-  .floating-actions {
-    gap: 10px;
-  }
-
-  .float-btn {
-    width: 40px;
-    height: 40px;
-    font-size: 14px;
-  }
-
-  .panel-left {
-    left: 12px;
-  }
-
-  .panel-right {
-    right: 12px;
-  }
-
-  .panel-header {
-    padding: 16px 16px 12px;
-    font-size: 13px;
-  }
-
-  .panel-body {
-    padding: 12px 16px 16px;
-  }
-
-  .modal-nebula {
-    width: 95vw;
-    max-height: 90vh;
-    border-radius: 16px;
-  }
 }
 </style>

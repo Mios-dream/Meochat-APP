@@ -1,7 +1,7 @@
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
-import '@/assets/base.css'
-import '@/assets/fonts/font.css' // 字体CSS文件路径
+import './assets/base.css'
+import './assets/fonts/font.css' // 字体CSS文件路径
 import App from './App.vue'
 import router from './router'
 import { library } from '@fortawesome/fontawesome-svg-core'

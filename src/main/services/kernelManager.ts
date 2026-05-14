@@ -1,18 +1,23 @@
 import { app, BrowserWindow } from 'electron'
-import { spawn, ChildProcessWithoutNullStreams } from 'child_process'
+import { spawn, exec, ChildProcessWithoutNullStreams } from 'child_process'
+import { promisify } from 'util'
 import fs from 'fs'
 import path from 'path'
 import axios from 'axios'
 import AdmZip from 'adm-zip'
 import log from '../utils/logger'
-import iconv from 'iconv-lite'
+
 import { setConfig } from '../config/configManager'
+import type { KernelRemoteVersion, KernelUpdateState } from '../../renderer/src/types/KernelInfo'
+import { resolveAppDataDir } from '../utils/pathResolve'
 import type {
-  KernelInfo,
-  KernelRemoteVersion,
-  KernelUpdateState
+  EnvironmentCheckResult,
+  EnvironmentCheckItem
 } from '../../renderer/src/types/KernelInfo'
-import { execSync } from 'child_process'
+import type { KernelLogEntry } from '../../renderer/src/types/KernelInfo'
+import { decodeBuffer } from '../utils/buffer'
+
+const execAsync = promisify(exec)
 
 const GITHUB_API = 'https://api.github.com'
 const BACKEND_REPO_OWNER = 'Mios-dream'
@@ -38,7 +43,6 @@ class KernelManager {
     currentVersion: null,
     latestVersion: null,
     updateAvailable: false,
-    installedKernels: [],
     operationStatus: 'idle',
     progress: 0,
     statusText: '',
@@ -47,11 +51,6 @@ class KernelManager {
 
   private constructor() {
     this.loadState()
-
-    // 确保应用退出时正确关闭后端服务
-    app.on('before-quit', () => {
-      this.stopBackend()
-    })
   }
 
   static getInstance(): KernelManager {
@@ -61,11 +60,9 @@ class KernelManager {
     return KernelManager.instance
   }
 
-  // ─── 路径工具 ───────────────────────────────────────
-
   /** 内核根目录: appData/kernel/current */
   private get kernelDir(): string {
-    const appDataDir = this.resolveAppDataDir()
+    const appDataDir = resolveAppDataDir()
     const dir = path.join(appDataDir, KERNEL_DIR_NAME, CURRENT_KERNEL_DIR)
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true })
@@ -75,24 +72,12 @@ class KernelManager {
 
   /** 内核父目录: appData/kernel/ */
   private get kernelRoot(): string {
-    const appDataDir = this.resolveAppDataDir()
+    const appDataDir = resolveAppDataDir()
     const dir = path.join(appDataDir, KERNEL_DIR_NAME)
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true })
     }
     return dir
-  }
-
-  private resolveAppDataDir(): string {
-    // 优先使用程序目录下的 appData，不可写时回退到 userData
-    const appDataDir = path.join(path.dirname(app.getPath('exe')), 'appData')
-    try {
-      fs.mkdirSync(appDataDir, { recursive: true })
-      fs.accessSync(appDataDir, fs.constants.W_OK)
-      return appDataDir
-    } catch {
-      return app.getPath('userData')
-    }
   }
 
   /** 版本文件路径 */
@@ -105,92 +90,13 @@ class KernelManager {
   private loadState(): void {
     // 检查当前内核是否存在
     const versionPath = this.versionFilePath
-    if (fs.existsSync(versionPath)) {
-      const version = fs.readFileSync(versionPath, 'utf8').trim()
-      this.state.currentVersion = version
-      log.info(`当前内核版本: v${version}`)
-    } else {
-      // 向后兼容: 检查老的 versioned 目录结构 (kernels/{version}/)
-      this.migrateFromLegacyLayout()
-    }
 
-    // 恢复已安装内核列表（用于状态展示兼容）
-    if (this.state.currentVersion && fs.existsSync(this.kernelDir)) {
-      const stat = fs.statSync(this.kernelDir)
-      this.state.installedKernels = [
-        {
-          version: this.state.currentVersion,
-          installPath: this.kernelDir,
-          installedAt: stat.birthtime.toISOString(),
-          status: 'installed',
-          isActive: true
-        }
-      ]
-    }
+    const version = fs.readFileSync(versionPath, 'utf8').trim()
+    this.state.currentVersion = version
+    log.info(`当前内核版本: v${version}`)
   }
 
-  /**
-   * 从旧的 kernels/{version}/ 目录结构迁移到固定 kernel/current/ 目录
-   */
-  private migrateFromLegacyLayout(): void {
-    const legacyKernelsRoot = path.join(this.resolveAppDataDir(), 'kernels')
-    if (!fs.existsSync(legacyKernelsRoot)) return
-
-    const entries = fs.readdirSync(legacyKernelsRoot, { withFileTypes: true })
-    const versionDirs = entries.filter((e) => {
-      if (!e.isDirectory()) return false
-      // 排除 current 目录本身
-      if (e.name === CURRENT_KERNEL_DIR) return false
-      // 检查是否包含 version.txt
-      return fs.existsSync(path.join(legacyKernelsRoot, e.name, VERSION_FILE_NAME))
-    })
-
-    if (versionDirs.length === 0) return
-
-    // 找最新版本
-    let latestDir = versionDirs[0]
-    let latestVersion = fs
-      .readFileSync(path.join(legacyKernelsRoot, latestDir.name, VERSION_FILE_NAME), 'utf8')
-      .trim()
-
-    for (let i = 1; i < versionDirs.length; i++) {
-      const v = fs
-        .readFileSync(path.join(legacyKernelsRoot, versionDirs[i].name, VERSION_FILE_NAME), 'utf8')
-        .trim()
-      if (this.compareVersions(v, latestVersion) > 0) {
-        latestVersion = v
-        latestDir = versionDirs[i]
-      }
-    }
-
-    log.info(`从旧版目录结构迁移: kernels/${latestDir.name}/ → kernel/current/ (v${latestVersion})`)
-
-    const legacyKernelPath = path.join(legacyKernelsRoot, latestDir.name)
-
-    try {
-      // 移动而不是复制以节省磁盘空间
-      if (fs.existsSync(this.kernelDir)) {
-        fs.rmSync(this.kernelDir, { recursive: true, force: true })
-      }
-      // 确保父目录存在
-      const kernelParentDir = path.dirname(this.kernelDir)
-      if (!fs.existsSync(kernelParentDir)) {
-        fs.mkdirSync(kernelParentDir, { recursive: true })
-      }
-      fs.renameSync(legacyKernelPath, this.kernelDir)
-      this.state.currentVersion = latestVersion
-      log.info('旧版目录迁移完成')
-    } catch (error) {
-      log.error('旧版目录迁移失败，尝试复制:', (error as Error).message)
-      try {
-        this.copyDirSync(legacyKernelPath, this.kernelDir)
-        this.state.currentVersion = latestVersion
-      } catch (copyError) {
-        log.error('旧版目录复制也失败:', (copyError as Error).message)
-      }
-    }
-  }
-
+  // 通知所有窗口内核状态更新
   private notifyState(): void {
     BrowserWindow.getAllWindows().forEach((win) => {
       if (!win.isDestroyed()) {
@@ -199,6 +105,7 @@ class KernelManager {
     })
   }
 
+  // 更新操作状态和文本
   private setOperation(status: KernelUpdateState['operationStatus'], text: string): void {
     this.state.operationStatus = status
     this.state.statusText = text
@@ -206,11 +113,19 @@ class KernelManager {
     this.notifyState()
   }
 
-  // ─── 公开 API ───────────────────────────────────────
-
   /** 获取当前完整状态 */
   getState(): KernelUpdateState {
-    return { ...this.state }
+    return this.state
+  }
+
+  /** 重置内核状态到默认（idle），通常在更新完成后调用 */
+  resetState(): void {
+    this.state.operationStatus = 'idle'
+    this.state.progress = 0
+    this.state.statusText = ''
+    this.state.error = null
+    this.state.updateAvailable = false
+    this.notifyState()
   }
 
   /** 获取当前激活内核版本 */
@@ -218,43 +133,40 @@ class KernelManager {
     return this.state.currentVersion
   }
 
-  /** 获取已安装内核列表（保持兼容，始终返回当前内核的单元素列表） */
-  getInstalledKernels(): KernelInfo[] {
-    return [...this.state.installedKernels]
-  }
-
   /** 获取激活内核的路径 */
-  getActiveKernelPath(): string | null {
+  async getActiveKernelPath(): Promise<string | null> {
     if (!this.state.currentVersion) return null
-    return fs.existsSync(this.kernelDir) ? this.kernelDir : null
-  }
 
-  // ─── 环境检查 ───────────────────────────────────────
+    try {
+      await fs.promises.access(this.kernelDir)
+      return this.kernelDir
+    } catch {
+      return null
+    }
+  }
 
   /**
    * 检查内核运行环境（uv, venv, 磁盘空间等）
    * uv 可以自行管理 Python 版本，因此不需要单独检查 Python
    */
-  async checkEnvironment(): Promise<
-    import('../../renderer/src/types/KernelInfo').EnvironmentCheckResult
-  > {
-    const { execSync } = await import('child_process')
-    const items: import('../../renderer/src/types/KernelInfo').EnvironmentCheckItem[] = []
+  async checkEnvironment(): Promise<EnvironmentCheckResult> {
+    const items: EnvironmentCheckItem[] = []
 
     // 1. 检查 uv
     let uvFound = false
     let uvVersion = ''
     try {
-      const output = execSync('uv --version 2>&1', {
-        encoding: 'utf8',
+      const { stdout, stderr } = await execAsync('uv --version', {
         timeout: 5000,
         windowsHide: true
-      } as import('child_process').ExecSyncOptionsWithStringEncoding).trim()
+      })
+      const output = (stdout || stderr || '').trim()
       if (output) {
         uvFound = true
         uvVersion = output
       }
     } catch {
+      console.error('uv 包管理器不可用')
       // uv 未安装
     }
 
@@ -266,7 +178,7 @@ class KernelManager {
     })
 
     // 2. 检查内核是否已安装
-    const kernelPath = this.getActiveKernelPath()
+    const kernelPath = await this.getActiveKernelPath()
     const kernelInstalled = kernelPath !== null
     items.push({
       name: 'MoeChat 内核',
@@ -367,8 +279,8 @@ class KernelManager {
   /**
    * 获取操作日志（最近的操作记录）
    */
-  getOperationLogs(): import('../../renderer/src/types/KernelInfo').KernelLogEntry[] {
-    const logs: import('../../renderer/src/types/KernelInfo').KernelLogEntry[] = []
+  getOperationLogs(): KernelLogEntry[] {
+    const logs: KernelLogEntry[] = []
 
     if (this.state.currentVersion) {
       logs.push({
@@ -413,8 +325,6 @@ class KernelManager {
     return logs
   }
 
-  // ─── 版本检查 ───────────────────────────────────────
-
   /** 检查远端是否有新内核版本 */
   async checkForUpdates(): Promise<KernelUpdateState> {
     this.setOperation('checking', '正在检查内核更新...')
@@ -456,10 +366,8 @@ class KernelManager {
     }
   }
 
-  // ─── 下载 & 安装 ────────────────────────────────────
-
   /**
-   * 下载并安装最新版本内核（默认升级到最新）
+   * 下载并安装最新版本内核
    * 会保留用户数据目录，只替换代码文件
    */
   async downloadAndInstall(version?: string): Promise<boolean> {
@@ -550,18 +458,6 @@ class KernelManager {
         this.notifyState()
       })
 
-      // 更新已安装内核列表
-      const stat = fs.statSync(this.kernelDir)
-      this.state.installedKernels = [
-        {
-          version: targetVersion,
-          installPath: this.kernelDir,
-          installedAt: stat.birthtime.toISOString(),
-          status: 'installed',
-          isActive: true
-        }
-      ]
-
       this.state.progress = 100
       this.setOperation('done', `内核 v${targetVersion} 安装完成`)
       this.notifyState()
@@ -583,14 +479,14 @@ class KernelManager {
     } finally {
       // 清理临时文件
       try {
-        if (fs.existsSync(tempZip)) fs.unlinkSync(tempZip)
+        await fs.promises.unlink(tempZip).catch(() => {
+          /* ignore */
+        })
       } catch {
         /* ignore */
       }
     }
   }
-
-  // ─── 私有方法 ───────────────────────────────────────
 
   /** 从 GitHub Releases API 获取最新版本 */
   private async fetchLatestRelease(): Promise<KernelRemoteVersion | null> {
@@ -718,8 +614,11 @@ class KernelManager {
     const targetDir = this.kernelDir
 
     // 清理内核目录中的代码文件（保留用户数据目录）
-    if (fs.existsSync(targetDir)) {
-      this.cleanCodeFiles(targetDir)
+    try {
+      await fs.promises.access(targetDir)
+      await this.cleanCodeFiles(targetDir)
+    } catch {
+      // 目录不存在，跳过清理
     }
 
     // 解压 zip
@@ -729,6 +628,7 @@ class KernelManager {
 
     if (topLevelDir) {
       log.info(`检测到内核压缩包外层目录: ${topLevelDir}，将移除外层目录后解压`)
+      const writeTasks: Promise<void>[] = []
       for (const entry of entries) {
         const entryName = entry.entryName.replace(/\\/g, '/')
         if (!entryName || entryName === `${topLevelDir}/`) continue
@@ -739,18 +639,22 @@ class KernelManager {
 
         const targetPath = path.join(targetDir, relativePath)
         if (entry.isDirectory) {
-          fs.mkdirSync(targetPath, { recursive: true })
+          writeTasks.push(fs.promises.mkdir(targetPath, { recursive: true }).then())
         } else {
-          fs.mkdirSync(path.dirname(targetPath), { recursive: true })
-          fs.writeFileSync(targetPath, entry.getData())
+          writeTasks.push(
+            fs.promises
+              .mkdir(path.dirname(targetPath), { recursive: true })
+              .then(() => fs.promises.writeFile(targetPath, entry.getData()))
+          )
         }
       }
+      await Promise.all(writeTasks)
     } else {
       zip.extractAllTo(targetDir, true)
     }
 
     // 写入版本文件 ──
-    fs.writeFileSync(this.versionFilePath, version, 'utf8')
+    await fs.promises.writeFile(this.versionFilePath, version, 'utf8')
 
     // 更新状态
     this.state.currentVersion = version
@@ -790,11 +694,15 @@ class KernelManager {
   /**
    * 清理内核目录中的文件（保留用户数据目录）
    */
-  private cleanCodeFiles(dir: string): void {
-    if (!fs.existsSync(dir)) return
+  private async cleanCodeFiles(dir: string): Promise<void> {
+    try {
+      await fs.promises.access(dir)
+    } catch {
+      return
+    }
 
     try {
-      const entries = fs.readdirSync(dir, { withFileTypes: true })
+      const entries = await fs.promises.readdir(dir, { withFileTypes: true })
 
       for (const entry of entries) {
         const fullPath = path.join(dir, entry.name)
@@ -814,10 +722,10 @@ class KernelManager {
         // 删除不在白名单中的项
         try {
           if (entry.isDirectory()) {
-            fs.rmSync(fullPath, { recursive: true, force: true })
+            await fs.promises.rm(fullPath, { recursive: true, force: true })
             log.info(`删除目录: ${entry.name}`)
           } else {
-            fs.unlinkSync(fullPath)
+            await fs.promises.unlink(fullPath)
             log.info(`删除文件: ${entry.name}`)
           }
         } catch (error) {
@@ -829,22 +737,6 @@ class KernelManager {
     } catch (error) {
       log.error(`清理内核目录失败: ${(error as Error).message}`)
     }
-  }
-
-  /** 解码子进程输出 Buffer */
-  private decodeBuffer(buffer: Buffer): string {
-    if (process.platform === 'win32') {
-      const utf8Text = buffer.toString('utf8')
-      if (!utf8Text.includes('�')) {
-        return utf8Text
-      }
-      try {
-        return iconv.decode(buffer, 'gbk')
-      } catch {
-        return utf8Text
-      }
-    }
-    return buffer.toString('utf8')
   }
 
   /** 在内核目录中运行 uv sync 创建虚拟环境并安装依赖 */
@@ -880,14 +772,14 @@ class KernelManager {
       const errorLines: string[] = []
 
       child.stdout.on('data', (data: Buffer) => {
-        const text = this.decodeBuffer(data).trim()
+        const text = decodeBuffer(data).trim()
         if (text) {
           log.info(`[uv] ${text}`)
         }
       })
 
       child.stderr.on('data', (data: Buffer) => {
-        const text = this.decodeBuffer(data).trim()
+        const text = decodeBuffer(data).trim()
         if (text) {
           errorLines.push(text)
           log.warn(`[uv stderr] ${text}`)
@@ -963,25 +855,6 @@ class KernelManager {
     })
   }
 
-  /** 递归复制目录 */
-  private copyDirSync(src: string, dest: string): void {
-    if (!fs.existsSync(dest)) {
-      fs.mkdirSync(dest, { recursive: true })
-    }
-
-    const entries = fs.readdirSync(src, { withFileTypes: true })
-    for (const entry of entries) {
-      const srcPath = path.join(src, entry.name)
-      const destPath = path.join(dest, entry.name)
-
-      if (entry.isDirectory()) {
-        this.copyDirSync(srcPath, destPath)
-      } else {
-        fs.copyFileSync(srcPath, destPath)
-      }
-    }
-  }
-
   /** 比较版本号，返回 >0 如果 a > b */
   private compareVersions(a: string, b: string): number {
     const partsA = a.split('.').map(Number)
@@ -996,9 +869,10 @@ class KernelManager {
     }
     return 0
   }
+}
 
-  // ─── 后端服务管理 ───────────────────────────────────
-
+class KernelServiceManager {
+  private static instance: KernelServiceManager
   /** 后端 Python 进程 */
   private backendProcess: ChildProcessWithoutNullStreams | null = null
 
@@ -1018,6 +892,23 @@ class KernelManager {
   /** 服务状态广播通道 */
   private static readonly SERVICE_STATE_CHANNEL = 'kernel:service-state'
 
+  public kernelManager: KernelManager
+
+  private constructor() {
+    this.kernelManager = KernelManager.getInstance()
+    // 确保应用退出时正确关闭后端服务
+    app.on('before-quit', () => {
+      this.stopBackend()
+    })
+  }
+
+  static getInstance(): KernelServiceManager {
+    if (!KernelServiceManager.instance) {
+      KernelServiceManager.instance = new KernelServiceManager()
+    }
+    return KernelServiceManager.instance
+  }
+
   /**
    * 添加后端日志并广播
    */
@@ -1036,7 +927,7 @@ class KernelManager {
   private notifyServiceState(): void {
     BrowserWindow.getAllWindows().forEach((win) => {
       if (!win.isDestroyed()) {
-        win.webContents.send(KernelManager.SERVICE_STATE_CHANNEL, {
+        win.webContents.send(KernelServiceManager.SERVICE_STATE_CHANNEL, {
           running: this.backendRunning,
           pid: this.backendPid,
           logs: [...this.backendLogs]
@@ -1066,8 +957,8 @@ class KernelManager {
   /**
    * 获取内核的 Python 执行路径
    */
-  private getKernelPythonPath(): string | null {
-    const kernelPath = this.getActiveKernelPath()
+  private async getKernelPythonPath(): Promise<string | null> {
+    const kernelPath = await this.kernelManager.getActiveKernelPath()
     if (!kernelPath) return null
     return process.platform === 'win32'
       ? path.join(kernelPath, '.venv', 'Scripts', 'python.exe')
@@ -1083,12 +974,12 @@ class KernelManager {
       return { success: true }
     }
 
-    const kernelPath = this.getActiveKernelPath()
+    const kernelPath = await this.kernelManager.getActiveKernelPath()
     if (!kernelPath) {
       return { success: false, error: '未安装内核，无法启动后端服务' }
     }
 
-    const pythonPath = this.getKernelPythonPath()
+    const pythonPath = await this.getKernelPythonPath()
     if (!pythonPath || !fs.existsSync(pythonPath)) {
       return { success: false, error: '虚拟环境未配置，请先安装环境依赖' }
     }
@@ -1123,12 +1014,12 @@ class KernelManager {
       this.backendExitCode = null
 
       this.backendProcess.stdout.on('data', (data: Buffer) => {
-        const text = this.decodeBuffer(data)
+        const text = decodeBuffer(data)
         if (text) this.addBackendLog(text)
       })
 
       this.backendProcess.stderr.on('data', (data: Buffer) => {
-        const text = this.decodeBuffer(data)
+        const text = decodeBuffer(data)
         if (text) this.addBackendLog(text)
       })
 
@@ -1171,7 +1062,7 @@ class KernelManager {
    * 停止后端 Python 服务
    * 先尝试优雅终止，然后强制结束进程树确保清理
    */
-  stopBackend(): { success: boolean } {
+  async stopBackend(): Promise<{ success: boolean }> {
     if (!this.backendRunning && !this.backendProcess) {
       return { success: true }
     }
@@ -1184,7 +1075,9 @@ class KernelManager {
     if (pid > 0) {
       try {
         if (process.platform === 'win32') {
-          execSync(`taskkill /PID ${pid} /T /F`, { stdio: 'ignore', timeout: 5000 })
+          await execAsync(`taskkill /PID ${pid} /T /F`, { timeout: 5000 }).catch(() => {
+            /* 忽略 taskkill 的返回结果 */
+          })
         } else {
           try {
             process.kill(-pid, 'SIGKILL')
@@ -1212,7 +1105,7 @@ class KernelManager {
    * 重启后端 Python 服务
    */
   async restartBackend(): Promise<{ success: boolean; error?: string }> {
-    this.stopBackend()
+    await this.stopBackend()
     await new Promise((resolve) => setTimeout(resolve, 1500))
     return this.startBackend()
   }
@@ -1272,4 +1165,4 @@ class KernelManager {
   }
 }
 
-export { KernelManager }
+export { KernelManager, KernelServiceManager }

@@ -44,7 +44,6 @@
     "iconv-lite": "^0.7.1",
     "lunisolar": "^2.6.0",
     "marked": "^17.0.0",
-    "page-flip": "^2.0.7",
     "pidusage": "^4.0.1",
     "pinia": "^3.0.3",
     "pixi.js": "^8.18.1",

@@ -20,22 +20,6 @@ export interface KernelRemoteVersion {
 }
 
 /**
- * 本地已安装的内核信息
- */
-export interface KernelInfo {
-  /** 版本号 */
-  version: string
-  /** 安装路径 */
-  installPath: string
-  /** 安装日期 */
-  installedAt: string
-  /** 状态 */
-  status: KernelStatus
-  /** 是否是当前激活的内核 */
-  isActive: boolean
-}
-
-/**
  * 内核更新统一状态
  */
 export interface KernelUpdateState {
@@ -45,10 +29,16 @@ export interface KernelUpdateState {
   latestVersion: KernelRemoteVersion | null
   /** 是否有可用更新 */
   updateAvailable: boolean
-  /** 已安装的内核列表 */
-  installedKernels: KernelInfo[]
   /** 当前操作状态 */
-  operationStatus: 'idle' | 'checking' | 'downloading' | 'installing' | 'settingUpEnv' | 'restarting' | 'done' | 'error'
+  operationStatus:
+    | 'idle'
+    | 'checking'
+    | 'downloading'
+    | 'installing'
+    | 'settingUpEnv'
+    | 'restarting'
+    | 'done'
+    | 'error'
   /** 下载/安装进度 0-100 */
   progress: number
   /** 状态描述文本 */

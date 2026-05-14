@@ -53,11 +53,6 @@ const globalAPI = {
       fileName,
       oldRelativePath
     }),
-  // 系统资源相关API
-  getSystemResources: () => ipcRenderer.invoke('system:get-resources'),
-  setPerformanceMode: (mode: 'high' | 'balanced' | 'eco') =>
-    ipcRenderer.invoke('system:set-performance-mode', mode),
-  getPerformanceMode: () => ipcRenderer.invoke('system:get-performance-mode'),
 
   // 日志相关
   // 修改日志相关，通过IPC发送到主进程

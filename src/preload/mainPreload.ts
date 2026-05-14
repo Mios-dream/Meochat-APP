@@ -1,25 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import globalAPI from './sharePreload'
 
-const pythonServiceAPI = {
-  createPythonService: (pythonTask) => ipcRenderer.invoke('pythonService:create', pythonTask),
-  startPythonService: (serviceId: number) => ipcRenderer.invoke('pythonService:start', serviceId),
-  stopPythonService: (serviceId: number) => ipcRenderer.invoke('pythonService:stop', serviceId),
-  restartPythonService: (serviceId: number) =>
-    ipcRenderer.invoke('pythonService:restart', serviceId),
-  getPythonServiceStatus: (serviceId: number) =>
-    ipcRenderer.invoke('pythonService:getStatus', serviceId),
-  stopAllPythonServices: () => ipcRenderer.invoke('pythonService:stopAll'),
-  updatePythonServiceAutoStart: (serviceId: number, autoStart: boolean) =>
-    ipcRenderer.invoke('pythonService:updateAutoStart', serviceId, autoStart),
-  // 添加删除Python服务的API
-  removePythonService: (serviceId: number) => ipcRenderer.invoke('pythonService:remove', serviceId),
-  getAllPythonServices: () => ipcRenderer.invoke('pythonService:getAll'),
-  // 更新Python服务
-  updatePythonService: (serviceId, serviceData) =>
-    ipcRenderer.invoke('pythonService:update', serviceId, serviceData)
-}
-
 // 文件选择工具API
 const fileSelectAPI = {
   // 选择单个文件
@@ -32,7 +13,6 @@ const fileSelectAPI = {
 
 contextBridge.exposeInMainWorld('api', {
   ...globalAPI,
-  ...pythonServiceAPI,
   fileSelectAPI,
   // 主窗口专用 API
   getAssistantStatus: () => ipcRenderer.invoke('assistant:get-status'),
@@ -51,7 +31,6 @@ contextBridge.exposeInMainWorld('api', {
   kernel: {
     getState: () => ipcRenderer.invoke('kernel:get-state'),
     getCurrentVersion: () => ipcRenderer.invoke('kernel:get-current-version'),
-    getInstalled: () => ipcRenderer.invoke('kernel:get-installed'),
     getActivePath: () => ipcRenderer.invoke('kernel:get-active-path'),
     getPythonConfig: () => ipcRenderer.invoke('kernel:get-python-config'),
     checkUpdate: () => ipcRenderer.invoke('kernel:check-update'),
@@ -66,6 +45,7 @@ contextBridge.exposeInMainWorld('api', {
       ipcRenderer.on('kernel:need-restart', handler)
       return () => ipcRenderer.removeListener('kernel:need-restart', handler)
     },
+    resetState: () => ipcRenderer.invoke('kernel:reset-state'),
     checkEnvironment: () => ipcRenderer.invoke('kernel:check-environment'),
     setupEnvironment: () => ipcRenderer.invoke('kernel:setup-environment'),
     getLogs: () => ipcRenderer.invoke('kernel:get-logs'),

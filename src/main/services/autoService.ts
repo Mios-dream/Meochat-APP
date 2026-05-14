@@ -2,10 +2,11 @@ import { getConfig } from '../config/configManager'
 import { createAssistantWindow } from '../windows/assistantWindow'
 import log from '../utils/logger'
 import { AssistantService } from '../services/assistantService'
-import { KernelManager } from '../services/kernelManager'
+import { KernelManager, KernelServiceManager } from '../services/kernelManager'
 
 const assistantService = AssistantService.getInstance()
 const kernelManager = KernelManager.getInstance()
+const kernelServiceManager = KernelServiceManager.getInstance()
 
 async function startAutoService(): Promise<void> {
   // 预加载助手数据
@@ -31,14 +32,14 @@ async function ensureKernelBackendStarted(): Promise<void> {
     return
   }
 
-  const status = kernelManager.getBackendStatus()
+  const status = kernelServiceManager.getBackendStatus()
   if (status.running) {
     log.info('[autoService] 内核后端服务已在运行')
     return
   }
 
   log.info('[autoService] 正在自动启动内核后端服务...')
-  const result = await kernelManager.startBackend()
+  const result = await kernelServiceManager.startBackend()
   if (result.success) {
     log.info('[autoService] 内核后端服务启动成功')
   } else {

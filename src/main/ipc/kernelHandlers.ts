@@ -1,9 +1,10 @@
 import { ipcMain } from 'electron'
-import { KernelManager } from '../services/kernelManager'
+import { KernelManager, KernelServiceManager } from '../services/kernelManager'
 import log from '../utils/logger'
 import pathLib from 'path'
 
 const kernelManager = KernelManager.getInstance()
+const kernelServiceManager = KernelServiceManager.getInstance()
 
 /**
  * 设置内核管理 IPC 通道
@@ -21,19 +22,14 @@ function setupKernelIPC(): void {
     return kernelManager.getCurrentVersion()
   })
 
-  /** 获取已安装内核列表（兼容旧接口，始终返回当前内核的单元素列表） */
-  ipcMain.handle('kernel:get-installed', () => {
-    return kernelManager.getInstalledKernels()
-  })
-
   /** 获取当前激活内核的路径 */
-  ipcMain.handle('kernel:get-active-path', () => {
+  ipcMain.handle('kernel:get-active-path', async () => {
     return kernelManager.getActiveKernelPath()
   })
 
   /** 获取当前激活内核的 Python 配置（venv路径、工作目录等） */
-  ipcMain.handle('kernel:get-python-config', () => {
-    const kernelPath = kernelManager.getActiveKernelPath()
+  ipcMain.handle('kernel:get-python-config', async () => {
+    const kernelPath = await kernelManager.getActiveKernelPath()
     if (!kernelPath) {
       return { success: false, error: '没有激活的内核' }
     }
@@ -135,7 +131,7 @@ function setupKernelIPC(): void {
   /** 启动后端服务 */
   ipcMain.handle('kernel:start-backend', async () => {
     try {
-      const result = await kernelManager.startBackend()
+      const result = await kernelServiceManager.startBackend()
       return result
     } catch (error) {
       const msg = (error as Error).message
@@ -147,7 +143,7 @@ function setupKernelIPC(): void {
   /** 停止后端服务 */
   ipcMain.handle('kernel:stop-backend', () => {
     try {
-      const result = kernelManager.stopBackend()
+      const result = kernelServiceManager.stopBackend()
       return result
     } catch (error) {
       const msg = (error as Error).message
@@ -159,7 +155,7 @@ function setupKernelIPC(): void {
   /** 重启后端服务 */
   ipcMain.handle('kernel:restart-backend', async () => {
     try {
-      const result = await kernelManager.restartBackend()
+      const result = await kernelServiceManager.restartBackend()
       return result
     } catch (error) {
       const msg = (error as Error).message
@@ -170,18 +166,26 @@ function setupKernelIPC(): void {
 
   /** 获取后端服务状态 */
   ipcMain.handle('kernel:get-backend-status', () => {
-    return kernelManager.getBackendStatus()
+    return kernelServiceManager.getBackendStatus()
   })
 
   /** 获取后端服务日志 */
   ipcMain.handle('kernel:get-backend-logs', () => {
-    return kernelManager.getBackendLogs()
+    return kernelServiceManager.getBackendLogs()
+  })
+
+  // ─── 状态重置 ────────────────────────────────────
+
+  /** 重置内核状态到默认（idle） */
+  ipcMain.handle('kernel:reset-state', () => {
+    kernelManager.resetState()
+    return { success: true }
   })
 
   /** 检查后端健康状态 */
   ipcMain.handle('kernel:check-backend-health', async () => {
     try {
-      const result = await kernelManager.checkBackendHealth()
+      const result = await kernelServiceManager.checkBackendHealth()
       return { success: true, ...result }
     } catch (error) {
       const msg = (error as Error).message
