@@ -13,3 +13,4 @@ tsconfig.web.tsbuildinfo
 .claude/settings.local.json
 .vscode
 .sisyphus
+resources/python-runtime/uv.exe

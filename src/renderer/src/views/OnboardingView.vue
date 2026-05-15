@@ -32,16 +32,66 @@
 
         <!-- LOG_STREAM -->
         <div v-else-if="currentState === 'LOG_STREAM'" key="logstream" class="screen center-screen">
-          <div class="status-title">{{ logStatusTitle }}</div>
-          <div class="status-sub">{{ logStatusSub }}</div>
-          <div class="progress-indicator">
-            <div
-              v-for="i in 5"
-              :key="i"
-              class="progress-dot"
-              :class="{ active: i <= logProgressDot }"
-            ></div>
-          </div>
+          <!-- Regular kernel setup display -->
+          <template v-if="!isDownloadingModels">
+            <div class="status-title">{{ logStatusTitle }}</div>
+            <div class="status-sub">{{ logStatusSub }}</div>
+            <div v-if="kernelProgress > 0" class="kernel-progress-wrap">
+              <div class="kernel-progress-bar">
+                <div class="kernel-progress-fill" :style="{ width: `${kernelProgress}%` }"></div>
+              </div>
+              <span class="kernel-progress-pct">{{ kernelProgress }}%</span>
+            </div>
+            <div v-else class="progress-indicator">
+              <div
+                v-for="i in 5"
+                :key="i"
+                class="progress-dot"
+                :class="{ active: i <= logProgressDot }"
+              ></div>
+            </div>
+          </template>
+
+          <!-- Elegant model download display -->
+          <template v-else>
+            <div class="model-download-section">
+              <div class="md-icon-wrap">
+                <div class="md-pulse-ring"></div>
+                <span class="md-icon-inner">◈</span>
+              </div>
+              <div class="status-title">{{ logStatusTitle }}</div>
+              <p class="md-status-hint">{{ logStatusSub }}</p>
+
+              <div class="md-model-cards">
+                <div class="md-card" :class="modelCardClass('embedding')">
+                  <span class="md-card-icon" :class="modelCardClass('embedding')">
+                    {{ modelCardIcon('embedding') }}
+                  </span>
+                  <div class="md-card-info">
+                    <span class="md-card-name">语义嵌入模型</span>
+                    <span class="md-card-desc">Embedding · 文本理解</span>
+                  </div>
+                </div>
+                <div class="md-card" :class="modelCardClass('asr')">
+                  <span class="md-card-icon" :class="modelCardClass('asr')">
+                    {{ modelCardIcon('asr') }}
+                  </span>
+                  <div class="md-card-info">
+                    <span class="md-card-name">语音识别模型</span>
+                    <span class="md-card-desc">ASR · 语音转文字</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="kernel-progress-wrap md-progress">
+                <div class="kernel-progress-bar">
+                  <div class="kernel-progress-fill" :style="{ width: `${kernelProgress}%` }"></div>
+                </div>
+                <span class="kernel-progress-pct">{{ kernelProgress }}%</span>
+              </div>
+            </div>
+          </template>
+
           <div class="log-toggle log-toggle-corner">
             <button class="btn-log" @click="toggleLogDrawer">
               {{ showLogDrawer ? '收起日志' : '查看日志' }}
@@ -65,7 +115,9 @@
           <div v-if="backendError" class="error-block">
             <p class="error-text">{{ backendError }}</p>
             <div class="error-actions">
-              <button class="btn-cold btn-ghost-cold" @click="switchMode">切换 API 模式</button>
+              <button class="btn-cold btn-ghost-cold" @click="switchMode">
+                {{ currentMode === 'api' ? '切换本地模式' : '切换 API 模式' }}
+              </button>
               <button class="btn-cold" @click="retryBackend">重试</button>
             </div>
           </div>
@@ -175,8 +227,8 @@ import { useRouter } from 'vue-router'
 
 import { useConfigStore } from '../stores/useConfigStore'
 import { AssistantManager } from '../services/assistantManager'
-import TaskManager from '../services/TaskManager'
 import { OnboardingMode, OnboardingProfile } from '../types/onboarding'
+import type { KernelUpdateState, EnvironmentCheckResult } from '../types/KernelInfo'
 import ParticleCanvas from '../components/onboarding/ParticleCanvas.vue'
 
 // ─── type helpers ───────────────────────────────────────────────────────────
@@ -197,7 +249,7 @@ type OnboardingState =
 const router = useRouter()
 const configStore = useConfigStore()
 const assistantManager = AssistantManager.getInstance()
-const taskManager = TaskManager.getInstance()
+
 // ─── state machine ──────────────────────────────────────────────────────────
 
 const currentState = ref<OnboardingState>('BOOT')
@@ -256,15 +308,24 @@ const phaseClass = computed(() => {
   }
 })
 
-// ─── backend state ──────────────────────────────────────────────────────────
+// ─── kernel / backend state ─────────────────────────────────────────────────
 
+const kernelState = ref<KernelUpdateState | null>(null)
+const backendRunning = ref(false)
+const backendPid = ref(-1)
+const backendLogLines = ref<string[]>([])
 const backendError = ref('')
 const assistantLoadError = ref('')
 const assistantProgress = ref(0)
-const logStatusTitle = ref('正在启动核心服务...')
-const logStatusSub = ref('请稍候，这可能需要几分钟')
+const logStatusTitle = ref('正在初始化内核...')
+const logStatusSub = ref('正在检查运行环境')
 const logProgressDot = ref(1)
+const kernelProgress = ref(0)
+const isDownloadingModels = ref(false)
+const modelDownloadStage = ref<'idle' | 'embedding' | 'asr' | 'tts' | 'complete'>('idle')
 let logDotTimer: ReturnType<typeof setInterval> | null = null
+let kernelStateUnlisten: (() => void) | null = null
+let serviceStateUnlisten: (() => void) | null = null
 
 // ─── profile ────────────────────────────────────────────────────────────────
 
@@ -275,14 +336,42 @@ const profile = reactive<OnboardingProfile>({
 })
 
 const apiAddress = ref('')
-const sortedTasks = taskManager.tasks
 const showLogDrawer = ref(false)
 const logBodyRef = ref<HTMLElement | null>(null)
-const logLines = computed(() => taskManager.localStartupLogs.value)
+
+/** 组合日志：内核操作日志 + 后端服务日志 */
+const logLines = computed(() => {
+  const lines: string[] = []
+
+  // 内核状态信息
+  if (kernelState.value) {
+    const ks = kernelState.value
+    if (ks.currentVersion) {
+      lines.push(`[内核] 当前版本: v${ks.currentVersion}`)
+    } else {
+      lines.push('[内核] 未安装，需要初始化')
+    }
+    if (ks.operationStatus !== 'idle' && ks.operationStatus !== 'done') {
+      lines.push(`[操作] ${ks.statusText} (${ks.progress}%)`)
+    }
+    if (ks.error) {
+      lines.push(`[错误] ${ks.error}`)
+    }
+  }
+
+  // 后端服务日志
+  for (const line of backendLogLines.value) {
+    lines.push(line)
+  }
+
+  return lines
+})
+
 const logSourceText = computed(() => {
-  if (currentMode.value === 'api') return 'API 模式不提供本地日志'
-  if (sortedTasks.value.length === 0) return '未配置本地任务'
-  return `本地任务 ${sortedTasks.value.length} 项`
+  if (currentMode.value === 'api') return 'API 模式'
+  if (backendRunning.value) return `内核服务运行中 (PID: ${backendPid.value})`
+  if (kernelState.value?.currentVersion) return `内核 v${kernelState.value.currentVersion}`
+  return '内核未就绪'
 })
 
 // ─── LOG_STREAM dot animation ───────────────────────────────────────────────
@@ -390,50 +479,150 @@ async function startSystemWake(): Promise<void> {
   await wait(1500)
 }
 
-// ─── backend: local service startup ─────────────────────────────────────────
+// ─── kernel: environment check & setup ──────────────────────────────────────
 
-async function startLocalBackend(): Promise<boolean> {
+/**
+ * 检查内核运行环境，必要时执行安装
+ * 返回 true 表示内核就绪可以启动后端
+ */
+async function ensureKernelReady(): Promise<boolean> {
+  currentState.value = 'LOG_STREAM'
+  backendError.value = ''
+  startLogDots()
+
+  logStatusTitle.value = '正在检查内核环境...'
+  logStatusSub.value = '扫描运行环境与依赖'
+
+  // 1. 检查环境
+  const envResult = await window.api.kernel.checkEnvironment()
+  if (!envResult.success) {
+    backendError.value = `环境检查失败: ${envResult.error || '未知错误'}`
+    stopLogDots()
+    return false
+  }
+
+  const env: EnvironmentCheckResult = envResult.data!
+  const kernelInstalled = env.items.find((i) => i.key === 'kernel')?.passed ?? false
+  const venvReady = env.items.find((i) => i.key === 'venv')?.passed ?? false
+
+  if (!kernelInstalled) {
+    // 2a. 未安装内核 → 下载并安装
+    logStatusTitle.value = '正在获取内核信息...'
+    logStatusSub.value = '从 GitHub 获取最新版本'
+
+    const checkResult = await window.api.kernel.checkUpdate()
+    if (!checkResult.success) {
+      backendError.value = `获取内核版本失败: ${checkResult.error || '未知错误'}`
+      stopLogDots()
+      return false
+    }
+
+    logStatusTitle.value = '正在下载内核源码...'
+    logStatusSub.value = '首次下载约需数分钟，请耐心等待'
+
+    const installResult = await window.api.kernel.updateToLatest()
+    if (!installResult.success) {
+      backendError.value = `内核安装失败: ${(installResult as { error?: string }).error || '未知错误'}`
+      stopLogDots()
+      return false
+    }
+
+    logStatusTitle.value = '内核安装完成'
+    logStatusSub.value = '正在准备下载 AI 模型...'
+    await wait(800)
+  } else if (!venvReady) {
+    // 2b. 内核已安装但 venv 未就绪 → 运行 uv sync
+    logStatusTitle.value = '正在安装 Python 依赖...'
+    logStatusSub.value = '首次安装约需下载 5GB，请耐心等待'
+
+    const setupResult = await window.api.kernel.setupEnvironment()
+    if (!setupResult.success) {
+      backendError.value = `环境安装失败: ${setupResult.error || '未知错误'}`
+      stopLogDots()
+      return false
+    }
+
+    logStatusTitle.value = '依赖安装完成'
+    logStatusSub.value = '正在准备下载 AI 模型...'
+    await wait(800)
+  }
+
+  // 3. 下载 AI 模型（embedding, ASR 等）
+  isDownloadingModels.value = true
+  stopLogDots()
+  logStatusTitle.value = '正在同步 AI 模型...'
+  logStatusSub.value = '首次下载语音识别与语义模型，预计约需 5 分钟'
+
+  const modelResult = await window.api.kernel.downloadModels()
+  if (!modelResult.success) {
+    isDownloadingModels.value = false
+    backendError.value = `模型下载失败: ${modelResult.error || '未知错误'}`
+    return false
+  }
+
+  isDownloadingModels.value = false
+  modelDownloadStage.value = 'complete'
+  logStatusTitle.value = '模型同步完成'
+  logStatusSub.value = '内核环境已就绪'
+
+  await wait(600)
+  return true
+}
+
+// ─── backend: start service & health check ──────────────────────────────────
+
+async function startBackendService(): Promise<boolean> {
   currentState.value = 'LOG_STREAM'
   backendError.value = ''
   logStatusTitle.value = '正在启动核心服务...'
   logStatusSub.value = '初始化智慧核心所需的基础设施'
   startLogDots()
 
-  try {
-    const startResult = await taskManager.startLocalTasks(sortedTasks.value)
-    if (!startResult.success) {
-      backendError.value = startResult.error || '本地服务启动失败。'
-      stopLogDots()
-      return false
-    }
-
-    logStatusTitle.value = '正在唤醒澪的意识核心...'
-    logStatusSub.value = '检查神经网络连接状态'
-    const address = normalizeApiAddress(configStore.config.baseUrl || '127.0.0.1:8001')
-    const healthOk = await checkApiHealth(address, 20)
-
-    if (!healthOk) {
-      const running = await taskManager.areTasksRunning(sortedTasks.value.map((task) => task.id))
-      if (running) {
-        backendError.value = '本地服务仍在预热中，API 暂未就绪，请稍后重试。'
-      } else {
-        backendError.value = '核心服务未能保持运行，请查看日志后重试。'
-      }
-      stopLogDots()
-      return false
-    }
-
+  // 刷新后端日志（可能来自上一次运行）
+  const status = await window.api.kernel.getBackendStatus()
+  if (status.running) {
+    logStatusTitle.value = '核心服务已在运行'
+    logStatusSub.value = '正在检查连接状态...'
     stopLogDots()
-    logStatusTitle.value = '核心服务就绪'
-    logStatusSub.value = '意识核心连接成功'
-    await wait(500)
-    return true
-  } catch (err) {
-    backendError.value = err instanceof Error ? err.message : '未知错误'
+
+    // 检查健康状态
+    const healthResult = await window.api.kernel.checkBackendHealth()
+    if (healthResult.healthy) {
+      logStatusTitle.value = '核心服务就绪'
+      logStatusSub.value = '意识核心连接成功'
+      await wait(500)
+      return true
+    }
+  }
+
+  // 启动后端
+  const startResult = await window.api.kernel.startBackend()
+  if (!startResult.success) {
+    backendError.value = startResult.error || '启动服务失败。'
     stopLogDots()
     return false
   }
+
+  logStatusTitle.value = '正在唤醒澪的意识核心...'
+  logStatusSub.value = '检查神经网络连接状态'
+
+  // 等待健康检查通过
+  const healthResult = await window.api.kernel.checkBackendHealth()
+  if (!healthResult.healthy) {
+    const errMsg = (healthResult as { error?: string }).error
+    backendError.value = errMsg || '后端服务健康检查超时，请查看日志后重试。'
+    stopLogDots()
+    return false
+  }
+
+  stopLogDots()
+  logStatusTitle.value = '核心服务就绪'
+  logStatusSub.value = '意识核心连接成功'
+  await wait(500)
+  return true
 }
+
+// ─── retry / switch mode ────────────────────────────────────────────────────
 
 async function retryBackend(): Promise<void> {
   if (currentMode.value === 'api') {
@@ -443,25 +632,31 @@ async function retryBackend(): Promise<void> {
       await advanceAfterAssistantLoaded()
     }
   } else {
-    const ok = await startLocalBackend()
-    if (ok) {
-      currentMode.value = 'local-python'
-      await window.api.onboarding.setMode('local-python')
-      await loadAssistant()
-      await advanceAfterAssistantLoaded()
-    }
+    // 重试完整流程：检查内核环境 → 安装依赖 → 下载模型 → 启动后端服务
+    backendError.value = ''
+    currentState.value = 'LOG_STREAM'
+
+    const kernelReady = await ensureKernelReady()
+    if (!kernelReady) return
+
+    const backendOk = await startBackendService()
+    if (!backendOk) return
+
+    currentMode.value = 'local'
+    await window.api.onboarding.setMode('local')
+    await loadAssistant()
+    await advanceAfterAssistantLoaded()
   }
 }
 
 async function switchMode(): Promise<void> {
-  if (currentMode.value === 'local-python' || currentMode.value === '') {
+  if (currentMode.value === 'local' || currentMode.value === '') {
     currentMode.value = 'api'
     currentState.value = 'LOG_STREAM'
     backendError.value = ''
     apiAddress.value = configStore.config.baseUrl || '127.0.0.1:8001'
     logStatusTitle.value = 'API 模式'
     logStatusSub.value = `等待连接 ${apiAddress.value}...`
-    // give user a moment to see, then try to connect
     await wait(600)
     const ok = await connectApiMode()
     if (ok) {
@@ -469,10 +664,16 @@ async function switchMode(): Promise<void> {
       await advanceAfterAssistantLoaded()
     }
   } else {
-    currentMode.value = 'local-python'
-    await window.api.onboarding.setMode('local-python')
-    await startLocalBackend()
-    if (!backendError.value) {
+    currentMode.value = 'local'
+    currentState.value = 'LOG_STREAM'
+    backendError.value = ''
+    await window.api.onboarding.setMode('local')
+
+    const kernelReady = await ensureKernelReady()
+    if (!kernelReady) return
+
+    const ok = await startBackendService()
+    if (ok) {
       await loadAssistant()
       await advanceAfterAssistantLoaded()
     }
@@ -605,6 +806,27 @@ function syncSparkleStyle(i: number): Record<string, string> {
   }
 }
 
+// ─── model download card helpers ─────────────────────────────────────────
+
+function modelCardClass(stage: 'embedding' | 'asr' | 'tts'): string {
+  const current = modelDownloadStage.value
+  const order = { idle: 0, embedding: 1, asr: 2, tts: 3, complete: 4 }
+  const stageOrder = { embedding: 1, asr: 2, tts: 3 }
+  const stageIdx = stageOrder[stage]
+  const currentIdx = order[current]
+
+  if (currentIdx > stageIdx) return 'done'
+  if (currentIdx === stageIdx) return 'active'
+  return 'pending'
+}
+
+function modelCardIcon(stage: 'embedding' | 'asr' | 'tts'): string {
+  const cls = modelCardClass(stage)
+  if (cls === 'done') return '✓'
+  if (cls === 'active') return '◈'
+  return '○'
+}
+
 // ─── CONTRACT ───────────────────────────────────────────────────────────────
 
 async function startContract(): Promise<void> {
@@ -624,13 +846,50 @@ async function acceptContract(): Promise<void> {
   })
 }
 
-// ─── IPC listener ───────────────────────────────────────────────────────────
+// ─── IPC listeners ──────────────────────────────────────────────────────────
 
 function onAssistantDownloadProgress(
-  _event,
+  _event: unknown,
   payload: { assistantName: string; progress: number }
 ): void {
   assistantProgress.value = Math.max(0, Math.min(100, payload.progress))
+}
+
+function onKernelStateUpdate(state: KernelUpdateState): void {
+  kernelState.value = state
+  kernelProgress.value = state.progress
+
+  // 根据操作状态更新 LOG_STREAM 显示
+  if (state.operationStatus !== 'idle' && state.operationStatus !== 'done') {
+    // 如果是模型下载阶段，使用优雅的状态文本而非原始日志
+    if (isDownloadingModels.value) {
+      const rawText = state.statusText || ''
+      // 根据 stdout 内容推断当前下载的模型类型
+      if (rawText.includes('embedding') || rawText.includes('sentence')) {
+        modelDownloadStage.value = 'embedding'
+      } else if (
+        rawText.includes('asr') ||
+        rawText.includes('whisper') ||
+        rawText.includes('speech')
+      ) {
+        modelDownloadStage.value = 'asr'
+      } else if (rawText.includes('tts') || rawText.includes('vits') || rawText.includes('bert')) {
+        modelDownloadStage.value = 'tts'
+      }
+      // 不更新 logStatusTitle/Sub，保持优雅的阶段标题
+    } else {
+      logStatusTitle.value = state.statusText || logStatusTitle.value
+      logStatusSub.value = state.progress > 0 ? `进度: ${state.progress}%` : '请稍候...'
+    }
+  }
+}
+
+function onServiceState(state: { running: boolean; pid: number; logs: string[] }): void {
+  backendRunning.value = state.running
+  backendPid.value = state.pid
+  if (state.logs && state.logs.length > 0) {
+    backendLogLines.value = state.logs
+  }
 }
 
 // ─── main flow ──────────────────────────────────────────────────────────────
@@ -642,42 +901,44 @@ async function runFlow(): Promise<void> {
   // 2. SYSTEM_WAKE
   await startSystemWake()
 
-  // 3. LOG_STREAM → start backend
-  if (sortedTasks.value.length > 0) {
-    currentMode.value = 'local-python'
-    await window.api.onboarding.setMode('local-python')
-    const ok = await startLocalBackend()
-    if (!ok) return // stay in LOG_STREAM showing error
-  } else {
-    // no local tasks → API mode
-    currentMode.value = 'api'
-    await window.api.onboarding.setMode('api')
-    apiAddress.value = configStore.config.baseUrl || '127.0.0.1:8001'
-    currentState.value = 'LOG_STREAM'
-    backendError.value = ''
-    logStatusTitle.value = 'API 模式'
-    logStatusSub.value = `等待连接 ${apiAddress.value}...`
-    startLogDots()
-    await wait(600)
-    const ok = await connectApiMode()
-    if (!ok) {
-      stopLogDots()
-      return
-    }
-    stopLogDots()
-  }
+  // 3. LOG_STREAM → ensure kernel ready (install/setup/models if needed)
+  currentMode.value = 'local'
+  await window.api.onboarding.setMode('local')
 
-  // 4. PERSONALITY_ONLINE → load assistant
+  const kernelReady = await ensureKernelReady()
+  if (!kernelReady) return // stay in LOG_STREAM showing error
+
+  // 4. LOG_STREAM → start backend service & wait for health
+  const backendOk = await startBackendService()
+  if (!backendOk) return // stay in LOG_STREAM showing error
+
+  // 5. PERSONALITY_ONLINE → load assistant
   await loadAssistant()
-  if (assistantLoadError.value) return // stay showing error
+  if (assistantLoadError.value) return
   await advanceAfterAssistantLoaded()
-  // dialogue is user-driven; after last line, goState('PROFILE_SYNC') is called
 }
 
 // ─── bootstrap ──────────────────────────────────────────────────────────────
 
 onMounted(async () => {
+  // 监听助手数据加载进度
   window.api.ipcRenderer.on('assistant:download-progress', onAssistantDownloadProgress)
+
+  // 监听内核状态更新
+  kernelStateUnlisten = window.api.kernel.onStateUpdate(onKernelStateUpdate)
+
+  // 监听后端服务状态
+  serviceStateUnlisten = window.api.kernel.onServiceState(onServiceState)
+
+  // 拉取初始内核状态
+  const ks = await window.api.kernel.getState()
+  kernelState.value = ks
+
+  // 拉取初始后端服务状态
+  const svcStatus = await window.api.kernel.getBackendStatus()
+  backendRunning.value = svcStatus.running
+  backendPid.value = svcStatus.pid
+  backendLogLines.value = svcStatus.logs || []
 
   const onboardingState = await window.api.onboarding.getState()
   if (onboardingState.completed) {
@@ -693,12 +954,13 @@ onMounted(async () => {
     profile.occupation = onboardingState.profile.occupation || ''
   }
 
-  await taskManager.initService()
   await runFlow()
 })
 
 onUnmounted(() => {
   window.api.ipcRenderer.removeAllListeners('assistant:download-progress')
+  if (kernelStateUnlisten) kernelStateUnlisten()
+  if (serviceStateUnlisten) serviceStateUnlisten()
   stopLogDots()
 })
 </script>
@@ -964,7 +1226,234 @@ onUnmounted(() => {
   box-shadow: 0 0 10px rgba(251, 114, 153, 0.5);
 }
 
-/* ─── PERSONALITY_ONLINE ────────────────────────────────────────────────── */
+/* ─── kernel progress bar (LOG_STREAM) ──────────────────────────────────── */
+
+.kernel-progress-wrap {
+  margin-top: 18px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 320px;
+  max-width: 70vw;
+}
+
+.kernel-progress-bar {
+  flex: 1;
+  height: 6px;
+  border-radius: 6px;
+  background: rgba(251, 114, 153, 0.12);
+  overflow: hidden;
+}
+
+.kernel-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #fb7299, #f95a8a);
+  border-radius: 6px;
+  transition: width 0.5s ease;
+  box-shadow: 0 0 10px rgba(251, 114, 153, 0.4);
+}
+
+.kernel-progress-pct {
+  font-family: 'Consolas', monospace;
+  font-size: 13px;
+  color: #c2516b;
+  min-width: 40px;
+  text-align: right;
+}
+
+/* ─── model download section (LOG_STREAM) ────────────────────────────────── */
+
+.model-download-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  animation: mdFadeIn 0.5s ease;
+}
+
+.md-icon-wrap {
+  position: relative;
+  width: 56px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 14px;
+}
+
+.md-pulse-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid rgba(251, 114, 153, 0.25);
+  animation: mdPulse 2s ease-out infinite;
+}
+
+.md-icon-inner {
+  position: relative;
+  font-size: 22px;
+  color: #fb7299;
+  animation: mdIconFloat 2.5s ease-in-out infinite;
+  filter: drop-shadow(0 0 8px rgba(251, 114, 153, 0.35));
+}
+
+.model-download-section .status-title {
+  margin-bottom: 4px;
+}
+
+.md-status-hint {
+  margin: 0 0 20px;
+  font-size: 13px;
+  color: rgba(180, 100, 120, 0.6);
+  letter-spacing: 0.04em;
+}
+
+/* model cards */
+.md-model-cards {
+  display: flex;
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+.md-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 18px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.65);
+  border: 1px solid rgba(251, 114, 153, 0.12);
+  min-width: 200px;
+  transition:
+    border-color 0.4s ease,
+    background 0.4s ease,
+    box-shadow 0.4s ease,
+    transform 0.3s ease;
+}
+
+.md-card.pending {
+  opacity: 0.5;
+}
+
+.md-card.active {
+  border-color: rgba(251, 114, 153, 0.35);
+  background: rgba(255, 255, 255, 0.85);
+  box-shadow: 0 0 18px rgba(251, 114, 153, 0.12);
+  transform: translateY(-1px);
+}
+
+.md-card.done {
+  border-color: rgba(100, 200, 120, 0.3);
+  background: rgba(240, 255, 245, 0.7);
+}
+
+.md-card-icon {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-size: 13px;
+  font-weight: 700;
+  transition:
+    background 0.4s ease,
+    color 0.4s ease;
+}
+
+.md-card-icon.pending {
+  background: rgba(251, 114, 153, 0.08);
+  color: rgba(200, 120, 140, 0.4);
+}
+
+.md-card-icon.active {
+  background: rgba(251, 114, 153, 0.15);
+  color: #fb7299;
+  animation: mdIconSpin 1.5s linear infinite;
+}
+
+.md-card-icon.done {
+  background: rgba(100, 200, 120, 0.15);
+  color: #4caf50;
+}
+
+.md-card-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.md-card-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #6f2c48;
+  letter-spacing: 0.03em;
+}
+
+.md-card.done .md-card-name {
+  color: #3a7d44;
+}
+
+.md-card-desc {
+  font-size: 11px;
+  color: rgba(160, 100, 120, 0.45);
+  letter-spacing: 0.03em;
+}
+
+.md-card.done .md-card-desc {
+  color: rgba(60, 130, 70, 0.45);
+}
+
+/* model download progress bar */
+.md-progress {
+  margin-top: 4px;
+}
+
+/* ─── model download keyframes ───────────────────────────────────────────── */
+
+@keyframes mdFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes mdPulse {
+  0% {
+    transform: scale(0.85);
+    opacity: 0.7;
+  }
+  100% {
+    transform: scale(1.5);
+    opacity: 0;
+  }
+}
+
+@keyframes mdIconFloat {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
+}
+
+@keyframes mdIconSpin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ─── PERSONALITY_ONLINE ───────────────────────────────────────────────── */
 
 .personality-bar-wrap {
   margin-top: 16px;

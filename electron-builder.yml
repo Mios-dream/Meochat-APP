@@ -11,6 +11,11 @@ files:
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
 asarUnpack:
   - resources/**
+extraResources:
+  - from: "resources/python-runtime"
+    to: "python-runtime"
+    filter:
+      - "**/*"
 win:
   icon: build/icon/app.ico
   publish:

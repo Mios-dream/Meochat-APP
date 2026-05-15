@@ -457,11 +457,25 @@ const isServiceStarting = computed(() => {
   return isStartingBackend.value || isRestartingBackend.value || isSyncingDeps.value
 })
 
+/**
+ * 后端服务已启动但尚未通过健康检查（数据加载中）
+ * 包含两种情况：
+ * - backendHealthy === null：健康检查尚未运行（进程刚启动，或 setTimeout 等待中）
+ * - backendHealthy === false：健康检查超时 / 失败，但进程仍在运行
+ * 此状态用于填补 handleRestartBackend/handleStartBackend 的 finally 块
+ * 到 checkBackendStatus 完成健康检查之间的空白期，防止核心过早显示"宁静中"
+ */
+const isBackendLoading = computed(() => {
+  return backendService.value.running && backendHealthy.value !== true
+})
+
 const serviceStatusClass = computed(() => {
   if (isServiceStarting.value) return 'service-starting'
   if (isServiceDown.value) return 'service-down'
   if (backendHealthy.value === true) return 'service-healthy'
   if (backendHealthy.value === false && backendService.value.running) return 'service-loading'
+  // 健康状态未知但进程已运行（如刚重启/启动后健康检查尚未完成）
+  if (backendHealthy.value === null && backendService.value.running) return 'service-loading'
   return 'service-unknown'
 })
 
@@ -472,6 +486,8 @@ const serviceStatusText = computed(() => {
   if (isServiceDown.value) return '沉眠中'
   if (backendHealthy.value === true) return '共鸣中'
   if (backendHealthy.value === false && backendService.value.running) return '苏醒中...'
+  // 健康状态未知但进程已运行（如刚重启/启动后尚未完成健康检查）
+  if (backendHealthy.value === null && backendService.value.running) return '苏醒中...'
   return '更新中断'
 })
 
@@ -494,10 +510,16 @@ const isOperating = computed(() => {
   return s !== 'idle' && s !== 'done'
 })
 
+/**
+ * 核心视觉状态类名
+ * 优先级：error > 启动中/加载中 > 更新中 > 休眠 > 完成 > 可更新 > 宁静
+ * isBackendLoading 填补了 API 调用返回后到健康检查完成之间的状态空白
+ */
 const coreStateClass = computed(() => {
   const s = kernelState.value.operationStatus
   if (s === 'error') return 'core-error'
   if (isServiceStarting.value) return 'core-evolving'
+  if (isBackendLoading.value) return 'core-evolving'
   if (isOperating.value || isUpdating.value) return 'core-evolving'
   if (isServiceDown.value) return 'core-dormant'
   if (s === 'done') return 'core-bloom'
@@ -519,6 +541,8 @@ const shouldWingsSpread = computed(() => {
 
 const statusText = computed(() => {
   if (isServiceStarting.value) return serviceStatusText.value
+  // 后端进程已运行但健康检查尚未通过（数据加载中）
+  if (isBackendLoading.value) return '苏醒中...'
   const s = kernelState.value.operationStatus
   if (isOperating.value || isUpdating.value) {
     const map: Record<string, string> = {
@@ -544,6 +568,7 @@ const statusText = computed(() => {
 
 const statusClass = computed(() => {
   if (isServiceStarting.value) return 'status-evolving'
+  if (isBackendLoading.value) return 'status-evolving'
   if (isOperating.value || isUpdating.value) {
     const s = kernelState.value.operationStatus
     if (s === 'error') return 'status-error'
@@ -561,7 +586,8 @@ const statusClass = computed(() => {
 const heartColorPrimary = computed(() => {
   const s = kernelState.value.operationStatus
   if (s === 'error') return '#f0a0a8'
-  if (isOperating.value || isUpdating.value) return '#c8a0e0'
+  if (isServiceStarting.value || isBackendLoading.value || isOperating.value || isUpdating.value)
+    return '#c8a0e0'
   if (isServiceDown.value) return '#c8bdd8'
   if (s === 'done') return '#f8b8d0'
   if (kernelState.value.updateAvailable) return '#f59e8b'
@@ -571,7 +597,8 @@ const heartColorPrimary = computed(() => {
 const heartColorSecondary = computed(() => {
   const s = kernelState.value.operationStatus
   if (s === 'error') return '#fad0d5'
-  if (isOperating.value || isUpdating.value) return '#e0c8f5'
+  if (isServiceStarting.value || isBackendLoading.value || isOperating.value || isUpdating.value)
+    return '#e0c8f5'
   if (isServiceDown.value) return '#e0d8f0'
   if (s === 'done') return '#ffe0f0'
   if (kernelState.value.updateAvailable) return '#fcc8b5'

@@ -101,6 +101,18 @@ function setupKernelIPC(): void {
     }
   })
 
+  /** 下载 AI 模型（运行 download.py） */
+  ipcMain.handle('kernel:download-models', async () => {
+    try {
+      const result = await kernelManager.downloadModels()
+      return result
+    } catch (error) {
+      const msg = (error as Error).message
+      log.error('模型下载失败:', msg)
+      return { success: false, error: msg }
+    }
+  })
+
   /** 获取操作日志 */
   ipcMain.handle('kernel:get-logs', () => {
     try {

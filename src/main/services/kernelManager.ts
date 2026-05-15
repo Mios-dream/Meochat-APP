@@ -85,15 +85,39 @@ class KernelManager {
     return path.join(this.kernelDir, VERSION_FILE_NAME)
   }
 
+  // ─── 便携 uv 运行时路径 ───────────────────────
+
+  /** 内嵌便携 uv 运行时根目录 */
+  get portableRuntimeDir(): string {
+    if (app.isPackaged) {
+      return path.join(process.resourcesPath, 'python-runtime')
+    }
+    return path.join(app.getAppPath(), 'resources', 'python-runtime')
+  }
+
+  /** 内嵌 uv 可执行文件路径（uv 自动管理 Python 版本） */
+  get portableUvExe(): string {
+    return path.join(this.portableRuntimeDir, 'uv.exe')
+  }
+
   // ─── 状态管理 ───────────────────────────────────────
 
   private loadState(): void {
-    // 检查当前内核是否存在
-    const versionPath = this.versionFilePath
-
-    const version = fs.readFileSync(versionPath, 'utf8').trim()
-    this.state.currentVersion = version
-    log.info(`当前内核版本: v${version}`)
+    try {
+      const versionPath = this.versionFilePath
+      const version = fs.readFileSync(versionPath, 'utf8').trim()
+      this.state.currentVersion = version
+      log.info(`当前内核版本: v${version}`)
+    } catch (error: unknown) {
+      const err = error as NodeJS.ErrnoException
+      if (err.code === 'ENOENT') {
+        log.info('未检测到已安装的内核，需要下载')
+        this.state.currentVersion = null
+      } else {
+        log.error('加载内核状态失败:', err.message)
+        this.state.currentVersion = null
+      }
+    }
   }
 
   // 通知所有窗口内核状态更新
@@ -146,35 +170,19 @@ class KernelManager {
   }
 
   /**
-   * 检查内核运行环境（uv, venv, 磁盘空间等）
-   * uv 可以自行管理 Python 版本，因此不需要单独检查 Python
+   * 检查内核运行环境（内嵌运行时、venv、磁盘空间等）
+   * 使用内嵌便携 Python + uv，不再依赖系统级 uv 安装
    */
   async checkEnvironment(): Promise<EnvironmentCheckResult> {
     const items: EnvironmentCheckItem[] = []
 
-    // 1. 检查 uv
-    let uvFound = false
-    let uvVersion = ''
-    try {
-      const { stdout, stderr } = await execAsync('uv --version', {
-        timeout: 5000,
-        windowsHide: true
-      })
-      const output = (stdout || stderr || '').trim()
-      if (output) {
-        uvFound = true
-        uvVersion = output
-      }
-    } catch {
-      console.error('uv 包管理器不可用')
-      // uv 未安装
-    }
-
+    // 1. 检查内嵌 Python 运行时完整性（替代系统 uv 检查）
+    const runtimeOk = fs.existsSync(this.portableUvExe)
     items.push({
-      name: 'uv 包管理器',
-      passed: uvFound,
-      message: uvFound ? uvVersion : '未找到 uv，请先安装: https://docs.astral.sh/uv/',
-      key: 'uv'
+      name: '内嵌 Python 运行时',
+      passed: runtimeOk,
+      message: runtimeOk ? `就绪 (${this.portableRuntimeDir})` : '内嵌运行时损坏，请重新安装应用',
+      key: 'runtime'
     })
 
     // 2. 检查内核是否已安装
@@ -209,7 +217,7 @@ class KernelManager {
       key: 'venv'
     })
 
-    // 4. 检查磁盘空间
+    // 4. 检查磁盘空间（建议 ≥20GB，PyTorch + 依赖约需 14GB）
     const kernelRoot = this.kernelRoot
     let diskSpaceOk = true
     let diskMessage = '磁盘空间充足'
@@ -218,9 +226,9 @@ class KernelManager {
       const stat = statfsSync(kernelRoot)
       const freeBytes = stat.bsize * stat.bfree
       const freeGB = freeBytes / (1024 * 1024 * 1024)
-      if (freeGB < 1) {
+      if (freeGB < 20) {
         diskSpaceOk = false
-        diskMessage = `磁盘空间不足: 仅剩 ${freeGB.toFixed(1)} GB (建议至少 1GB)`
+        diskMessage = `磁盘空间不足: 仅剩 ${freeGB.toFixed(1)} GB (建议至少 20GB)`
       } else {
         diskMessage = `可用空间: ${freeGB.toFixed(1)} GB`
       }
@@ -235,7 +243,7 @@ class KernelManager {
     })
 
     const allPassed = items.every((item) => item.passed)
-    const needsSetup = kernelInstalled && !venvReady && uvFound
+    const needsSetup = kernelInstalled && !venvReady && runtimeOk
 
     return { items, allPassed, needsSetup }
   }
@@ -274,6 +282,99 @@ class KernelManager {
       this.setOperation('error', `环境安装失败: ${msg}`)
       return { success: false, error: msg }
     }
+  }
+
+  /**
+   * 下载模型数据（运行 download.py）
+   * 用于首次安装后下载 embedding、ASR 等 ML 模型
+   */
+  async downloadModels(): Promise<{ success: boolean; error?: string }> {
+    const version = this.state.currentVersion
+    if (!version) {
+      return { success: false, error: '没有安装内核' }
+    }
+
+    const downloadScript = path.join(this.kernelDir, 'download.py')
+    if (!fs.existsSync(downloadScript)) {
+      return { success: false, error: '未找到模型下载脚本 download.py' }
+    }
+
+    const uvExe = this.portableUvExe
+    if (!fs.existsSync(uvExe)) {
+      return { success: false, error: '内嵌 uv 未找到，请重新安装应用' }
+    }
+
+    const pythonPath = process.platform === 'win32'
+      ? path.join(this.kernelDir, '.venv', 'Scripts', 'python.exe')
+      : path.join(this.kernelDir, '.venv', 'bin', 'python')
+
+    if (!fs.existsSync(pythonPath)) {
+      return { success: false, error: '虚拟环境未配置，请先安装环境依赖' }
+    }
+
+    this.setOperation('settingUpEnv', '正在下载 AI 模型...')
+    this.state.progress = 0
+    this.notifyState()
+
+    log.info(`[KernelManager] 开始下载模型: uv run download.py (cwd: ${this.kernelDir})`)
+
+    return new Promise((resolve) => {
+      const child = spawn(uvExe, ['run', 'download.py'], {
+        cwd: this.kernelDir,
+        stdio: 'pipe',
+        env: { ...process.env }
+      })
+
+      let settled = false
+      const errorLines: string[] = []
+
+      child.stdout.on('data', (data: Buffer) => {
+        const text = data.toString('utf-8').trim()
+        if (text) {
+          log.info(`[model-dl] ${text}`)
+          this.state.statusText = text.slice(0, 100)
+          // 模型下载进度粗略估算（modelscope snapshot_download 不提供精确进度）
+          const prevProgress = this.state.progress
+          this.state.progress = Math.min(95, prevProgress + 3)
+          this.notifyState()
+        }
+      })
+
+      child.stderr.on('data', (data: Buffer) => {
+        const text = data.toString('utf-8').trim()
+        if (text) {
+          errorLines.push(text)
+          log.warn(`[model-dl stderr] ${text}`)
+        }
+      })
+
+      child.on('error', (error: Error) => {
+        if (settled) return
+        settled = true
+        const msg = `无法启动模型下载: ${error.message}`
+        this.state.error = msg
+        this.setOperation('error', msg)
+        resolve({ success: false, error: msg })
+      })
+
+      child.on('close', (code: number | null) => {
+        if (settled) return
+        settled = true
+
+        if (code === 0) {
+          log.info('[KernelManager] 模型下载完成')
+          this.state.progress = 100
+          this.setOperation('done', '模型下载完成')
+          resolve({ success: true })
+        } else {
+          const errorMsg = errorLines.join('\n') || `download.py 退出码: ${code}`
+          log.error(`[KernelManager] 模型下载失败: ${errorMsg}`)
+          this.state.error = errorMsg
+          this.setOperation('error', `模型下载失败 (退出码 ${code})`)
+          resolve({ success: false, error: errorMsg })
+        }
+      })
+    })
   }
 
   /**
@@ -739,9 +840,10 @@ class KernelManager {
     }
   }
 
-  /** 在内核目录中运行 uv sync 创建虚拟环境并安装依赖 */
+  /** 使用内嵌 uv 在内核目录中运行 uv sync，从 PyPI 镜像下载所有预编译 wheel */
   private setupEnvironment(onProgress: (progress: number) => void): Promise<void> {
     const kernelDir = this.kernelDir
+    const uvExe = this.portableUvExe
 
     return new Promise((resolve, reject) => {
       // 检查 pyproject.toml 是否存在
@@ -753,28 +855,43 @@ class KernelManager {
         return
       }
 
-      // 优先使用系统 uv
-      const uvCommand = 'uv'
-      const uvArgs = ['sync']
+      // 断言内嵌运行时存在
+      if (!fs.existsSync(uvExe)) {
+        reject(new Error('内嵌 Python 运行时未找到，请重新安装应用。\n' + `期望路径: ${uvExe}`))
+        return
+      }
 
-      this.state.statusText = '正在使用 uv 安装依赖...'
+      this.state.statusText = '正在从镜像安装依赖（首次约需 5GB 下载）...'
       this.notifyState()
 
-      log.info(`运行 uv sync: ${kernelDir}`)
+      log.info(`运行内嵌 uv sync: ${kernelDir}`)
+      log.info(`  uv: ${uvExe}`)
 
-      const child = spawn(uvCommand, uvArgs, {
+      const child = spawn(uvExe, ['sync'], {
         cwd: kernelDir,
         stdio: 'pipe',
-        shell: process.platform === 'win32'
+        env: {
+          ...process.env
+        }
       })
 
       let settled = false
       const errorLines: string[] = []
+      let lastProgress = 0
 
       child.stdout.on('data', (data: Buffer) => {
         const text = decodeBuffer(data).trim()
         if (text) {
           log.info(`[uv] ${text}`)
+          // 解析 uv 输出估算进度
+          if (
+            text.includes('Resolved') ||
+            text.includes('Downloaded') ||
+            text.includes('Installed')
+          ) {
+            lastProgress = Math.min(0.95, lastProgress + 0.05)
+            onProgress(lastProgress)
+          }
         }
       })
 
@@ -789,9 +906,7 @@ class KernelManager {
       child.on('error', (error: Error) => {
         if (settled) return
         settled = true
-        // uv 命令不存在，尝试 python -m uv
-        log.warn(`uv 命令不可用，尝试 python -m uv: ${error.message}`)
-        this.setupEnvironmentWithPython(kernelDir, onProgress).then(resolve).catch(reject)
+        reject(new Error(`无法启动内嵌 uv: ${error.message}`))
       })
 
       child.on('close', (code: number | null) => {
@@ -805,52 +920,8 @@ class KernelManager {
         } else {
           const errorMsg = errorLines.join('\n') || `uv sync 退出码: ${code}`
           log.error(`依赖安装失败: ${errorMsg}`)
-          // 不阻塞安装流程 - 用户可以稍后手动安装依赖
-          log.warn('依赖安装失败但继续，用户可手动运行 uv sync')
-          this.state.statusText = '内核已安装，但依赖安装失败（可稍后手动安装）'
-          onProgress(1)
-          resolve()
+          reject(new Error(`依赖安装失败 (退出码 ${code}): ${errorMsg}`))
         }
-      })
-    })
-  }
-
-  /** 使用 python -m uv 安装依赖（备选方案） */
-  private setupEnvironmentWithPython(
-    kernelDir: string,
-    onProgress: (progress: number) => void
-  ): Promise<void> {
-    return new Promise((resolve) => {
-      const pythonCommand = process.platform === 'win32' ? 'python' : 'python3'
-
-      log.info(`尝试 ${pythonCommand} -m uv sync: ${kernelDir}`)
-
-      const child = spawn(pythonCommand, ['-m', 'uv', 'sync'], {
-        cwd: kernelDir,
-        stdio: 'pipe',
-        shell: process.platform === 'win32'
-      })
-
-      let settled = false
-
-      child.on('error', () => {
-        if (settled) return
-        settled = true
-        log.warn('python -m uv 也不可用，跳过依赖安装')
-        onProgress(1)
-        resolve()
-      })
-
-      child.on('close', (code: number | null) => {
-        if (settled) return
-        settled = true
-        if (code === 0) {
-          log.info('依赖安装完成 (via python -m uv)')
-        } else {
-          log.warn(`python -m uv sync 退出码: ${code}，跳过依赖安装`)
-        }
-        onProgress(1)
-        resolve()
       })
     })
   }
@@ -997,11 +1068,16 @@ class KernelServiceManager {
     this.addBackendLog(`[系统] 工作目录: ${kernelPath}`)
 
     try {
-      // 使用系统 uv 命令直接运行，uv 会自动使用项目内的 .venv
-      this.backendProcess = spawn('uv', ['run', scriptPath], {
+      // 使用内嵌 uv 运行（uv 自动管理 Python 版本）
+      const uvExe = this.kernelManager.portableUvExe
+
+      if (!fs.existsSync(uvExe)) {
+        return { success: false, error: `内嵌 uv 未找到: ${uvExe}` }
+      }
+
+      this.backendProcess = spawn(uvExe, ['run', scriptPath], {
         cwd: kernelPath,
         stdio: 'pipe',
-        shell: process.platform === 'win32',
         env: {
           ...process.env,
           PYTHONIOENCODING: 'utf-8',

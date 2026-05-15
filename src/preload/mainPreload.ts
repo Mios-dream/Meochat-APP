@@ -48,6 +48,7 @@ contextBridge.exposeInMainWorld('api', {
     resetState: () => ipcRenderer.invoke('kernel:reset-state'),
     checkEnvironment: () => ipcRenderer.invoke('kernel:check-environment'),
     setupEnvironment: () => ipcRenderer.invoke('kernel:setup-environment'),
+    downloadModels: () => ipcRenderer.invoke('kernel:download-models'),
     getLogs: () => ipcRenderer.invoke('kernel:get-logs'),
     startBackend: () => ipcRenderer.invoke('kernel:start-backend'),
     stopBackend: () => ipcRenderer.invoke('kernel:stop-backend'),

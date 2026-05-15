@@ -396,7 +396,7 @@ async function loadLive2DModel(): Promise<boolean> {
 async function sendOnboardingWelcomeIfNeeded(): Promise<void> {
   const fromRoute = route.query.welcome === 'true'
   if (fromRoute) {
-    await chatService.sendMessage('您好，阁下！初次见面，以后请多指教！')
+    await chatService.sendMessage('您好，阁下！我是澪，全能型人形自律机关，将满足您的所有愿望。')
     await chatService.waitForReplyPlaybackComplete()
 
     // 欢迎语只需要触发一次，触发后移除路由标记，避免切换 tab 重复触发

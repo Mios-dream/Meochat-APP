@@ -58,7 +58,7 @@ export interface EnvironmentCheckItem {
   /** 描述信息 */
   message: string
   /** 检查项标识 */
-  key: 'uv' | 'venv' | 'disk' | 'kernel'
+  key: 'runtime' | 'uv' | 'venv' | 'disk' | 'kernel'
 }
 
 /**

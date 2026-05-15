@@ -1,4 +1,4 @@
-import { app, globalShortcut } from 'electron'
+import { app, globalShortcut, BrowserWindow } from 'electron'
 import { createMainWindow } from './windows/mainWindow'
 import { setupMainIPC } from './ipc/mainHandlers'
 import { setupConfigIPC } from './config/configManager'
@@ -10,6 +10,7 @@ import { registerFileProtocol, handleFileProtocol } from './protocol/fileProtoco
 import setupUpdaterIPC from './ipc/updaterHandlers'
 import setupKernelIPC from './ipc/kernelHandlers'
 import { setupSystemEventIPC } from './ipc/assistantEventHandlers'
+import { KernelManager } from './services/kernelManager'
 import log from './utils/logger'
 
 try {
@@ -42,6 +43,17 @@ app.whenReady().then(() => {
     handleFileProtocol()
     // 启动自启服务
     startAutoService()
+
+    // 初始化时自动检测内核是否存在，推送初始状态给渲染进程
+    const kernelMgr = KernelManager.getInstance()
+    const initialState = kernelMgr.getState()
+    BrowserWindow.getAllWindows().forEach((win) => {
+      if (!win.isDestroyed()) {
+        win.webContents.once('dom-ready', () => {
+          win.webContents.send('kernel:state-update', { ...initialState })
+        })
+      }
+    })
   } catch (error) {
     log.error('应用初始化失败:', error)
   }

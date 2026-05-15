@@ -3,12 +3,19 @@ import { createAssistantWindow } from '../windows/assistantWindow'
 import log from '../utils/logger'
 import { AssistantService } from '../services/assistantService'
 import { KernelManager, KernelServiceManager } from '../services/kernelManager'
+import { OnboardingStoreService } from '../services/onboardingStore'
 
 const assistantService = AssistantService.getInstance()
 const kernelManager = KernelManager.getInstance()
 const kernelServiceManager = KernelServiceManager.getInstance()
+const onboardingStore = OnboardingStoreService.getInstance()
 
 async function startAutoService(): Promise<void> {
+  // 首次运行尚未完成引导流程，跳过自启 —— 引导流程中会自行完成内核安装与助手加载
+  if (!onboardingStore.getState().completed) {
+    log.info('[autoService] 引导未完成，跳过自启服务')
+    return
+  }
   // 预加载助手数据
   await assistantService.loadAssistants().catch((error) => {
     log.error('预加载助手数据失败:', error)

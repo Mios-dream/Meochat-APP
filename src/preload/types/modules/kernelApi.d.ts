@@ -35,6 +35,8 @@ export interface KernelApi {
     }>
     /** 设置内核运行环境（运行 uv sync 安装依赖） */
     setupEnvironment: () => Promise<{ success: boolean; error?: string }>
+    /** 下载 AI 模型（embedding, ASR 等），首次安装后调用 */
+    downloadModels: () => Promise<{ success: boolean; error?: string }>
     /** 获取内核操作日志 */
     getLogs: () => Promise<{ success: boolean; data?: KernelLogEntry[]; error?: string }>
     /** 启动后端服务 */
