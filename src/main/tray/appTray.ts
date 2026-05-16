@@ -4,7 +4,7 @@ import appIcon from '/resources/icon/app.ico?asset'
 
 let tray: Tray
 
-function createTray() {
+function createTray(): Tray {
   tray = new Tray(appIcon)
   const contextMenu = Menu.buildFromTemplate([
     {
@@ -26,11 +26,11 @@ function createTray() {
   return tray
 }
 
-function getTray() {
+function getTray(): Tray {
   return tray
 }
 
-function setTrayTip(message) {
+function setTrayTip(message: string): void {
   tray.setToolTip(message)
 }
 

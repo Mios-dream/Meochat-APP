@@ -10,10 +10,6 @@
   user-select: none;
 }
 
-.dashboard-content {
-  padding: 15px;
-}
-
 .page-title {
   font-size: clamp(1.5rem, 3vw, 2.5rem);
   font-weight: bold;

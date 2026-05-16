@@ -66,33 +66,6 @@ class AssistantService {
   }
 
   /**
-   * 工具函数，规范化助手数据结构，兼容云端接口和本地文件中可能存在的用户状态字段
-   * @param assistant 原始助手数据，可能来自云端接口或本地文件，包含可选的 userState 字段
-   * @return 规范化后的助手数据，确保 userState 字段完整且优先使用云端接口中的数据
-   */
-  // private normalizeAssistantUserState(
-  //   assistant: Partial<AssistantInfo> & { userState?: Partial<UserStateInfo> | null }
-  // ): AssistantInfo {
-  //   const { userState, love, firstMeetTime, updatedAt, assetsLastModified, ...rest } =
-  //     assistant as Partial<AssistantInfo> & {
-  //       love?: number
-  //       firstMeetTime?: number
-  //       updatedAt?: number
-  //       assetsLastModified?: number
-  //     }
-
-  //   return {
-  //     ...(rest as AssistantInfo),
-  //     userState: {
-  //       love: userState?.love ?? love ?? 0,
-  //       firstMeetTime: userState?.firstMeetTime ?? firstMeetTime ?? 0,
-  //       updatedAt: userState?.updatedAt ?? updatedAt ?? 0,
-  //       assetsLastModified: userState?.assetsLastModified ?? assetsLastModified ?? 0
-  //     }
-  //   }
-  // }
-
-  /**
    * 注册聊天框快捷键
    */
   public registerChatShortcut(shortcut: string): boolean {

@@ -1,4 +1,10 @@
+/**
+ * 麦克风管理器
+ * 负责麦克风录音、WebSocket 连接、音频数据重采样和发送
+ */
 class MicrophoneManager {
+  private static instance: MicrophoneManager
+
   private audioStream: MediaStream | null = null
   private audioContext: AudioContext | null = null
   private websocket: WebSocket | null = null
@@ -9,8 +15,18 @@ class MicrophoneManager {
 
   // 重连相关属性
   private reconnectInterval: number = 3000
-  private reconnectTimer: NodeJS.Timeout | null = null
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null
   private isManuallyClosed: boolean = false
+
+  /**
+   * 获取单例实例
+   */
+  public static getInstance(): MicrophoneManager {
+    if (!MicrophoneManager.instance) {
+      MicrophoneManager.instance = new MicrophoneManager()
+    }
+    return MicrophoneManager.instance
+  }
 
   /**
    * 获取麦克风权限状态

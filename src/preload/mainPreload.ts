@@ -1,12 +1,15 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import globalAPI from './sharePreload'
+import type { AssistantInfo, AssistantAssets } from '../renderer/src/types/AssistantInfo'
 
 // 文件选择工具API
 const fileSelectAPI = {
   // 选择单个文件
-  selectFile: (options) => ipcRenderer.invoke('tool:select-file', options),
+  selectFile: (options?: Electron.OpenDialogOptions) =>
+    ipcRenderer.invoke('tool:select-file', options),
   // 选择文件夹
-  selectFolder: (options) => ipcRenderer.invoke('tool:select-folder', options),
+  selectFolder: (options?: Electron.OpenDialogOptions) =>
+    ipcRenderer.invoke('tool:select-folder', options),
   // 检查本地路径是否存在
   pathExists: (targetPath: string) => ipcRenderer.invoke('tool:path-exists', targetPath)
 }
@@ -16,14 +19,15 @@ contextBridge.exposeInMainWorld('api', {
   fileSelectAPI,
   // 主窗口专用 API
   getAssistantStatus: () => ipcRenderer.invoke('assistant:get-status'),
-  setAutoStartOnBoot: (enable) => ipcRenderer.invoke('set-auto-start-on-boot', enable),
+  setAutoStartOnBoot: (enable: boolean) => ipcRenderer.invoke('set-auto-start-on-boot', enable),
 
   // 更新相关 API
   getCurrentVersion: () => ipcRenderer.invoke('updater:get-current-version'),
   checkForUpdate: () => ipcRenderer.invoke('updater:check-for-update'),
   confirmUpdate: () => ipcRenderer.invoke('updater:confirm-update'),
-  onStatus: (callback) => ipcRenderer.on('updater:update-status', (_, msg) => callback(msg)),
-  onProgress: (callback) =>
+  onStatus: (callback: (msg: string) => void) =>
+    ipcRenderer.on('updater:update-status', (_, msg) => callback(msg)),
+  onProgress: (callback: (percent: number) => void) =>
     ipcRenderer.on('updater:update-progress', (_, percent) => callback(percent)),
   checkCloudVersion: () => ipcRenderer.invoke('updater:check-cloud-version'),
 
@@ -35,12 +39,12 @@ contextBridge.exposeInMainWorld('api', {
     getPythonConfig: () => ipcRenderer.invoke('kernel:get-python-config'),
     checkUpdate: () => ipcRenderer.invoke('kernel:check-update'),
     updateToLatest: () => ipcRenderer.invoke('kernel:update-to-latest'),
-    onStateUpdate: (callback) => {
+    onStateUpdate: (callback: (state: unknown) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, state: unknown): void => callback(state)
       ipcRenderer.on('kernel:state-update', handler)
       return () => ipcRenderer.removeListener('kernel:state-update', handler)
     },
-    onNeedRestart: (callback) => {
+    onNeedRestart: (callback: (data: unknown) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, data: unknown): void => callback(data)
       ipcRenderer.on('kernel:need-restart', handler)
       return () => ipcRenderer.removeListener('kernel:need-restart', handler)
@@ -57,12 +61,12 @@ contextBridge.exposeInMainWorld('api', {
     getBackendLogs: () => ipcRenderer.invoke('kernel:get-backend-logs'),
     getStreamLogs: () => ipcRenderer.invoke('kernel:get-stream-logs'),
     checkBackendHealth: () => ipcRenderer.invoke('kernel:check-backend-health'),
-    onServiceState: (callback) => {
+    onServiceState: (callback: (state: unknown) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, state: unknown): void => callback(state)
       ipcRenderer.on('kernel:service-state', handler)
       return () => ipcRenderer.removeListener('kernel:service-state', handler)
     },
-    onServiceStream: (callback) => {
+    onServiceStream: (callback: (base64: string) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, base64: string): void => {
         callback(base64)
       }
@@ -75,7 +79,13 @@ contextBridge.exposeInMainWorld('api', {
   // 助手相关 API
   initAssistant: () => ipcRenderer.invoke('assistant:init'),
   // 下载助手资产
-  downloadAssistantAsset: async ({ assistantName, onProgress }) => {
+  downloadAssistantAsset: async ({
+    assistantName,
+    onProgress
+  }: {
+    assistantName: string
+    onProgress?: (progress: number) => void
+  }) => {
     // 监听进度事件
     const progressListener = (
       _event,
@@ -100,19 +110,20 @@ contextBridge.exposeInMainWorld('api', {
     }
   },
   // 注册聊天框快捷键
-  registerChatShortcut: (shortcut) =>
+  registerChatShortcut: (shortcut: string) =>
     ipcRenderer.invoke('assistant:register-chat-shortcut', shortcut),
   // 加载助手数据
   loadAssistantData: () => ipcRenderer.invoke('assistant:load-assistant-data'),
   // 添加助手
-  addAssistant: (assistant) => ipcRenderer.invoke('assistant:add-assistant', assistant),
+  addAssistant: (assistant: AssistantInfo) =>
+    ipcRenderer.invoke('assistant:add-assistant', assistant),
   // 更新助手信息
-  updateAssistant: (assistant, options) =>
+  updateAssistant: (assistant: AssistantInfo, options?: { uploadAssets?: boolean }) =>
     ipcRenderer.invoke('assistant:update-assistant', assistant, options),
   // 删除助手
-  deleteAssistant: (name) => ipcRenderer.invoke('assistant:delete-assistant', name),
+  deleteAssistant: (name: string) => ipcRenderer.invoke('assistant:delete-assistant', name),
   // 上传助手资产进度
-  onUploadProgress: (callback) => {
+  onUploadProgress: (callback: (data: { assistantName: string; progress: number }) => void) => {
     const listener = (
       _,
       data: {
@@ -124,26 +135,38 @@ contextBridge.exposeInMainWorld('api', {
     return () => ipcRenderer.removeListener('assistant:upload-progress', listener)
   },
   // 检查助手资产是否需要更新
-  isNeedsUpdate: (assistant) => ipcRenderer.invoke('assistant:need-update', assistant),
+  isNeedsUpdate: (assistant: AssistantInfo) =>
+    ipcRenderer.invoke('assistant:need-update', assistant),
   // 获取当前助手信息
   getCurrentAssistant: () => ipcRenderer.invoke('assistant:get-current-assistant'),
   // 从云端刷新当前助手数据（好感度等）
   refreshCurrentAssistant: () => ipcRenderer.invoke('assistant:refresh-current'),
   // 切换当前助手
-  switchAssistant: (name) => ipcRenderer.invoke('assistant:switch-assistant', name),
+  switchAssistant: (name: string) => ipcRenderer.invoke('assistant:switch-assistant', name),
   // 资产管理相关API
   // 获取助手资产配置文件
-  getAssistantAssets: (assistantName) => ipcRenderer.invoke('assistant:get-assets', assistantName),
+  getAssistantAssets: (assistantName: string) =>
+    ipcRenderer.invoke('assistant:get-assets', assistantName),
   // 保存助手资产配置文件
-  saveAssistantAssets: (assets) => ipcRenderer.invoke('assistant:save-assets', assets),
+  saveAssistantAssets: (assets: AssistantAssets) =>
+    ipcRenderer.invoke('assistant:save-assets', assets),
   // 上传并提取Live2D模型资产
-  saveAndExtractLive2DModel: (fileData, assistantName) =>
+  saveAndExtractLive2DModel: (fileData: Buffer | ArrayBuffer, assistantName: string) =>
     ipcRenderer.invoke('assistant:save-extract-live2d', fileData, assistantName),
   // 助手图片上传API
-  saveAssistantImageFile: (fileData, assistantName, fileName) =>
-    ipcRenderer.invoke('assistant:save-image-file', fileData, assistantName, fileName),
+  saveAssistantImageFile: (
+    fileData: Buffer | ArrayBuffer,
+    assistantName: string,
+    fileName: string
+  ) => ipcRenderer.invoke('assistant:save-image-file', fileData, assistantName, fileName),
   // 助手通用资源文件上传API
-  saveAssistantResourceFile: (fileData, assistantName, subDir, fileName, oldRelativePath) =>
+  saveAssistantResourceFile: (
+    fileData: Buffer | ArrayBuffer,
+    assistantName: string,
+    subDir: string,
+    fileName: string,
+    oldRelativePath?: string
+  ) =>
     ipcRenderer.invoke(
       'assistant:save-resource-file',
       fileData,
@@ -153,6 +176,6 @@ contextBridge.exposeInMainWorld('api', {
       oldRelativePath
     ),
   // 从角色卡片导入助手信息
-  importAssistantFromCard: (imagePath) =>
+  importAssistantFromCard: (imagePath: ArrayBuffer) =>
     ipcRenderer.invoke('assistant:import-from-card', imagePath)
 })

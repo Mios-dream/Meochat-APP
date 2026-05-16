@@ -47,7 +47,7 @@ const voiceIdleTimeoutMs = 10000
 let voiceIdleTimer: ReturnType<typeof setTimeout> | null = null
 
 // 创建麦克风管理器实例
-const micManager = new MicrophoneManager()
+const micManager = MicrophoneManager.getInstance()
 
 // 设置识别结果回调
 micManager.setRecognitionCallback((data: string) => {

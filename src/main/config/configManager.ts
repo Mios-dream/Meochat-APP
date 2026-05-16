@@ -77,10 +77,6 @@ function setupConfigIPC(): void {
     BrowserWindow.getAllWindows().forEach((win) => {
       win.webContents.send('config:changed', store.store)
     })
-
-    BrowserWindow.getAllWindows().forEach((win) => {
-      win.webContents.send('config:changed', store.store)
-    })
   })
   // 提供 IPC 接口
   ipcMain.handle('config:get', (_, key) => {
