@@ -183,7 +183,9 @@ function setupKernelIPC(): void {
 
   /** 获取后端服务日志 */
   ipcMain.handle('kernel:get-backend-logs', () => {
-    return kernelServiceManager.getBackendLogs()
+    const logs = kernelServiceManager.getBackendLogs()
+    console.log(`[IPC] kernel:get-backend-logs 返回 ${logs.length} 条日志`)
+    return logs
   })
 
   // ─── 状态重置 ────────────────────────────────────

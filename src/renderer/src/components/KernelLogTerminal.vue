@@ -70,6 +70,11 @@ onMounted(() => {
 
   // 初始适应
   setTimeout(() => fitAddon?.fit(), 100)
+
+  // 如果初始状态就是可见的，立即订阅
+  if (props.visible) {
+    subscribeStream()
+  }
 })
 
 // 只在面板可见时订阅数据流，避免不必要的 CPU 消耗
@@ -83,8 +88,7 @@ watch(
     } else {
       unsubscribeStream()
     }
-  },
-  { immediate: true }
+  }
 )
 
 function subscribeStream(): void {
@@ -111,18 +115,33 @@ function unsubscribeStream(): void {
 }
 
 async function loadHistory(): Promise<void> {
-  if (!term) return
+  if (!term) {
+    console.error('[KernelLogTerminal] terminal 未初始化')
+    return
+  }
+
   try {
+    console.log('[KernelLogTerminal] 开始加载历史日志...')
     const logs = await window.api.kernel.getBackendLogs()
+    console.log(`[KernelLogTerminal] 获取到 ${logs?.length ?? 0} 条历史日志`)
+
     if (Array.isArray(logs) && logs.length > 0) {
+      console.log('[KernelLogTerminal] 第一条日志:', logs[0])
+      console.log('[KernelLogTerminal] 最后一条日志:', logs[logs.length - 1])
+
       // 历史日志按行写入
       for (const line of logs) {
         term.write(line + '\r\n')
       }
-      term.write('\x1b[90m── 以上为历史日志 ──\r\n\x1b[0m')
+      term.write('\x1b[90m─── 以上为历史日志 ───\r\n\x1b[0m')
+      console.log('[KernelLogTerminal] 历史日志写入完成')
+    } else {
+      console.log('[KernelLogTerminal] 没有历史日志')
+      term.write('\x1b[90m─── 暂无历史日志 ───\r\n\x1b[0m')
     }
-  } catch {
-    // 静默失败
+  } catch (error) {
+    console.error('[KernelLogTerminal] 加载历史日志失败:', error)
+    term.write('\x1b[31m─── 加载历史日志失败 ───\r\n\x1b[0m')
   }
 }
 

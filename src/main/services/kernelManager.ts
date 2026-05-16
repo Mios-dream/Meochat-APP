@@ -973,7 +973,10 @@ class KernelServiceManager {
 
   /** 后端服务日志 */
   private backendLogs: string[] = []
-  private readonly maxBackendLogs = 50
+  private readonly maxBackendLogs = 100
+
+  /** 日志文件最大大小 (1MB) */
+  private readonly maxLogFileSize = 1 * 1024 * 1024
 
   /** 持久化日志文件路径（与 electron-log 的日志目录一致） */
   private get backendLogFile(): string {
@@ -992,7 +995,9 @@ class KernelServiceManager {
 
   private constructor() {
     this.kernelManager = KernelManager.getInstance()
+    log.info(`[KernelServiceManager] 构造函数被调用，开始加载持久化日志`)
     this.loadPersistedLogs()
+    log.info(`[KernelServiceManager] 构造函数完成，backendLogs 长度: ${this.backendLogs.length}`)
     // 确保应用退出时正确关闭后端服务
     app.on('before-quit', () => {
       this.stopBackend()
@@ -1023,7 +1028,7 @@ class KernelServiceManager {
       this.backendLogs = this.backendLogs.slice(-this.maxBackendLogs)
     }
     this.notifyServiceState()
-    this.persistLogs()
+    this.persistLogs(lines)
   }
 
   /**
@@ -1031,27 +1036,77 @@ class KernelServiceManager {
    */
   private loadPersistedLogs(): void {
     try {
-      if (fs.existsSync(this.backendLogFile)) {
-        const raw = fs.readFileSync(this.backendLogFile, 'utf-8')
-        this.backendLogs = raw
+      const logFile = this.backendLogFile
+      log.info(`[loadPersistedLogs] 尝试加载日志文件: ${logFile}`)
+      log.info(`[loadPersistedLogs] 文件是否存在: ${fs.existsSync(logFile)}`)
+      
+      if (fs.existsSync(logFile)) {
+        const stats = fs.statSync(logFile)
+        log.info(`[loadPersistedLogs] 文件大小: ${stats.size} 字节`)
+        
+        const raw = fs.readFileSync(logFile, 'utf-8')
+        log.info(`[loadPersistedLogs] 读取到 ${raw.length} 个字符`)
+        
+        const lines = raw
           .split(/\r?\n/)
           .map((line) => line.trim())
           .filter((line) => line.length > 0)
-          .slice(-this.maxBackendLogs)
+        
+        log.info(`[loadPersistedLogs] 文件包含 ${lines.length} 行日志`)
+        if (lines.length > 0) {
+          log.info(`[loadPersistedLogs] 第一行: ${lines[0].substring(0, 100)}...`)
+          log.info(`[loadPersistedLogs] 最后一行: ${lines[lines.length - 1].substring(0, 100)}...`)
+        }
+        
+        this.backendLogs = lines.slice(-this.maxBackendLogs)
+        log.info(`[loadPersistedLogs] 加载了 ${this.backendLogs.length} 条历史日志`)
+      } else {
+        log.info(`[loadPersistedLogs] 日志文件不存在: ${logFile}`)
       }
-    } catch {
-      // 文件损坏或不存在时静默忽略，使用空日志
+    } catch (error) {
+      log.error(`[loadPersistedLogs] 加载日志失败:`, (error as Error).message)
+      log.error(`[loadPersistedLogs] 错误堆栈:`, (error as Error).stack)
     }
   }
 
   /**
-   * 将当前后端日志异步持久化到文件
+   * 将当前后端日志异步持久化到文件（追加模式）
+   * 当日志文件超过1MB时，将旧日志重命名为core.old.log
+   * @param lines 要追加的日志行
    */
-  private persistLogs(): void {
-    const logs = this.backendLogs.slice(-this.maxBackendLogs)
-    fs.promises.writeFile(this.backendLogFile, logs.join('\n'), 'utf-8').catch(() => {
-      // 写入失败时静默忽略，不影响主流程
-    })
+  private persistLogs(lines: string[]): void {
+    if (!lines || lines.length === 0) return
+
+    const logFile = this.backendLogFile
+    const oldLogFile = logFile.replace('core.log', 'core.old.log')
+
+    try {
+      // 检查日志文件大小
+      if (fs.existsSync(logFile)) {
+        const stats = fs.statSync(logFile)
+        if (stats.size >= this.maxLogFileSize) {
+          // 文件超过1MB，轮转日志
+          try {
+            // 如果oldLogFile已存在，先删除
+            if (fs.existsSync(oldLogFile)) {
+              fs.unlinkSync(oldLogFile)
+            }
+            // 重命名当前日志文件为core.old.log
+            fs.renameSync(logFile, oldLogFile)
+          } catch {
+            // 轮转失败时静默忽略
+          }
+        }
+      }
+
+      // 追加写入新日志
+      const content = lines.join('\n') + '\n'
+      fs.promises.appendFile(logFile, content, 'utf-8').catch(() => {
+        // 写入失败时静默忽略，不影响主流程
+      })
+    } catch {
+      // 文件操作失败时静默忽略
+    }
   }
 
   /**
@@ -1084,6 +1139,7 @@ class KernelServiceManager {
    * 获取后端日志
    */
   getBackendLogs(): string[] {
+    log.info(`[getBackendLogs] 返回 ${this.backendLogs.length} 条日志`)
     return [...this.backendLogs]
   }
 
