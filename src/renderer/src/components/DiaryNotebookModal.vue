@@ -93,15 +93,9 @@
 
 <script setup lang="ts">
 import { computed, ref, watch, onUnmounted, nextTick } from 'vue'
+import type { DiaryRecord } from '@renderer/services/DiarySystem'
 
 const coverAvatar = new URL('../assets/images/助手Q版.png', import.meta.url).href
-
-type DiaryRecord = {
-  day: string
-  summary: string
-  dayLastTimestamp: string
-  dayLastTimestampSec: number
-}
 
 type DiaryPagination = {
   total: number

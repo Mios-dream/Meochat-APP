@@ -1,7 +1,7 @@
 import { Live2DModel, MotionPriority, config } from 'untitled-pixi-live2d-engine'
 import { Application, WebGLRenderer } from 'pixi.js'
 import throttle from '../utils/Throttle'
-import { InteractionSystem } from './InteractionSystem/InteractionSystem'
+import { InteractionSystem } from '@renderer/core/interaction/InteractionSystem'
 import { useConfigStore } from '../stores/useConfigStore'
 
 // 设置模型配置

@@ -33,7 +33,7 @@ onMounted(async () => {
 
 </script>
 
-<style>
+<style scoped>
 .app-shell {
   position: relative;
   width: 100vw;

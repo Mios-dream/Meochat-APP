@@ -195,6 +195,7 @@ onMounted(() => {
 </script>
 
 <style>
+/* 全局样式 - 重置和基础布局 */
 * {
   box-sizing: border-box;
 }
@@ -265,7 +266,9 @@ main {
 .titlebar-item:hover {
   opacity: 1;
 }
+</style>
 
+<style scoped>
 #tabs-container {
   position: absolute;
   bottom: 10px;

@@ -1,7 +1,7 @@
 import { useConfigStore } from '../stores/useConfigStore'
 import { computed } from 'vue'
 
-interface DiaryRecord {
+export interface DiaryRecord {
   day: string
   summary: string
   facts: string
@@ -28,24 +28,29 @@ interface DiaryApiResponse {
 }
 
 export class DiarySystem {
-  private static instance: DiarySystem
-
-  public static getInstance(): DiarySystem {
-    if (!DiarySystem.instance) {
-      DiarySystem.instance = new DiarySystem()
-    }
-    return DiarySystem.instance
-  }
-
-  private apiUrl = computed(() => {
-    // 延迟获取 configStore
+  // ═══════════════════════════════════════════════════
+  // 静态属性：需要全局共享的数据
+  // ═══════════════════════════════════════════════════
+  private static sharedApiUrl = computed(() => {
     const configStore = useConfigStore()
     return `http://${configStore.config.baseUrl}`
   })
+
+  // ═══════════════════════════════════════════════════
+  // 静态方法：访问共享数据的接口
+  // ═══════════════════════════════════════════════════
+  static getApiUrl(): string {
+    return DiarySystem.sharedApiUrl.value
+  }
+
+  // ═══════════════════════════════════════════════════
+  // 实例方法：独立的业务逻辑
+  // ═══════════════════════════════════════════════════
+
   /**
    * 从后端拉取助手日记
    */
-  public async fetchDiaryRecords(params?: {
+  async fetchDiaryRecords(params?: {
     limit?: number
     offset?: number
     startDay?: string
@@ -81,7 +86,9 @@ export class DiarySystem {
       searchParams.set('end_day', endDay)
     }
 
-    const response = await fetch(this.apiUrl.value + `/api/chat/diary?${searchParams.toString()}`, {
+    // 使用静态方法获取共享的 API URL
+    const apiUrl = DiarySystem.getApiUrl()
+    const response = await fetch(`${apiUrl}/api/chat/diary?${searchParams.toString()}`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json'

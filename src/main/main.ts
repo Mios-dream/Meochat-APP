@@ -1,15 +1,21 @@
 import { app, globalShortcut, BrowserWindow } from 'electron'
 import { createMainWindow } from './windows/mainWindow'
-import { setupMainIPC } from './ipc/mainHandlers'
+import {
+  setupMainIPC,
+  setupUpdaterIPC,
+  setupKernelIPC,
+  setupAssistantTogetherIPC,
+  setupAssistantServerIPC,
+  setupLoggerIPC,
+  setupUtilityIPC,
+  setupOnboardingIPC,
+  setupSystemEventIPC
+} from './ipc'
 import { setupConfigIPC } from './config/configManager'
-import { setupAssistantTogetherIPC } from './ipc/assistantHandlers'
 import { getPermission } from './permission/permission'
 import { createTray } from './tray/appTray'
 import { startAutoService } from './services/autoService'
 import { registerFileProtocol, handleFileProtocol } from './protocol/fileProtocol'
-import setupUpdaterIPC from './ipc/updaterHandlers'
-import setupKernelIPC from './ipc/kernelHandlers'
-import { setupSystemEventIPC } from './ipc/assistantEventHandlers'
 import { KernelManager } from './services/kernelManager'
 import log from './utils/logger'
 
@@ -24,6 +30,14 @@ try {
   setupConfigIPC()
   // 设置助手Together IPC
   setupAssistantTogetherIPC()
+  // 设置助手服务IPC
+  setupAssistantServerIPC()
+  // 设置日志IPC
+  setupLoggerIPC()
+  // 设置工具IPC
+  setupUtilityIPC()
+  // 设置新手引导IPC
+  setupOnboardingIPC()
   // 设置系统事件IPC
   setupSystemEventIPC()
   // 注册文件协议

@@ -252,7 +252,7 @@ import { AssistantInfo, AssistantManager } from '../services/assistantManager'
 import ChatBox from '../components/ChatBox.vue'
 import MessageContent from '../components/MessageContent.vue'
 import DiaryNotebookModal from '../components/DiaryNotebookModal.vue'
-import { InteractionSystem } from '@renderer/services/InteractionSystem/InteractionSystem'
+import { InteractionSystem } from '@renderer/core/interaction/InteractionSystem'
 import { DiarySystem } from '@renderer/services/DiarySystem'
 
 const configStore = useConfigStore()
@@ -299,6 +299,7 @@ const diaryRecords = ref<
   Array<{
     day: string
     summary: string
+    facts: string
     dayLastTimestamp: string
     dayLastTimestampSec: number
   }>
@@ -318,7 +319,7 @@ const isCapturingShortcut = ref(false)
 // 组件实例
 const live2DManager = Live2DManager.getInstance()
 const chatService = ChatService.getInstance()
-const diarySystem = DiarySystem.getInstance()
+const diarySystem = new DiarySystem()
 const assistantManager = AssistantManager.getInstance()
 // 获取交互系统实例
 const interactionSystem = InteractionSystem.getInstance()

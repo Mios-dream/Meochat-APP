@@ -1,5 +1,5 @@
 import { ChatService, InteractionEventPayload } from '@renderer/services/ChatService'
-import { Context } from '@renderer/services/InteractionSystem/core/context'
+import { Context } from '@renderer/core/interaction/core/context'
 
 export interface EventReplyRequest {
   event: string

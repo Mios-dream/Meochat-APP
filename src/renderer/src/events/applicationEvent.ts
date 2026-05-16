@@ -1,8 +1,8 @@
 import { InteractionEventPayload } from '@renderer/services/ChatService'
-import { ContextManager } from '../services/InteractionSystem/core/context'
-import { ActionDispatcher } from '../services/InteractionSystem/core/dispatcher'
-import { IEventHandler } from '../services/InteractionSystem/types/IEventHandler'
-import { EventModule } from '../services/InteractionSystem/types/eventModules'
+import { ContextManager } from '@renderer/core/interaction/core/context'
+import { ActionDispatcher } from '@renderer/core/interaction/core/dispatcher'
+import { IEventHandler } from '@renderer/core/interaction/types/IEventHandler'
+import { EventModule } from '@renderer/core/interaction/types/eventModules'
 import { useConfigStore } from '../stores/useConfigStore'
 
 interface AppUsagePayload {
@@ -142,17 +142,17 @@ export class ApplicationEventHandler implements IEventHandler {
   cooldownMs = 5 * 60 * 1000 // 5 minute
 
   private async generateTipMessage(
-    appName: string,
+    _appName: string,
     windowTitle: string,
     continuousMinutes: number,
     context: ReturnType<ContextManager['get']>
   ): Promise<InteractionEventPayload | null> {
     const result = ActionDispatcher.buildEventPayload({
       event: 'app.overuse',
-      scene: `用户已连续使用${appName}较长时间,应用标题为:${windowTitle || '无'}；请以你扮演的角色的口吻自然地关心一下`,
+      scene: `用户已连续使用${_appName}较长时间,应用标题${windowTitle || '未知'}；请以你扮演的角色的口吻自然地关心一下`,
       context,
       maxLength: 100,
-      fallback: `你已经连续使用${appName}${continuousMinutes}分钟了，起来活动一下吧。`
+      fallback: `你已经连续使用${_appName}${continuousMinutes}分钟了，起来活动一下吧。`
     })
     return result
   }
@@ -165,10 +165,10 @@ export class ApplicationEventHandler implements IEventHandler {
   ): Promise<InteractionEventPayload | null> {
     const result = ActionDispatcher.buildEventPayload({
       event: 'app.switch',
-      scene: `当前用户正在使用应用${appName},应用标题为${windowTitle}，请以你扮演的角色的口吻自然地回应一句`,
+      scene: `当前用户正在使用应用${appName},应用标题${windowTitle}，请以你扮演的角色的口吻自然地回应一句`,
       context,
       maxLength: 80,
-      fallback: `阁下,您刚刚打开了${appName}，需要我帮你做点什么吗？`
+      fallback: `阁下,您刚刚打开${appName}，需要我帮你做点什么吗？`
     })
     return result
   }

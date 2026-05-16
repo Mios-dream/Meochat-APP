@@ -1,7 +1,7 @@
-import { ContextManager } from '../services/InteractionSystem/core/context'
-import { ActionDispatcher } from '../services/InteractionSystem/core/dispatcher'
-import { IEventHandler } from '../services/InteractionSystem/types/IEventHandler'
-import { EventModule } from '../services/InteractionSystem/types/eventModules'
+import { ContextManager } from '@renderer/core/interaction/core/context'
+import { ActionDispatcher } from '@renderer/core/interaction/core/dispatcher'
+import { IEventHandler } from '@renderer/core/interaction/types/IEventHandler'
+import { EventModule } from '@renderer/core/interaction/types/eventModules'
 import { InteractionEventPayload } from '@renderer/services/ChatService'
 
 export class Live2dEventModule extends EventModule {
@@ -60,17 +60,17 @@ export class Live2dEventHandler implements IEventHandler {
         scene: '用户点击了角色脸部，表现轻微害羞或打趣',
         context: contextManager.get(),
         maxLength: 50,
-        fallback: '不要捏脸啦，会变形的！'
+        fallback: '不要捏脸啦，会变形的~'
       })
       return result
     },
     'live2d.hit.part.hand': async (contextManager: ContextManager) => {
       const result = ActionDispatcher.buildEventPayload({
         event: 'live2d.hit.part.hand',
-        scene: '用户点击了角色手部，可生成牵手或互动感回复',
+        scene: '用户点击了角色手部，可生成牵手或互动感回应',
         context: contextManager.get(),
         maxLength: 50,
-        fallback: '要牵手吗？'
+        fallback: '要牵手吗~'
       })
       return result
     },
@@ -80,7 +80,7 @@ export class Live2dEventHandler implements IEventHandler {
         scene: '用户点击了角色腿部，保持轻松互动',
         context: contextManager.get(),
         maxLength: 50,
-        fallback: '不要挠痒痒啦！'
+        fallback: '不要挠痒痒啦~'
       })
       return result
     },
@@ -90,7 +90,7 @@ export class Live2dEventHandler implements IEventHandler {
         scene: '用户轻柔抚摸角色头部，整体偏温柔治愈',
         context: contextManager.get(),
         maxLength: 50,
-        fallback: '好轻柔的摸头呀，心情都变好了。'
+        fallback: '好轻柔的摸头呀，心情都变好了~'
       })
       return result
     },
@@ -100,7 +100,7 @@ export class Live2dEventHandler implements IEventHandler {
         scene: '用户较重力度抚摸头部，表达撒娇提醒更温柔',
         context: contextManager.get(),
         maxLength: 50,
-        fallback: '摸头可以，但请温柔一点点嘛。'
+        fallback: '摸头可以，但请温柔一点点嘛~'
       })
       return result
     }

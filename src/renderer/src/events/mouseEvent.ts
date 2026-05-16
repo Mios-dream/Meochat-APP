@@ -1,7 +1,7 @@
-import { ContextManager } from '../services/InteractionSystem/core/context'
-import { ActionDispatcher } from '../services/InteractionSystem/core/dispatcher'
-import { IEventHandler } from '../services/InteractionSystem/types/IEventHandler'
-import { EventModule } from '../services/InteractionSystem/types/eventModules'
+import { ContextManager } from '@renderer/core/interaction/core/context'
+import { ActionDispatcher } from '@renderer/core/interaction/core/dispatcher'
+import { IEventHandler } from '@renderer/core/interaction/types/IEventHandler'
+import { EventModule } from '@renderer/core/interaction/types/eventModules'
 import randomSelect from '@renderer/utils/RandomSelect'
 import { InteractionEventPayload } from '@renderer/services/ChatService'
 
@@ -120,3 +120,4 @@ export class MouseEventHandler implements IEventHandler {
     }
   }
 }
+

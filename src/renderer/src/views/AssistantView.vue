@@ -40,7 +40,7 @@ import AssistantTips from '../components/AssistantTips.vue'
 import ContextMenu from '../components/Toolbar.vue'
 import { useConfigStore } from '../stores/useConfigStore'
 import { storeToRefs } from 'pinia'
-import { InteractionSystem } from '../services/InteractionSystem/InteractionSystem'
+import { InteractionSystem } from '@renderer/core/interaction/InteractionSystem'
 import { WakewordService } from '../services/WakewordService'
 
 const configStore = useConfigStore()
@@ -410,7 +410,7 @@ onUnmounted(() => {
 })
 </script>
 
-<style>
+<style scoped>
 /* ERROR ROOT — 整体容器 */
 .error-root {
   position: fixed;

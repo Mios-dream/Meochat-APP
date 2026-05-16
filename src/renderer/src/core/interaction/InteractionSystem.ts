@@ -8,9 +8,9 @@ import { TimeEventHandler, TimeEventModule } from '@renderer/events/timeEvent'
 import { IdleEventHandler, IdleEventModule } from '@renderer/events/idleEvent'
 import { FestivalEventHandler, FestivalEventModule } from '@renderer/events/festivalEvents'
 import { Live2dEventHandler, Live2dEventModule } from '@renderer/events/live2dEvent'
-import { MouseEventHandler, MouseEventModule } from '../../events/mouseEvent'
-import { ApplicationEventHandler, ApplicationEventModule } from '../../events/applicationEvent'
-import { SystemEventHandler, SystemEventModule } from '../../events/systemEvent'
+import { MouseEventHandler, MouseEventModule } from '@renderer/events/mouseEvent'
+import { ApplicationEventHandler, ApplicationEventModule } from '@renderer/events/applicationEvent'
+import { SystemEventHandler, SystemEventModule } from '@renderer/events/systemEvent'
 
 export class InteractionSystem {
   private static instance: InteractionSystem | null = null

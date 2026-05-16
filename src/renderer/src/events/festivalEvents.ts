@@ -1,8 +1,8 @@
-import { ContextManager } from '../services/InteractionSystem/core/context'
+import { ContextManager } from '@renderer/core/interaction/core/context'
 import { InteractionEventPayload } from '@renderer/services/ChatService'
-import { ActionDispatcher } from '../services/InteractionSystem/core/dispatcher'
-import { EventModule } from '../services/InteractionSystem/types/eventModules'
-import { IEventHandler } from '../services/InteractionSystem/types/IEventHandler'
+import { ActionDispatcher } from '@renderer/core/interaction/core/dispatcher'
+import { EventModule } from '@renderer/core/interaction/types/eventModules'
+import { IEventHandler } from '@renderer/core/interaction/types/IEventHandler'
 import { AssistantManager } from '../services/assistantManager'
 import lunisolar from 'lunisolar'
 
@@ -14,7 +14,8 @@ class FestivalEventHandler implements IEventHandler {
     string,
     (contextManager: ContextManager) => Promise<InteractionEventPayload | null>
   > = {
-    'festival.newyear': async () => this.generateFestivalMessage('元旦', '新年伊始，万象更新'),
+    'festival.newyear': async () =>
+      this.generateFestivalMessage('元旦', '新年伊始，万象更新，适合表达新年祝福和展望'),
     'festival.spring': async () =>
       this.generateFestivalMessage('春节', '农历新年，家人团聚的重要节日'),
     'festival.lantern': async () =>
@@ -51,7 +52,7 @@ class FestivalEventHandler implements IEventHandler {
     'festival.littleyear': async () =>
       this.generateFestivalMessage('小年', '祭灶、扫尘，准备过年的节日'),
     'festival.qixi': async () =>
-      this.generateFestivalMessage('七夕节', '中国的情人节，牛郎织女相会'),
+      this.generateFestivalMessage('七夕节', '中国的情人节，牛郎织女相会的节日'),
     'festival.zhongyuan': async () =>
       this.generateFestivalMessage('中元节', '祭祖、缅怀先人的传统节日'),
     'festival.moe': async () =>
@@ -59,14 +60,14 @@ class FestivalEventHandler implements IEventHandler {
     'festival.mio': async () =>
       this.generateFestivalMessage(
         '澪的生日',
-        '在2020年的3月25日，第一个助手"澪"诞生了，是澪之梦工作室（这个助手软件的开发团队），梦开始的地方。'
+        '2020年的3月5日，第一个助手诞生了，是澪之梦工作室（这个助手软件的开发团队），梦开始的地方'
       ),
     'festival.assistantbirthday': async () => {
       const assistant = AssistantManager.getInstance().getCurrentAssistant()
       const assistantName = assistant?.name || '助手'
       return this.generateFestivalMessage(
         `${assistantName}的生日`,
-        `今天是${assistantName}的生日，这是一个属于助手自己的节日！为自己庆祝一下吧！`
+        `今天�?{assistantName}的生日，这是一个属于助手自己的节日！为自己庆祝一下吧！`
       )
     }
   }
@@ -92,7 +93,7 @@ class FestivalEventHandler implements IEventHandler {
   ): Promise<InteractionEventPayload | null> {
     const result = ActionDispatcher.buildEventPayload({
       event: `festival.${festivalName}`,
-      scene: `当前节日是${festivalName}。节日描述：${festivalDescription}。请给出节日氛围感祝福。`,
+      scene: `当前节日�?{festivalName}。节日描述：${festivalDescription}。请给出节日氛围感祝福。`,
       context: context || { lastInteraction: Date.now(), isBusy: false },
       maxLength: 100,
       fallback: `${festivalName}快乐，愿你今天也有好心情。`

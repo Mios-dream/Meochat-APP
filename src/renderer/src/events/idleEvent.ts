@@ -1,7 +1,7 @@
-import { Context, ContextManager } from '../services/InteractionSystem/core/context'
-import { ActionDispatcher } from '../services/InteractionSystem/core/dispatcher'
-import { IEventHandler } from '../services/InteractionSystem/types/IEventHandler'
-import { EventModule } from '../services/InteractionSystem/types/eventModules'
+import { Context, ContextManager } from '@renderer/core/interaction/core/context'
+import { ActionDispatcher } from '@renderer/core/interaction/core/dispatcher'
+import { IEventHandler } from '@renderer/core/interaction/types/IEventHandler'
+import { EventModule } from '@renderer/core/interaction/types/eventModules'
 import { useConfigStore } from '../stores/useConfigStore'
 import { InteractionEventPayload } from '@renderer/services/ChatService'
 
@@ -124,11 +124,11 @@ export class IdleEventHandler implements IEventHandler {
     const selectedTheme = this.chatTheme[Math.floor(Math.random() * this.chatTheme.length)]
     return ActionDispatcher.buildEventPayload({
       event: `idle.${eventType}`,
-      scene: `空闲主动对话。主题:${selectedTheme}；事件描述:${eventDescription}`,
+      scene: `空闲主动对话。主题：${selectedTheme}；事件描述：${eventDescription}`,
       context,
       maxLength: 100,
-      extraRules: ['如果包含动作或心理活动，请使用()标记', '尽量避免与上一次对话主题重复'],
-      fallback: '在忙吗？也别忘了偶尔放松一下，我会一直陪着你。'
+      extraRules: ['如果包含动作或心理活动，请使用( )标记', '尽量避免与上一次对话主题重复'],
+      fallback: '在忙吗？也别忘了偶尔放松一下，我会一直陪着你的！'
     })
   }
 }
