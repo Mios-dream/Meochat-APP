@@ -102,17 +102,26 @@
               <div class="log-dialog-header">
                 <span>启动日志</span>
                 <span class="log-drawer-sub">{{ logSourceText }}</span>
+                <button class="log-dialog-action" title="打开日志目录" @click="openLogDir">
+                  <font-awesome-icon icon="fa-solid fa-folder-open" />
+                </button>
               </div>
-              <div ref="logBodyRef" class="log-dialog-body">
-                <div v-if="logLines.length === 0" class="log-empty">暂无日志</div>
-                <div v-for="(line, index) in logLines" :key="index" class="log-line">
-                  {{ line }}
-                </div>
+              <div class="log-dialog-body-terminal">
+                <KernelLogTerminal :visible="showLogDrawer" />
               </div>
             </div>
           </div>
+          <!-- still starting hint -->
+          <div v-if="backendStillStarting" class="hint-block">
+            <p class="hint-text">后台启动时间较长，请查看日志了解进度</p>
+            <p class="hint-sub">如果长时间无响应或出现错误，请尝试重启服务</p>
+            <div class="hint-actions">
+              <button class="btn-cold" @click="restartBackendService">重启服务</button>
+            </div>
+          </div>
+
           <!-- error -->
-          <div v-if="backendError" class="error-block">
+          <div v-else-if="backendError" class="error-block">
             <p class="error-text">{{ backendError }}</p>
             <div class="error-actions">
               <button class="btn-cold btn-ghost-cold" @click="switchMode">
@@ -151,6 +160,51 @@
         >
           <div class="sakura-text">SAKURA PROTOCOL</div>
           <div class="sakura-sub">协议启动...</div>
+        </div>
+
+        <!-- MODEL_CONFIG -->
+        <div
+          v-else-if="currentState === 'MODEL_CONFIG'"
+          key="model-config"
+          class="screen meeting-bg"
+        >
+          <div class="onboarding-panel" :class="{ 'panel-entering': showModelPanel }">
+            <h2 class="panel-title">配置模型服务</h2>
+            <p class="panel-hint">请填写大模型服务的 API 信息</p>
+
+            <div class="profile-grid">
+              <label class="field field-full">
+                <span>API 地址</span>
+                <input
+                  v-model="modelConfig.api"
+                  type="text"
+                  placeholder="例如：https://api.openai.com/v1"
+                />
+              </label>
+
+              <label class="field field-full">
+                <span>API Key</span>
+                <input v-model="modelConfig.key" type="password" placeholder="sk-..." />
+              </label>
+
+              <label class="field field-full">
+                <span>模型名称</span>
+                <input
+                  v-model="modelConfig.model"
+                  type="text"
+                  placeholder="例如：gpt-4o、qwen-plus"
+                />
+              </label>
+            </div>
+
+            <p v-if="modelConfigError" class="error-text">{{ modelConfigError }}</p>
+
+            <div class="actions">
+              <button class="btn-submit" :disabled="savingModelConfig || verifyingModelConfig" @click="submitModelConfig">
+                {{ savingModelConfig ? '保存中...' : verifyingModelConfig ? '验证中...' : '下一步' }}
+              </button>
+            </div>
+          </div>
         </div>
 
         <!-- FIRST_MEETING: centered profile card -->
@@ -222,13 +276,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 import { useConfigStore } from '../stores/useConfigStore'
 import { AssistantManager } from '../services/assistantManager'
 import { OnboardingMode, OnboardingProfile } from '../types/onboarding'
 import type { KernelUpdateState, EnvironmentCheckResult } from '../types/KernelInfo'
+import KernelLogTerminal from '../components/KernelLogTerminal.vue'
 import ParticleCanvas from '../components/onboarding/ParticleCanvas.vue'
 
 // ─── type helpers ───────────────────────────────────────────────────────────
@@ -239,6 +294,7 @@ type OnboardingState =
   | 'LOG_STREAM'
   | 'PERSONALITY_ONLINE'
   | 'SAKURA_TRANSITION'
+  | 'MODEL_CONFIG'
   | 'FIRST_MEETING'
   | 'PROFILE_SYNC'
   | 'CONTRACT'
@@ -270,6 +326,7 @@ const particleMode = computed(() => {
     case 'PERSONALITY_ONLINE':
       return 'logstream' as const
     case 'SAKURA_TRANSITION':
+    case 'MODEL_CONFIG':
     case 'FIRST_MEETING':
     case 'PROFILE_SYNC':
       return 'sakura' as const
@@ -286,6 +343,7 @@ const particleDensity = computed(() => {
       return 1.4
     case 'SAKURA_TRANSITION':
       return 1.1
+    case 'MODEL_CONFIG':
     case 'FIRST_MEETING':
       return 0.6
     default:
@@ -313,8 +371,8 @@ const phaseClass = computed(() => {
 const kernelState = ref<KernelUpdateState | null>(null)
 const backendRunning = ref(false)
 const backendPid = ref(-1)
-const backendLogLines = ref<string[]>([])
 const backendError = ref('')
+const backendStillStarting = ref(false) // 健康检查超时但进程仍在运行
 const assistantLoadError = ref('')
 const assistantProgress = ref(0)
 const logStatusTitle = ref('正在初始化内核...')
@@ -337,35 +395,6 @@ const profile = reactive<OnboardingProfile>({
 
 const apiAddress = ref('')
 const showLogDrawer = ref(false)
-const logBodyRef = ref<HTMLElement | null>(null)
-
-/** 组合日志：内核操作日志 + 后端服务日志 */
-const logLines = computed(() => {
-  const lines: string[] = []
-
-  // 内核状态信息
-  if (kernelState.value) {
-    const ks = kernelState.value
-    if (ks.currentVersion) {
-      lines.push(`[内核] 当前版本: v${ks.currentVersion}`)
-    } else {
-      lines.push('[内核] 未安装，需要初始化')
-    }
-    if (ks.operationStatus !== 'idle' && ks.operationStatus !== 'done') {
-      lines.push(`[操作] ${ks.statusText} (${ks.progress}%)`)
-    }
-    if (ks.error) {
-      lines.push(`[错误] ${ks.error}`)
-    }
-  }
-
-  // 后端服务日志
-  for (const line of backendLogLines.value) {
-    lines.push(line)
-  }
-
-  return lines
-})
 
 const logSourceText = computed(() => {
   if (currentMode.value === 'api') return 'API 模式'
@@ -391,26 +420,13 @@ function stopLogDots(): void {
   }
 }
 
-function scrollLogToBottom(): void {
-  nextTick(() => {
-    const el = logBodyRef.value
-    if (!el) return
-    el.scrollTop = el.scrollHeight
-  })
-}
-
 function toggleLogDrawer(): void {
   showLogDrawer.value = !showLogDrawer.value
-  if (showLogDrawer.value) {
-    scrollLogToBottom()
-  }
 }
 
-watch(logLines, () => {
-  if (showLogDrawer.value) {
-    scrollLogToBottom()
-  }
-})
+async function openLogDir(): Promise<void> {
+  await window.api.kernel.openLogDir()
+}
 
 // ─── titlebar ───────────────────────────────────────────────────────────────
 
@@ -609,8 +625,18 @@ async function startBackendService(): Promise<boolean> {
   // 等待健康检查通过
   const healthResult = await window.api.kernel.checkBackendHealth()
   if (!healthResult.healthy) {
-    const errMsg = (healthResult as { error?: string }).error
-    backendError.value = errMsg || '后端服务健康检查超时，请查看日志后重试。'
+    const healthData = healthResult as { error?: string; stillRunning?: boolean }
+    if (healthData.stillRunning) {
+      // 进程仍在运行但健康检查超时 - 后端可能仍在启动中（下载文件、加载模型等）
+      backendStillStarting.value = true
+      backendError.value = ''
+      logStatusTitle.value = '后台启动时间较长'
+      logStatusSub.value = '请查看日志了解进度，如出现错误请尝试重启'
+    } else {
+      // 进程已退出 - 真正的错误
+      backendStillStarting.value = false
+      backendError.value = healthData.error || '后端服务启动失败。'
+    }
     stopLogDots()
     return false
   }
@@ -624,6 +650,28 @@ async function startBackendService(): Promise<boolean> {
 
 // ─── retry / switch mode ────────────────────────────────────────────────────
 
+async function restartBackendService(): Promise<void> {
+  backendError.value = ''
+  backendStillStarting.value = false
+  currentState.value = 'LOG_STREAM'
+  logStatusTitle.value = '正在重启后端服务...'
+  logStatusSub.value = '请稍候'
+  startLogDots()
+
+  // 先停止后端服务
+  await window.api.kernel.stopBackend()
+  await wait(1000)
+
+  // 重新启动
+  const backendOk = await startBackendService()
+  if (!backendOk) return
+
+  currentMode.value = 'local'
+  await window.api.onboarding.setMode('local')
+  await loadAssistant()
+  await advanceAfterAssistantLoaded()
+}
+
 async function retryBackend(): Promise<void> {
   if (currentMode.value === 'api') {
     const ok = await connectApiMode()
@@ -634,6 +682,7 @@ async function retryBackend(): Promise<void> {
   } else {
     // 重试完整流程：检查内核环境 → 安装依赖 → 下载模型 → 启动后端服务
     backendError.value = ''
+    backendStillStarting.value = false
     currentState.value = 'LOG_STREAM'
 
     const kernelReady = await ensureKernelReady()
@@ -654,6 +703,7 @@ async function switchMode(): Promise<void> {
     currentMode.value = 'api'
     currentState.value = 'LOG_STREAM'
     backendError.value = ''
+    backendStillStarting.value = false
     apiAddress.value = configStore.config.baseUrl || '127.0.0.1:8001'
     logStatusTitle.value = 'API 模式'
     logStatusSub.value = `等待连接 ${apiAddress.value}...`
@@ -667,6 +717,7 @@ async function switchMode(): Promise<void> {
     currentMode.value = 'local'
     currentState.value = 'LOG_STREAM'
     backendError.value = ''
+    backendStillStarting.value = false
     await window.api.onboarding.setMode('local')
 
     const kernelReady = await ensureKernelReady()
@@ -731,7 +782,7 @@ async function loadAssistant(): Promise<void> {
 async function advanceAfterAssistantLoaded(): Promise<void> {
   if (assistantLoadError.value) return
   await startSakuraTransition()
-  await startFirstMeeting()
+  await startModelConfig()
 }
 
 async function retryAssistantLoading(): Promise<void> {
@@ -753,6 +804,105 @@ async function startSakuraTransition(): Promise<void> {
   currentState.value = 'SAKURA_TRANSITION'
   particleRef.value?.morphToSakura()
   await wait(2800)
+}
+
+// ─── MODEL_CONFIG ────────────────────────────────────────────────────────
+
+const modelConfig = reactive({
+  api: '',
+  key: '',
+  model: ''
+})
+const savingModelConfig = ref(false)
+const verifyingModelConfig = ref(false)
+const modelConfigError = ref('')
+const showModelPanel = ref(false)
+
+async function startModelConfig(): Promise<void> {
+  currentState.value = 'MODEL_CONFIG'
+  await wait(400)
+  showModelPanel.value = true
+}
+
+async function submitModelConfig(): Promise<void> {
+  savingModelConfig.value = true
+  modelConfigError.value = ''
+
+  try {
+    if (!modelConfig.api.trim()) {
+      modelConfigError.value = '请填写 API 地址'
+      return
+    }
+    if (!modelConfig.key.trim()) {
+      modelConfigError.value = '请填写 API Key'
+      return
+    }
+    if (!modelConfig.model.trim()) {
+      modelConfigError.value = '请填写模型名称'
+      return
+    }
+
+    const baseUrl = configStore.config.baseUrl || '127.0.0.1:8001'
+    const normalizedBase = baseUrl.startsWith('http') ? baseUrl : `http://${baseUrl}`
+
+    // 1. 保存配置
+    const saveResponse = await fetch(`${normalizedBase}/api/update_config`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        data: {
+          LLM: {
+            api: modelConfig.api.trim(),
+            key: modelConfig.key.trim(),
+            model: modelConfig.model.trim()
+          },
+          ChatLLM: {
+            api: modelConfig.api.trim(),
+            key: modelConfig.key.trim(),
+            model: modelConfig.model.trim()
+          }
+        }
+      })
+    })
+
+    if (!saveResponse.ok) {
+      const result = await saveResponse.json().catch(() => ({}))
+      modelConfigError.value = (result as { detail?: string }).detail || '配置保存失败，请检查参数'
+      return
+    }
+
+    // 2. 验证配置可用性：发送测试请求
+    savingModelConfig.value = false
+    verifyingModelConfig.value = true
+    modelConfigError.value = ''
+
+    const testResponse = await fetch(`${normalizedBase}/api/llm_chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ msg: [{ role: 'user', content: 'hi' }] }),
+      signal: AbortSignal.timeout(30000)
+    })
+
+    if (!testResponse.ok) {
+      modelConfigError.value = '模型连接测试失败，请检查 API 地址、Key 和模型名称是否正确'
+      return
+    }
+
+    // 3. 验证通过，进入下一步
+    showModelPanel.value = false
+    await wait(300)
+    await startFirstMeeting()
+  } catch (e) {
+    const err = e as Error
+    if (err.name === 'TimeoutError') {
+      modelConfigError.value = '模型连接超时，请检查 API 地址是否可达'
+    } else {
+      modelConfigError.value = `配置验证失败：${err.message}`
+    }
+  } finally {
+    savingModelConfig.value = false
+    verifyingModelConfig.value = false
+  }
 }
 
 // ─── FIRST_MEETING ────────────────────────────────────────────────────────
@@ -887,9 +1037,6 @@ function onKernelStateUpdate(state: KernelUpdateState): void {
 function onServiceState(state: { running: boolean; pid: number; logs: string[] }): void {
   backendRunning.value = state.running
   backendPid.value = state.pid
-  if (state.logs && state.logs.length > 0) {
-    backendLogLines.value = state.logs
-  }
 }
 
 // ─── main flow ──────────────────────────────────────────────────────────────
@@ -938,7 +1085,6 @@ onMounted(async () => {
   const svcStatus = await window.api.kernel.getBackendStatus()
   backendRunning.value = svcStatus.running
   backendPid.value = svcStatus.pid
-  backendLogLines.value = svcStatus.logs || []
 
   const onboardingState = await window.api.onboarding.getState()
   if (onboardingState.completed) {
@@ -1191,24 +1337,39 @@ onUnmounted(() => {
   font-size: 11px;
 }
 
-.log-dialog-body {
-  padding: 12px 18px 16px;
-  overflow: auto;
-  font-family: 'Consolas', 'Courier New', monospace;
+.log-dialog-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 6px;
+  background: rgba(251, 114, 153, 0.08);
+  color: #b05473;
+  cursor: pointer;
+  transition:
+    background 0.2s,
+    color 0.2s,
+    transform 0.15s;
   font-size: 12px;
-  color: #7b304a;
 }
 
-.log-empty {
-  color: rgba(176, 84, 115, 0.55);
-  text-align: center;
-  padding: 12px 0;
+.log-dialog-action:hover {
+  background: rgba(251, 114, 153, 0.18);
+  color: #fb7299;
+  transform: scale(1.08);
 }
 
-.log-line {
-  line-height: 1.6;
-  white-space: pre-wrap;
-  word-break: break-word;
+.log-dialog-action:active {
+  transform: scale(0.95);
+}
+
+.log-dialog-body-terminal {
+  flex: 1;
+  overflow: hidden;
+  min-height: 260px;
+  border-radius: 0 0 16px 16px;
 }
 
 .progress-dot {
@@ -1745,6 +1906,35 @@ onUnmounted(() => {
   font-weight: 700;
   letter-spacing: 0.1em;
   font-family: 'Microsoft YaHei', sans-serif;
+}
+
+/* ─── hint block (still starting) ───────────────────────────────────────── */
+
+.hint-block {
+  margin-top: 22px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.hint-text {
+  color: #f59e0b;
+  font-size: 14px;
+  text-align: center;
+  font-weight: 500;
+}
+
+.hint-sub {
+  color: rgba(180, 100, 120, 0.6);
+  font-size: 12px;
+  text-align: center;
+}
+
+.hint-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 4px;
 }
 
 /* ─── error block ───────────────────────────────────────────────────────── */

@@ -55,5 +55,9 @@ export interface KernelApi {
     onServiceState: (
       callback: (state: { running: boolean; pid: number; logs: string[] }) => void
     ) => () => void
+    /** 监听后端服务原始数据流（用于 xterm 终端渲染） */
+    onServiceStream: (callback: (base64: string) => void) => () => void
+    /** 打开日志存储目录（文件管理器） */
+    openLogDir: () => Promise<{ success: boolean; error?: string }>
   }
 }

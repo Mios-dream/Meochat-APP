@@ -1,4 +1,4 @@
-import { ipcMain } from 'electron'
+import { ipcMain, app, shell } from 'electron'
 import { KernelManager, KernelServiceManager } from '../services/kernelManager'
 import log from '../utils/logger'
 import pathLib from 'path'
@@ -202,6 +202,21 @@ function setupKernelIPC(): void {
     } catch (error) {
       const msg = (error as Error).message
       return { success: false, healthy: false, error: msg }
+    }
+  })
+
+  /** 打开日志存储目录 */
+  ipcMain.handle('kernel:open-log-dir', async () => {
+    try {
+      const logDir = app.getPath('logs')
+      const err = await shell.openPath(logDir)
+      if (err) {
+        return { success: false, error: err }
+      }
+      return { success: true }
+    } catch (error) {
+      const msg = (error as Error).message
+      return { success: false, error: msg }
     }
   })
 }

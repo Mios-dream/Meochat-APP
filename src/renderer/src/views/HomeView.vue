@@ -256,32 +256,18 @@
       </div>
     </Transition>
 
-    <!-- 右侧面板 - 日志 -->
+    <!-- 右侧面板 - 日志终端 -->
     <Transition name="panel-slide-right">
       <div v-if="showSidePanels" class="side-panel panel-right">
         <div class="panel-header">
           <font-awesome-icon icon="fa-solid fa-scroll" class="panel-header-icon" />
           <span>内核日志</span>
-          <button class="panel-refresh" title="刷新日志" @click="fetchLogs">
-            <font-awesome-icon icon="fa-solid fa-rotate" :class="{ 'fa-spin': isFetchingLogs }" />
+          <button class="panel-header-action" title="打开日志目录" @click="openLogDir">
+            <font-awesome-icon icon="fa-solid fa-folder-open" />
           </button>
         </div>
-        <div class="panel-body">
-          <template v-if="allLogEntries.length > 0">
-            <div
-              v-for="(log, idx) in allLogEntries"
-              :key="idx"
-              class="panel-log-entry"
-              :class="'log-' + log.level + (log.source === 'backend' ? ' log-backend' : '')"
-            >
-              <span class="log-time">{{ log.time }}</span>
-              <span class="log-level">{{ log.level }}</span>
-              <span v-if="log.source === 'backend'" class="log-source">后端</span>
-              <span v-else class="log-source log-source-kernel">内核</span>
-              <span class="log-msg">{{ log.message }}</span>
-            </div>
-          </template>
-          <div v-else class="panel-empty">暂无日志记录</div>
+        <div class="panel-body panel-body-terminal">
+          <KernelLogTerminal :visible="showSidePanels" />
         </div>
       </div>
     </Transition>
@@ -289,15 +275,21 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useUIStore } from '../stores/useUIStore'
-import type { KernelUpdateState, EnvironmentCheckResult, KernelLogEntry } from '../types/KernelInfo'
+import type { KernelUpdateState, EnvironmentCheckResult } from '../types/KernelInfo'
+import KernelLogTerminal from '../components/KernelLogTerminal.vue'
 import sakuraImg from '../assets/images/sakura.webp'
 
 // 是否展示侧面吧
 const showSidePanels = ref(false)
 // 与用户相识的天数
 const onboardingDays = ref(0)
+
+// 打开日志目录
+async function openLogDir(): Promise<void> {
+  await window.api.kernel.openLogDir()
+}
 
 // 樱花飘落相关
 const sakuraCanvas = ref<HTMLCanvasElement | null>(null)
@@ -522,21 +514,21 @@ const coreStateClass = computed(() => {
   if (isBackendLoading.value) return 'core-evolving'
   if (isOperating.value || isUpdating.value) return 'core-evolving'
   if (isServiceDown.value) return 'core-dormant'
-  if (s === 'done') return 'core-bloom'
+  // 完成状态保持宁静状态样式
   if (kernelState.value.updateAvailable) return 'core-awakening'
   return 'core-peace'
 })
 
 /**
  * 双翼展开规则：
- * - 仅在用户点击核心 且 核心正常（peace）或完成（bloom）时展开
+ * - 仅在用户点击核心 且 核心正常（peace）时展开
  * - 休眠、错误、演进中等状态即使点击也不展开
  * - 未点击时始终收缩
  */
 const shouldWingsSpread = computed(() => {
   if (!showSidePanels.value) return false
   const cls = coreStateClass.value
-  return cls === 'core-peace' || cls === 'core-bloom'
+  return cls === 'core-peace'
 })
 
 const statusText = computed(() => {
@@ -560,7 +552,7 @@ const statusText = computed(() => {
   if (isServiceDown.value) return '沉眠中'
   const map: Record<string, string> = {
     idle: '宁静中',
-    done: '完成',
+    done: '宁静中',
     error: '错误！'
   }
   return map[s] || kernelState.value.statusText || '宁静中'
@@ -572,13 +564,12 @@ const statusClass = computed(() => {
   if (isOperating.value || isUpdating.value) {
     const s = kernelState.value.operationStatus
     if (s === 'error') return 'status-error'
-    if (s === 'done') return 'status-bloom'
     return 'status-evolving'
   }
   if (isServiceDown.value) return 'status-dormant'
   const s = kernelState.value.operationStatus
   if (s === 'error') return 'status-error'
-  if (s === 'done') return 'status-bloom'
+  // 完成状态保持宁静状态样式
   if (kernelState.value.updateAvailable) return 'status-awakening'
   return 'status-peace'
 })
@@ -589,7 +580,7 @@ const heartColorPrimary = computed(() => {
   if (isServiceStarting.value || isBackendLoading.value || isOperating.value || isUpdating.value)
     return '#c8a0e0'
   if (isServiceDown.value) return '#c8bdd8'
-  if (s === 'done') return '#f8b8d0'
+  // 完成状态使用默认颜色
   if (kernelState.value.updateAvailable) return '#f59e8b'
   return '#fb7299'
 })
@@ -600,7 +591,7 @@ const heartColorSecondary = computed(() => {
   if (isServiceStarting.value || isBackendLoading.value || isOperating.value || isUpdating.value)
     return '#e0c8f5'
   if (isServiceDown.value) return '#e0d8f0'
-  if (s === 'done') return '#ffe0f0'
+  // 完成状态使用默认颜色
   if (kernelState.value.updateAvailable) return '#fcc8b5'
   return '#fca5b9'
 })
@@ -771,80 +762,6 @@ async function handleSyncDeps(): Promise<void> {
   }
 }
 
-// ─── 日志 ──────────────────────────────────────
-
-interface DisplayLogEntry {
-  time: string
-  level: 'info' | 'warn' | 'error' | 'success'
-  message: string
-  source: 'kernel' | 'backend'
-}
-
-const kernelLogs = ref<KernelLogEntry[]>([])
-const backendLogs = ref<string[]>([])
-const isFetchingLogs = ref(false)
-let logPollTimer: ReturnType<typeof setInterval> | null = null
-
-const MAX_LOG_ENTRIES = 100
-
-const allLogEntries = computed<DisplayLogEntry[]>(() => {
-  const kernel: DisplayLogEntry[] = kernelLogs.value.map((l) => ({
-    time: l.time,
-    level: l.level,
-    message: l.message,
-    source: 'kernel' as const
-  }))
-  const now = new Date().toISOString().replace('T', ' ').slice(0, 19)
-  const backend: DisplayLogEntry[] = backendLogs.value.map((msg) => ({
-    time: now,
-    level: 'info' as const,
-    message: msg,
-    source: 'backend' as const
-  }))
-  const merged = [...kernel, ...backend]
-  return merged.slice(-MAX_LOG_ENTRIES)
-})
-
-async function fetchLogs(): Promise<void> {
-  isFetchingLogs.value = true
-  try {
-    const [kernelResult, backendResult] = await Promise.all([
-      window.api.kernel.getLogs(),
-      window.api.kernel.getBackendLogs()
-    ])
-    if (kernelResult.success && kernelResult.data) {
-      kernelLogs.value = kernelResult.data
-    }
-    if (Array.isArray(backendResult)) {
-      backendLogs.value = backendResult
-    }
-  } catch (e) {
-    console.error('获取日志异常:', (e as Error).message)
-  } finally {
-    isFetchingLogs.value = false
-  }
-}
-
-function startLogPolling(): void {
-  fetchLogs()
-  logPollTimer = setInterval(fetchLogs, 5000)
-}
-
-function stopLogPolling(): void {
-  if (logPollTimer) {
-    clearInterval(logPollTimer)
-    logPollTimer = null
-  }
-}
-
-watch(showSidePanels, (val) => {
-  if (val) {
-    startLogPolling()
-  } else {
-    stopLogPolling()
-  }
-})
-
 // ─── 生命周期 ──────────────────────────────────────
 
 onMounted(async () => {
@@ -864,9 +781,6 @@ onMounted(async () => {
   // 监听后端服务状态实时变化
   unsubServiceState = window.api.kernel.onServiceState((state) => {
     backendService.value = { running: state.running, pid: state.pid }
-    if (state.logs) {
-      backendLogs.value = state.logs
-    }
     if (!state.running) {
       backendHealthy.value = null
     }
@@ -916,7 +830,6 @@ onUnmounted(() => {
   unsubServiceState?.()
   unsubNeedRestart?.()
   stopHealthPolling()
-  stopLogPolling()
 })
 </script>
 
@@ -1163,14 +1076,6 @@ onUnmounted(() => {
 
 .core-evolving .heart-path {
   animation: heartBeat 0.8s ease-in-out infinite;
-}
-
-.core-bloom .core-aura {
-  background: radial-gradient(circle, rgba(248, 184, 208, 0.2) 0%, transparent 70%);
-}
-
-.core-bloom .core-heart {
-  filter: drop-shadow(0 0 30px rgba(248, 184, 208, 0.6));
 }
 
 .core-error .core-aura {
@@ -1796,12 +1701,6 @@ onUnmounted(() => {
   animation: statusGlow 1s ease-in-out infinite;
 }
 
-.status-bloom {
-  color: rgba(248, 184, 208, 0.9);
-  background: rgba(248, 184, 208, 0.1);
-  border: 1px solid rgba(248, 184, 208, 0.2);
-}
-
 .status-error {
   color: rgba(240, 160, 168, 0.9);
   background: rgba(240, 160, 168, 0.1);
@@ -2125,21 +2024,19 @@ onUnmounted(() => {
   font-size: 13px;
 }
 
-.panel-refresh {
+.panel-header-action {
   margin-left: auto;
-  background: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
   border: none;
-  color: #bbb;
-  cursor: pointer;
-  padding: 4px 8px;
   border-radius: 6px;
-  transition: all 0.2s ease;
-  font-size: 12px;
-}
-
-.panel-refresh:hover {
+  background: rgba(251, 114, 153, 0.08);
   color: #fb7299;
-  background: rgba(251, 114, 153, 0.06);
+  cursor: pointer;
+  font-size: 13px;
 }
 
 .panel-body {
@@ -2238,96 +2135,15 @@ onUnmounted(() => {
   word-break: break-all;
 }
 
-/* 日志条目 */
-.panel-log-entry {
+/* 日志终端容器 */
+.panel-body-terminal {
+  padding: 0;
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  padding: 8px 12px;
-  border-radius: 8px;
-  font-size: 11px;
-  line-height: 1.5;
-  background: rgba(255, 255, 255, 0.4);
-  border: 1px solid rgba(251, 114, 153, 0.04);
 }
 
-.log-time {
-  color: #aaa;
-  font-family: 'SF Mono', 'Fira Code', monospace;
-  font-size: 10px;
-  flex-shrink: 0;
-}
-
-.log-level {
-  font-weight: 600;
-  text-transform: uppercase;
-  font-size: 9px;
-  flex-shrink: 0;
-  padding: 1px 5px;
-  border-radius: 3px;
-  letter-spacing: 0.04em;
-}
-
-.log-info .log-level {
-  color: #6366f1;
-  background: rgba(99, 102, 241, 0.08);
-}
-
-.log-warn .log-level {
-  color: #f59e0b;
-  background: rgba(245, 158, 11, 0.08);
-}
-
-.log-error .log-level {
-  color: #ef4444;
-  background: rgba(239, 68, 68, 0.08);
-}
-
-.log-success .log-level {
-  color: #22c55e;
-  background: rgba(34, 197, 94, 0.08);
-}
-
-.log-msg {
-  color: #666;
-  word-break: break-all;
+.panel-body-terminal > :deep(div) {
   width: 100%;
-}
-
-.log-source {
-  font-weight: 600;
-  font-size: 9px;
-  padding: 1px 5px;
-  border-radius: 3px;
-  letter-spacing: 0.04em;
-  flex-shrink: 0;
-  background: rgba(99, 102, 241, 0.06);
-  color: rgba(99, 102, 241, 0.7);
-}
-
-.log-source-kernel {
-  background: rgba(148, 163, 184, 0.06);
-  color: rgba(148, 163, 184, 0.7);
-}
-
-.panel-log-entry.log-backend {
-  border-left: 2px solid rgba(99, 102, 241, 0.2);
-}
-
-.panel-log-entry.log-info {
-  border-left: 2px solid rgba(99, 102, 241, 0.4);
-}
-
-.panel-log-entry.log-warn {
-  border-left: 2px solid rgba(245, 158, 11, 0.4);
-}
-
-.panel-log-entry.log-error {
-  border-left: 2px solid rgba(239, 68, 68, 0.4);
-}
-
-.panel-log-entry.log-success {
-  border-left: 2px solid rgba(34, 197, 94, 0.4);
+  height: 100%;
 }
 
 /* 空状态 */

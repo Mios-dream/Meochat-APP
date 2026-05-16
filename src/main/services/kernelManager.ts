@@ -26,6 +26,7 @@ const KERNEL_DIR_NAME = 'kernel'
 const CURRENT_KERNEL_DIR = 'current'
 const VERSION_FILE_NAME = 'version.txt'
 const KERNEL_STATE_CHANNEL = 'kernel:state-update'
+const SERVICE_STREAM_CHANNEL = 'kernel:service-stream'
 
 /**
  * 升级时需要保留的用户数据目录，这些目录不会被新版本覆盖。
@@ -35,6 +36,15 @@ const KERNEL_STATE_CHANNEL = 'kernel:state-update'
 const PRESERVED_DATA_DIRS = ['data', '.venv']
 // 需要保留的文件
 const PRESERVED_DATA_FILES = ['config.yaml']
+
+/** 向所有窗口广播原始数据流 */
+function broadcastToAllWindows(channel: string, payload: string): void {
+  BrowserWindow.getAllWindows().forEach((win) => {
+    if (!win.isDestroyed()) {
+      win.webContents.send(channel, payload)
+    }
+  })
+}
 
 class KernelManager {
   private static instance: KernelManager
@@ -71,7 +81,7 @@ class KernelManager {
   }
 
   /** 内核父目录: appData/kernel/ */
-  private get kernelRoot(): string {
+  get kernelRoot(): string {
     const appDataDir = resolveAppDataDir()
     const dir = path.join(appDataDir, KERNEL_DIR_NAME)
     if (!fs.existsSync(dir)) {
@@ -304,9 +314,10 @@ class KernelManager {
       return { success: false, error: '内嵌 uv 未找到，请重新安装应用' }
     }
 
-    const pythonPath = process.platform === 'win32'
-      ? path.join(this.kernelDir, '.venv', 'Scripts', 'python.exe')
-      : path.join(this.kernelDir, '.venv', 'bin', 'python')
+    const pythonPath =
+      process.platform === 'win32'
+        ? path.join(this.kernelDir, '.venv', 'Scripts', 'python.exe')
+        : path.join(this.kernelDir, '.venv', 'bin', 'python')
 
     if (!fs.existsSync(pythonPath)) {
       return { success: false, error: '虚拟环境未配置，请先安装环境依赖' }
@@ -329,6 +340,7 @@ class KernelManager {
       const errorLines: string[] = []
 
       child.stdout.on('data', (data: Buffer) => {
+        broadcastToAllWindows(SERVICE_STREAM_CHANNEL, data.toString('base64'))
         const text = data.toString('utf-8').trim()
         if (text) {
           log.info(`[model-dl] ${text}`)
@@ -341,6 +353,7 @@ class KernelManager {
       })
 
       child.stderr.on('data', (data: Buffer) => {
+        broadcastToAllWindows(SERVICE_STREAM_CHANNEL, data.toString('base64'))
         const text = data.toString('utf-8').trim()
         if (text) {
           errorLines.push(text)
@@ -880,6 +893,7 @@ class KernelManager {
       let lastProgress = 0
 
       child.stdout.on('data', (data: Buffer) => {
+        broadcastToAllWindows(SERVICE_STREAM_CHANNEL, data.toString('base64'))
         const text = decodeBuffer(data).trim()
         if (text) {
           log.info(`[uv] ${text}`)
@@ -896,6 +910,7 @@ class KernelManager {
       })
 
       child.stderr.on('data', (data: Buffer) => {
+        broadcastToAllWindows(SERVICE_STREAM_CHANNEL, data.toString('base64'))
         const text = decodeBuffer(data).trim()
         if (text) {
           errorLines.push(text)
@@ -958,15 +973,26 @@ class KernelServiceManager {
 
   /** 后端服务日志 */
   private backendLogs: string[] = []
-  private readonly maxBackendLogs = 100
+  private readonly maxBackendLogs = 50
+
+  /** 持久化日志文件路径（与 electron-log 的日志目录一致） */
+  private get backendLogFile(): string {
+    return path.join(app.getPath('logs'), 'core.log')
+  }
 
   /** 服务状态广播通道 */
   private static readonly SERVICE_STATE_CHANNEL = 'kernel:service-state'
+
+  /** 原始数据流广播，发送原始二进制数据给渲染进程 */
+  private broadcastStream(data: Buffer): void {
+    broadcastToAllWindows(SERVICE_STREAM_CHANNEL, data.toString('base64'))
+  }
 
   public kernelManager: KernelManager
 
   private constructor() {
     this.kernelManager = KernelManager.getInstance()
+    this.loadPersistedLogs()
     // 确保应用退出时正确关闭后端服务
     app.on('before-quit', () => {
       this.stopBackend()
@@ -981,15 +1007,51 @@ class KernelServiceManager {
   }
 
   /**
-   * 添加后端日志并广播
+   * 添加后端日志并广播，同时持久化到文件
    */
   private addBackendLog(message: string): void {
     if (!message) return
-    this.backendLogs.push(message.trim())
+    const lines = message
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0)
+
+    if (lines.length === 0) return
+
+    this.backendLogs.push(...lines)
     if (this.backendLogs.length > this.maxBackendLogs) {
       this.backendLogs = this.backendLogs.slice(-this.maxBackendLogs)
     }
     this.notifyServiceState()
+    this.persistLogs()
+  }
+
+  /**
+   * 从文件加载持久化的后端日志
+   */
+  private loadPersistedLogs(): void {
+    try {
+      if (fs.existsSync(this.backendLogFile)) {
+        const raw = fs.readFileSync(this.backendLogFile, 'utf-8')
+        this.backendLogs = raw
+          .split(/\r?\n/)
+          .map((line) => line.trim())
+          .filter((line) => line.length > 0)
+          .slice(-this.maxBackendLogs)
+      }
+    } catch {
+      // 文件损坏或不存在时静默忽略，使用空日志
+    }
+  }
+
+  /**
+   * 将当前后端日志异步持久化到文件
+   */
+  private persistLogs(): void {
+    const logs = this.backendLogs.slice(-this.maxBackendLogs)
+    fs.promises.writeFile(this.backendLogFile, logs.join('\n'), 'utf-8').catch(() => {
+      // 写入失败时静默忽略，不影响主流程
+    })
   }
 
   /**
@@ -1090,11 +1152,13 @@ class KernelServiceManager {
       this.backendExitCode = null
 
       this.backendProcess.stdout.on('data', (data: Buffer) => {
+        this.broadcastStream(data)
         const text = decodeBuffer(data)
         if (text) this.addBackendLog(text)
       })
 
       this.backendProcess.stderr.on('data', (data: Buffer) => {
+        this.broadcastStream(data)
         const text = decodeBuffer(data)
         if (text) this.addBackendLog(text)
       })
@@ -1190,14 +1254,14 @@ class KernelServiceManager {
    * 检查后端服务健康状态 (HTTP health check)
    * 返回值包含 healthy 标志和可选的 error 信息
    * - healthy=true: 服务就绪
-   * - healthy=false 且无 error: 健康检查超时但进程仍在运行（仍在启动中）
-   * - healthy=false 且有 error: 进程异常退出，包含退出码信息
+   * - healthy=false, stillRunning=true: 健康检查超时但进程仍在运行（仍在启动中）
+   * - healthy=false, stillRunning=false, error: 进程异常退出，包含退出码信息
    */
   async checkBackendHealth(
     port = 8001,
     maxAttempts = 30,
     intervalMs = 1000
-  ): Promise<{ healthy: boolean; error?: string }> {
+  ): Promise<{ healthy: boolean; error?: string; stillRunning?: boolean }> {
     for (let i = 0; i < maxAttempts; i++) {
       // 每次轮询前检查进程是否已异常退出
       if (!this.backendRunning && this.backendProcess === null) {
@@ -1205,7 +1269,7 @@ class KernelServiceManager {
         const errorMsg =
           exitCode !== null ? `后端进程已退出 (退出码: ${exitCode})` : '后端进程异常终止'
         this.addBackendLog(`[系统] ✗ ${errorMsg}`)
-        return { healthy: false, error: errorMsg }
+        return { healthy: false, error: errorMsg, stillRunning: false }
       }
 
       try {
@@ -1230,14 +1294,14 @@ class KernelServiceManager {
       const errorMsg =
         exitCode !== null ? `后端进程已退出 (退出码: ${exitCode})` : '后端进程异常终止'
       this.addBackendLog(`[系统] ✗ ${errorMsg}`)
-      return { healthy: false, error: errorMsg }
+      return { healthy: false, error: errorMsg, stillRunning: false }
     }
 
     // 进程仍在运行但健康检查超时 → 不视为错误，服务可能仍在启动
     this.addBackendLog(
       `[系统] 后端服务健康检查超时，但进程仍在运行 (端口 ${port}, 尝试 ${maxAttempts} 次)`
     )
-    return { healthy: false }
+    return { healthy: false, stillRunning: true }
   }
 }
 

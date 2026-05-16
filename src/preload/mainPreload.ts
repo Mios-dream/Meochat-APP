@@ -60,7 +60,15 @@ contextBridge.exposeInMainWorld('api', {
       const handler = (_event: Electron.IpcRendererEvent, state: unknown): void => callback(state)
       ipcRenderer.on('kernel:service-state', handler)
       return () => ipcRenderer.removeListener('kernel:service-state', handler)
-    }
+    },
+    onServiceStream: (callback) => {
+      const handler = (_event: Electron.IpcRendererEvent, base64: string): void => {
+        callback(base64)
+      }
+      ipcRenderer.on('kernel:service-stream', handler)
+      return () => ipcRenderer.removeListener('kernel:service-stream', handler)
+    },
+    openLogDir: () => ipcRenderer.invoke('kernel:open-log-dir')
   },
 
   // 助手相关 API
