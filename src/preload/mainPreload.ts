@@ -55,6 +55,7 @@ contextBridge.exposeInMainWorld('api', {
     restartBackend: () => ipcRenderer.invoke('kernel:restart-backend'),
     getBackendStatus: () => ipcRenderer.invoke('kernel:get-backend-status'),
     getBackendLogs: () => ipcRenderer.invoke('kernel:get-backend-logs'),
+    getStreamLogs: () => ipcRenderer.invoke('kernel:get-stream-logs'),
     checkBackendHealth: () => ipcRenderer.invoke('kernel:check-backend-health'),
     onServiceState: (callback) => {
       const handler = (_event: Electron.IpcRendererEvent, state: unknown): void => callback(state)

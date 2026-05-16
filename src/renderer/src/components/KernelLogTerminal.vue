@@ -122,23 +122,35 @@ async function loadHistory(): Promise<void> {
 
   try {
     console.log('[KernelLogTerminal] 开始加载历史日志...')
+
+    // 加载操作流日志（uv sync、模型下载等）
+    const streamLogs = await window.api.kernel.getStreamLogs()
+    console.log(`[KernelLogTerminal] 获取到 ${streamLogs?.length ?? 0} 条操作流日志`)
+
+    if (Array.isArray(streamLogs) && streamLogs.length > 0) {
+      for (const line of streamLogs) {
+        term.write(line + '\r\n')
+      }
+      term.write('\r\n')
+    }
+
+    // 加载后端服务日志
     const logs = await window.api.kernel.getBackendLogs()
-    console.log(`[KernelLogTerminal] 获取到 ${logs?.length ?? 0} 条历史日志`)
+    console.log(`[KernelLogTerminal] 获取到 ${logs?.length ?? 0} 条后端服务日志`)
 
     if (Array.isArray(logs) && logs.length > 0) {
-      console.log('[KernelLogTerminal] 第一条日志:', logs[0])
-      console.log('[KernelLogTerminal] 最后一条日志:', logs[logs.length - 1])
-
-      // 历史日志按行写入
+      // term.write('\x1b[90m─── 后端服务日志 ───\r\n\x1b[0m')
       for (const line of logs) {
         term.write(line + '\r\n')
       }
-      term.write('\x1b[90m─── 以上为历史日志 ───\r\n\x1b[0m')
-      console.log('[KernelLogTerminal] 历史日志写入完成')
-    } else {
-      console.log('[KernelLogTerminal] 没有历史日志')
+    }
+
+    if ((!streamLogs || streamLogs.length === 0) && (!logs || logs.length === 0)) {
       term.write('\x1b[90m─── 暂无历史日志 ───\r\n\x1b[0m')
     }
+
+    term.write('\x1b[90m─── 以上为历史日志 ───\r\n\x1b[0m')
+    console.log('[KernelLogTerminal] 历史日志写入完成')
   } catch (error) {
     console.error('[KernelLogTerminal] 加载历史日志失败:', error)
     term.write('\x1b[31m─── 加载历史日志失败 ───\r\n\x1b[0m')

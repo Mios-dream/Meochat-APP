@@ -49,8 +49,16 @@ export interface KernelApi {
     getBackendStatus: () => Promise<{ running: boolean; pid: number; logs: string[] }>
     /** 获取后端服务日志 */
     getBackendLogs: () => Promise<string[]>
+    /** 获取操作流日志（uv sync、模型下载等） */
+    getStreamLogs: () => Promise<string[]>
     /** 检查后端健康状态 */
-    checkBackendHealth: () => Promise<{ success: boolean; healthy: boolean; error?: string }>
+    checkBackendHealth: () => Promise<{
+      success: boolean
+      healthy: boolean
+      error?: string
+      /** 健康检查超时但进程仍在运行（仍在启动中） */
+      stillRunning?: boolean
+    }>
     /** 监听后端服务状态变化 */
     onServiceState: (
       callback: (state: { running: boolean; pid: number; logs: string[] }) => void

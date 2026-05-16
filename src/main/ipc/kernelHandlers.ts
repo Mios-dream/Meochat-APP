@@ -124,6 +124,18 @@ function setupKernelIPC(): void {
     }
   })
 
+  /** 获取操作流日志（uv sync、模型下载等） */
+  ipcMain.handle('kernel:get-stream-logs', () => {
+    try {
+      const logs = kernelManager.getStreamLogs()
+      return logs
+    } catch (error) {
+      const msg = (error as Error).message
+      log.error('获取操作流日志失败:', msg)
+      return []
+    }
+  })
+
   // ─── 事件监听（供渲染进程注册） ─────────────────
 
   /** 注册内核状态监听 */

@@ -113,8 +113,8 @@
           </div>
           <!-- still starting hint -->
           <div v-if="backendStillStarting" class="hint-block">
-            <p class="hint-text">后台启动时间较长，请查看日志了解进度</p>
-            <p class="hint-sub">如果长时间无响应或出现错误，请尝试重启服务</p>
+            <p class="hint-text">澪的意识核心正在苏醒中...已等待 {{ healthCheckElapsed }} 秒</p>
+            <p class="hint-sub">请查看日志了解进度，澪会持续尝试连接</p>
             <div class="hint-actions">
               <button class="btn-cold" @click="restartBackendService">重启服务</button>
             </div>
@@ -148,7 +148,7 @@
           </div>
           <div v-if="assistantLoadError" class="error-block">
             <p class="error-text">{{ assistantLoadError }}</p>
-            <button class="btn-cold" @click="retryAssistantLoading">重试</button>
+            <button class="btn-cold" @click="retryBackend">重试</button>
           </div>
         </div>
 
@@ -200,8 +200,14 @@
             <p v-if="modelConfigError" class="error-text">{{ modelConfigError }}</p>
 
             <div class="actions">
-              <button class="btn-submit" :disabled="savingModelConfig || verifyingModelConfig" @click="submitModelConfig">
-                {{ savingModelConfig ? '保存中...' : verifyingModelConfig ? '验证中...' : '下一步' }}
+              <button
+                class="btn-submit"
+                :disabled="savingModelConfig || verifyingModelConfig"
+                @click="submitModelConfig"
+              >
+                {{
+                  savingModelConfig ? '保存中...' : verifyingModelConfig ? '验证中...' : '下一步'
+                }}
               </button>
             </div>
           </div>
@@ -373,6 +379,9 @@ const backendRunning = ref(false)
 const backendPid = ref(-1)
 const backendError = ref('')
 const backendStillStarting = ref(false) // 健康检查超时但进程仍在运行
+const healthCheckAbort = ref(false) // 取消健康检查轮询
+const healthCheckElapsed = ref(0) // 健康检查已等待秒数
+let healthCheckElapsedTimer: ReturnType<typeof setInterval> | null = null
 const assistantLoadError = ref('')
 const assistantProgress = ref(0)
 const logStatusTitle = ref('正在初始化内核...')
@@ -417,6 +426,20 @@ function stopLogDots(): void {
   if (logDotTimer) {
     clearInterval(logDotTimer)
     logDotTimer = null
+  }
+}
+
+function startHealthCheckElapsedTimer(): void {
+  healthCheckElapsed.value = 0
+  healthCheckElapsedTimer = setInterval(() => {
+    healthCheckElapsed.value++
+  }, 1000)
+}
+
+function stopHealthCheckElapsedTimer(): void {
+  if (healthCheckElapsedTimer) {
+    clearInterval(healthCheckElapsedTimer)
+    healthCheckElapsedTimer = null
   }
 }
 
@@ -590,6 +613,9 @@ async function ensureKernelReady(): Promise<boolean> {
 async function startBackendService(): Promise<boolean> {
   currentState.value = 'LOG_STREAM'
   backendError.value = ''
+  backendStillStarting.value = false
+  healthCheckAbort.value = false
+  healthCheckElapsed.value = 0
   logStatusTitle.value = '正在启动核心服务...'
   logStatusSub.value = '初始化智慧核心所需的基础设施'
   startLogDots()
@@ -622,35 +648,54 @@ async function startBackendService(): Promise<boolean> {
   logStatusTitle.value = '正在唤醒澪的意识核心...'
   logStatusSub.value = '检查神经网络连接状态'
 
-  // 等待健康检查通过
-  const healthResult = await window.api.kernel.checkBackendHealth()
-  if (!healthResult.healthy) {
-    const healthData = healthResult as { error?: string; stillRunning?: boolean }
-    if (healthData.stillRunning) {
-      // 进程仍在运行但健康检查超时 - 后端可能仍在启动中（下载文件、加载模型等）
+  // 启动等待计时器
+  startHealthCheckElapsedTimer()
+
+  // 持续轮询健康检查，直到通过或被取消
+  while (!healthCheckAbort.value) {
+    const healthResult = await window.api.kernel.checkBackendHealth()
+
+    if (healthResult.healthy) {
+      // 健康检查通过
+      stopHealthCheckElapsedTimer()
+      stopLogDots()
+      backendStillStarting.value = false
+      logStatusTitle.value = '核心服务就绪'
+      logStatusSub.value = '意识核心连接成功'
+      await wait(500)
+      return true
+    }
+
+    if (!healthResult.stillRunning) {
+      // 进程已退出 - 真正的错误
+      stopHealthCheckElapsedTimer()
+      stopLogDots()
+      backendStillStarting.value = false
+      backendError.value = healthResult.error || '后端服务启动失败。'
+      return false
+    }
+
+    // 进程仍在运行但健康检查未通过 - 继续轮询
+    // 超过阈值后显示"仍在启动中"提示
+    if (healthCheckElapsed.value >= 30 && !backendStillStarting.value) {
       backendStillStarting.value = true
-      backendError.value = ''
       logStatusTitle.value = '后台启动时间较长'
       logStatusSub.value = '请查看日志了解进度，如出现错误请尝试重启'
-    } else {
-      // 进程已退出 - 真正的错误
-      backendStillStarting.value = false
-      backendError.value = healthData.error || '后端服务启动失败。'
     }
-    stopLogDots()
-    return false
   }
 
-  stopLogDots()
-  logStatusTitle.value = '核心服务就绪'
-  logStatusSub.value = '意识核心连接成功'
-  await wait(500)
-  return true
+  // 被取消（用户点击了重启）
+  stopHealthCheckElapsedTimer()
+  return false
 }
 
 // ─── retry / switch mode ────────────────────────────────────────────────────
 
 async function restartBackendService(): Promise<void> {
+  // 取消当前健康检查轮询
+  healthCheckAbort.value = true
+  stopHealthCheckElapsedTimer()
+
   backendError.value = ''
   backendStillStarting.value = false
   currentState.value = 'LOG_STREAM'
@@ -783,11 +828,6 @@ async function advanceAfterAssistantLoaded(): Promise<void> {
   if (assistantLoadError.value) return
   await startSakuraTransition()
   await startModelConfig()
-}
-
-async function retryAssistantLoading(): Promise<void> {
-  await loadAssistant()
-  await advanceAfterAssistantLoaded()
 }
 
 const personalityStatus = computed(() => {
@@ -1108,6 +1148,7 @@ onUnmounted(() => {
   if (kernelStateUnlisten) kernelStateUnlisten()
   if (serviceStateUnlisten) serviceStateUnlisten()
   stopLogDots()
+  stopHealthCheckElapsedTimer()
 })
 </script>
 

@@ -59,6 +59,10 @@ class KernelManager {
     error: null
   }
 
+  /** 操作日志（uv sync、模型下载等） */
+  private operationLogs: string[] = []
+  private readonly maxOperationLogs = 200
+
   private constructor() {
     this.loadState()
   }
@@ -145,6 +149,27 @@ class KernelManager {
     this.state.statusText = text
     this.state.error = null
     this.notifyState()
+  }
+
+  /** 添加操作日志 */
+  private addOperationLog(message: string): void {
+    if (!message) return
+    const lines = message
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0)
+
+    if (lines.length === 0) return
+
+    this.operationLogs.push(...lines)
+    if (this.operationLogs.length > this.maxOperationLogs) {
+      this.operationLogs = this.operationLogs.slice(-this.maxOperationLogs)
+    }
+  }
+
+  /** 获取操作流日志（uv sync、模型下载等） */
+  getStreamLogs(): string[] {
+    return [...this.operationLogs]
   }
 
   /** 获取当前完整状态 */
@@ -344,6 +369,7 @@ class KernelManager {
         const text = data.toString('utf-8').trim()
         if (text) {
           log.info(`[model-dl] ${text}`)
+          this.addOperationLog(`[model-dl] ${text}`)
           this.state.statusText = text.slice(0, 100)
           // 模型下载进度粗略估算（modelscope snapshot_download 不提供精确进度）
           const prevProgress = this.state.progress
@@ -358,6 +384,7 @@ class KernelManager {
         if (text) {
           errorLines.push(text)
           log.warn(`[model-dl stderr] ${text}`)
+          this.addOperationLog(`[model-dl stderr] ${text}`)
         }
       })
 
@@ -897,6 +924,7 @@ class KernelManager {
         const text = decodeBuffer(data).trim()
         if (text) {
           log.info(`[uv] ${text}`)
+          this.addOperationLog(`[uv] ${text}`)
           // 解析 uv 输出估算进度
           if (
             text.includes('Resolved') ||
@@ -915,6 +943,7 @@ class KernelManager {
         if (text) {
           errorLines.push(text)
           log.warn(`[uv stderr] ${text}`)
+          this.addOperationLog(`[uv stderr] ${text}`)
         }
       })
 
@@ -1039,25 +1068,25 @@ class KernelServiceManager {
       const logFile = this.backendLogFile
       log.info(`[loadPersistedLogs] 尝试加载日志文件: ${logFile}`)
       log.info(`[loadPersistedLogs] 文件是否存在: ${fs.existsSync(logFile)}`)
-      
+
       if (fs.existsSync(logFile)) {
         const stats = fs.statSync(logFile)
         log.info(`[loadPersistedLogs] 文件大小: ${stats.size} 字节`)
-        
+
         const raw = fs.readFileSync(logFile, 'utf-8')
         log.info(`[loadPersistedLogs] 读取到 ${raw.length} 个字符`)
-        
+
         const lines = raw
           .split(/\r?\n/)
           .map((line) => line.trim())
           .filter((line) => line.length > 0)
-        
+
         log.info(`[loadPersistedLogs] 文件包含 ${lines.length} 行日志`)
         if (lines.length > 0) {
           log.info(`[loadPersistedLogs] 第一行: ${lines[0].substring(0, 100)}...`)
           log.info(`[loadPersistedLogs] 最后一行: ${lines[lines.length - 1].substring(0, 100)}...`)
         }
-        
+
         this.backendLogs = lines.slice(-this.maxBackendLogs)
         log.info(`[loadPersistedLogs] 加载了 ${this.backendLogs.length} 条历史日志`)
       } else {
