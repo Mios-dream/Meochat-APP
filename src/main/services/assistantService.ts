@@ -2,6 +2,7 @@ import fs from 'fs'
 import axios from 'axios'
 import FormData from 'form-data'
 import AdmZip from 'adm-zip'
+import StreamZip from 'node-stream-zip'
 import path from 'path'
 import os from 'os'
 import { globalShortcut, BrowserWindow } from 'electron'
@@ -898,6 +899,24 @@ class AssistantService {
   }
 
   /**
+   * 探测 zip 条目名的编码：默认 utf8，若出现替换字符则降级 gbk
+   */
+  private async detectZipNameEncoding(zipPath: string): Promise<'utf8' | 'gbk'> {
+    const probe = new StreamZip.async({ file: zipPath, nameEncoding: 'utf8' })
+    try {
+      const entries = Object.values(await probe.entries())
+      for (const entry of entries) {
+        if (entry.name.includes('�')) {
+          return 'gbk'
+        }
+      }
+      return 'utf8'
+    } finally {
+      await probe.close()
+    }
+  }
+
+  /**
    * 保存并解压Live2D模型
    */
   public async saveAndExtractLive2D(
@@ -920,9 +939,6 @@ class AssistantService {
       // 如果传入的是 ArrayBuffer，则转换为 Buffer
       const bufferData = Buffer.isBuffer(fileData) ? fileData : Buffer.from(fileData)
 
-      // 解压文件
-      const zip = new AdmZip(bufferData)
-
       // 如果目录已存在，先删除
       if (fs.existsSync(live2dDir)) {
         fs.rmSync(live2dDir, { recursive: true, force: true })
@@ -930,8 +946,23 @@ class AssistantService {
 
       fs.mkdirSync(live2dDir, { recursive: true })
 
-      // 解压到模型目录
-      zip.extractAllTo(live2dDir, true)
+      // 将 Buffer 写入临时文件，使用 node-stream-zip 解压以正确处理中文文件名
+      const tempZipPath = path.join(os.tmpdir(), `live2d_upload_${Date.now()}.zip`)
+      try {
+        fs.writeFileSync(tempZipPath, bufferData)
+
+        // 先按 UTF-8 探测条目名，若出现替换字符则降级为 GBK：
+        // Bandizip / Win11 新版自带压缩使用 UTF-8（但后者不置位 bit 11），旧版工具使用 GBK
+        const nameEncoding = await this.detectZipNameEncoding(tempZipPath)
+        const zip = new StreamZip.async({ file: tempZipPath, nameEncoding })
+        await zip.extract(null, live2dDir)
+        await zip.close()
+      } finally {
+        // 清理临时文件
+        if (fs.existsSync(tempZipPath)) {
+          fs.unlinkSync(tempZipPath)
+        }
+      }
 
       // 查找主JSON文件
       let mainJsonPath = ''

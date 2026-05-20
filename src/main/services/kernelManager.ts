@@ -4,7 +4,7 @@ import { promisify } from 'util'
 import fs from 'fs'
 import path from 'path'
 import axios from 'axios'
-import AdmZip from 'adm-zip'
+import StreamZip from 'node-stream-zip'
 import log from '../utils/logger'
 
 import { setConfig } from '../config/configManager'
@@ -762,36 +762,42 @@ class KernelManager {
       // 目录不存在，跳过清理
     }
 
-    // 解压 zip
-    const zip = new AdmZip(zipPath)
-    const entries = zip.getEntries()
-    const topLevelDir = this.detectSingleTopLevelDir(entries)
+    // nameEncoding 设为 'gbk'：兼容旧版中文压缩工具的 GBK 编码
+    // 若 zip 头部 bit 11 置位（现代工具），node-stream-zip 会自动用 UTF-8，忽略此选项
+    const zip = new StreamZip.async({ file: zipPath, nameEncoding: 'gbk' })
+    try {
+      const entries = await zip.entries()
+      const topLevelDir = this.detectSingleTopLevelDir(entries)
 
-    if (topLevelDir) {
-      log.info(`检测到内核压缩包外层目录: ${topLevelDir}，将移除外层目录后解压`)
-      const writeTasks: Promise<void>[] = []
-      for (const entry of entries) {
-        const entryName = entry.entryName.replace(/\\/g, '/')
-        if (!entryName || entryName === `${topLevelDir}/`) continue
-        if (!entryName.startsWith(`${topLevelDir}/`)) continue
+      if (topLevelDir) {
+        log.info(`检测到内核压缩包外层目录: ${topLevelDir}，将移除外层目录后解压`)
+        const writeTasks: Promise<void>[] = []
+        for (const entry of Object.values(entries)) {
+          const entryName = entry.name.replace(/\\/g, '/')
+          if (!entryName || entryName === `${topLevelDir}/`) continue
+          if (!entryName.startsWith(`${topLevelDir}/`)) continue
 
-        const relativePath = entryName.slice(topLevelDir.length + 1)
-        if (!relativePath) continue
+          const relativePath = entryName.slice(topLevelDir.length + 1)
+          if (!relativePath) continue
 
-        const targetPath = path.join(targetDir, relativePath)
-        if (entry.isDirectory) {
-          writeTasks.push(fs.promises.mkdir(targetPath, { recursive: true }).then())
-        } else {
-          writeTasks.push(
-            fs.promises
-              .mkdir(path.dirname(targetPath), { recursive: true })
-              .then(() => fs.promises.writeFile(targetPath, entry.getData()))
-          )
+          const targetPath = path.join(targetDir, relativePath)
+          if (entry.isDirectory) {
+            writeTasks.push(fs.promises.mkdir(targetPath, { recursive: true }).then())
+          } else {
+            writeTasks.push(
+              fs.promises
+                .mkdir(path.dirname(targetPath), { recursive: true })
+                .then(() => zip.entryData(entry))
+                .then((data) => fs.promises.writeFile(targetPath, data))
+            )
+          }
         }
+        await Promise.all(writeTasks)
+      } else {
+        await zip.extract(null, targetDir)
       }
-      await Promise.all(writeTasks)
-    } else {
-      zip.extractAllTo(targetDir, true)
+    } finally {
+      await zip.close()
     }
 
     // 写入版本文件 ──
@@ -807,12 +813,14 @@ class KernelManager {
   /**
    * 判断是否存在单一外层目录（用于去掉压缩包外层文件夹）
    */
-  private detectSingleTopLevelDir(entries): string | null {
+  private detectSingleTopLevelDir(entries: {
+    [name: string]: { name: string; isDirectory: boolean }
+  }): string | null {
     let topLevelDir: string | null = null
     let hasRootFile = false
 
-    for (const entry of entries) {
-      const entryName = entry.entryName.replace(/\\/g, '/')
+    for (const entry of Object.values(entries)) {
+      const entryName = entry.name.replace(/\\/g, '/')
       const parts = entryName.split('/').filter(Boolean)
       if (parts.length === 0) continue
 
