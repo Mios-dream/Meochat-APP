@@ -55,4 +55,14 @@ function resolveAppDataDir(): string {
   }
 }
 
-export { getAppUrl, getPreloadPath, isDevelopment, resolveAppDataDir }
+/**
+ * 解析日志目录。
+ * 优先使用 exe 同级目录下的 log/，不可写时回退到 userData 下的 logs/
+ */
+function resolveLogDir(): string {
+  const preferredLogDir = path.join(resolveAppDataDir(), 'logs')
+  fs.mkdirSync(preferredLogDir, { recursive: true })
+  return preferredLogDir
+}
+
+export { getAppUrl, getPreloadPath, isDevelopment, resolveAppDataDir, resolveLogDir }

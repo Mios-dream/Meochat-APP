@@ -1,5 +1,6 @@
-import { ipcMain, app, shell } from 'electron'
+import { ipcMain, shell } from 'electron'
 import log from '../utils/logger'
+import { resolveLogDir } from '../utils/pathResolve'
 
 /**
  * 设置日志相关IPC处理
@@ -43,7 +44,7 @@ export function setupLoggerIPC(): void {
   // 打开日志目录
   ipcMain.on('logger:open-log-dir', () => {
     try {
-      shell.openPath(app.getPath('logs'))
+      shell.openPath(resolveLogDir())
     } catch (error) {
       log.error('打开日志目录失败:', error)
     }

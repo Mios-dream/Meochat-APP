@@ -9,7 +9,7 @@ import log from '../utils/logger'
 
 import { setConfig } from '../config/configManager'
 import type { KernelRemoteVersion, KernelUpdateState } from '../../renderer/src/types/KernelInfo'
-import { resolveAppDataDir } from '../utils/pathResolve'
+import { resolveAppDataDir, resolveLogDir } from '../utils/pathResolve'
 import type {
   EnvironmentCheckResult,
   EnvironmentCheckItem
@@ -1017,7 +1017,7 @@ class KernelServiceManager {
 
   /** 持久化日志文件路径（与 electron-log 的日志目录一致） */
   private get backendLogFile(): string {
-    return path.join(app.getPath('logs'), 'core.log')
+    return path.join(resolveLogDir(), 'core.log')
   }
 
   /** 服务状态广播通道 */
