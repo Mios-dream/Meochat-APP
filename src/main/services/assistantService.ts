@@ -277,7 +277,7 @@ class AssistantService {
             // 将响应流保存到文件
             response.data.pipe(writer)
 
-            writer.on('finish', () => {
+            writer.on('finish', async () => {
               try {
                 // 解压文件
                 if (fs.existsSync(assetsDir)) {
@@ -285,8 +285,14 @@ class AssistantService {
                   fs.mkdirSync(assetsDir, { recursive: true })
                 }
 
-                const zip = new AdmZip(tempZipPath)
-                zip.extractAllTo(assistantDir, true)
+                // 探测编码后用 node-stream-zip 流式解压，避免大包阻塞主进程及中文乱码
+                const nameEncoding = await this.detectZipNameEncoding(tempZipPath)
+                const zip = new StreamZip.async({ file: tempZipPath, nameEncoding })
+                try {
+                  await zip.extract(null, assistantDir)
+                } finally {
+                  await zip.close()
+                }
 
                 // 清理临时文件
                 fs.unlinkSync(tempZipPath)

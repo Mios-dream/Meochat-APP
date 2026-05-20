@@ -36,6 +36,7 @@
     "@fortawesome/vue-fontawesome": "^3.1.2",
     "@jitsi/robotjs": "^0.6.18",
     "@xterm/addon-fit": "^0.11.0",
+    "adm-zip": "^0.5.17",
     "axios": "^1.13.2",
     "electron-click-drag-plugin": "^2.0.2",
     "electron-log": "^5.4.3",

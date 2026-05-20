@@ -276,19 +276,19 @@
           </div>
           <div class="settings-section">
             <h4>语音设置</h4>
+            <p class="settings-tips">未填写或文件无效时，将自动使用默认助手的语音配置。</p>
             <div class="setting-item">
               <form class="setting-from">
                 <div class="title">
                   <label for="gptModelPath">GPT模型</label>
-                  <div class="description">合成语音的GPT模型文件地址(模型以pth结尾)</div>
+                  <div class="description">合成语音的GPT模型文件地址(模型以ckpt结尾)</div>
                 </div>
                 <div class="voice-file-picker">
                   <input
                     id="gptModelPath"
                     v-model="formData.gsvSetting.gptModelPath"
                     type="text"
-                    placeholder="输入本地/云端地址"
-                    required
+                    placeholder="留空则使用默认助手的语音配置"
                     @input="handleGptModelPathInput"
                   />
                   <button
@@ -303,7 +303,7 @@
                   <input
                     ref="gptModelInput"
                     type="file"
-                    accept=".pth"
+                    accept=".ckpt"
                     style="display: none"
                     @change="handleGptModelSelect"
                   />
@@ -313,15 +313,14 @@
               <form class="setting-from">
                 <div class="title">
                   <label for="sovitsModelPath">SOVITS模型</label>
-                  <div class="description">合成语音的SOVITS模型文件地址(模型为ckpt结尾)</div>
+                  <div class="description">合成语音的SOVITS模型文件地址(模型为pth结尾)</div>
                 </div>
                 <div class="voice-file-picker">
                   <input
                     id="sovitsModelPath"
                     v-model="formData.gsvSetting.sovitsModelPath"
                     type="text"
-                    placeholder="输入本地/云端地址"
-                    required
+                    placeholder="留空则使用默认助手的语音配置"
                     @input="handleSovitsModelPathInput"
                   />
                   <button
@@ -336,7 +335,7 @@
                   <input
                     ref="sovitsModelInput"
                     type="file"
-                    accept=".ckpt"
+                    accept=".pth"
                     style="display: none"
                     @change="handleSovitsModelSelect"
                   />
@@ -354,8 +353,7 @@
                     id="refAudioPath"
                     v-model="formData.gsvSetting.refAudioPath"
                     type="text"
-                    placeholder="输入本地/云端地址"
-                    required
+                    placeholder="留空则使用默认助手的参考音频"
                     @input="handleRefAudioPathInput"
                   />
                   <button
@@ -387,8 +385,7 @@
                   id="promptText"
                   v-model="formData.gsvSetting.promptText"
                   type="text"
-                  placeholder="输入参考文本..."
-                  required
+                  placeholder="留空则使用默认助手的参考文本"
                 />
               </form>
               <div class="divider"></div>
@@ -1466,7 +1463,7 @@ function triggerCharacterCardImport(): void {
 const validateForm = (): boolean => {
   const missingFields: string[] = []
 
-  // 检查基本信息中的必填字段
+  // 仅校验基本信息中的必填字段；语音相关字段为空时由后端回退到默认助手配置
   if (!formData.value.name?.trim()) {
     missingFields.push('名字')
   }
@@ -1478,29 +1475,6 @@ const validateForm = (): boolean => {
   }
   if (!formData.value.birthday) {
     missingFields.push('生日')
-  }
-
-  // 检查语音设置中的必填字段
-  if (!formData.value.gsvSetting.gptModelPath?.trim()) {
-    missingFields.push('GPT模型')
-  }
-  if (!formData.value.gsvSetting.sovitsModelPath?.trim()) {
-    missingFields.push('SOVITS模型')
-  }
-  if (!formData.value.gsvSetting.refAudioPath?.trim()) {
-    missingFields.push('参考音频')
-  }
-  if (!formData.value.gsvSetting.promptText?.trim()) {
-    missingFields.push('参考文本')
-  }
-
-  if (!formData.value.gsvSetting.textLang?.trim()) {
-    missingFields.push('输出语音语言')
-  }
-
-  // 检查文本设置中的必填字段
-  if (!formData.value.gsvSetting.promptLang?.trim()) {
-    missingFields.push('参考语音语言')
   }
 
   // 如果有未填写的必填字段，显示提示
@@ -2027,6 +2001,12 @@ const handleCancel = (): void => {
   margin: 0 0 15px 0;
   color: #333;
   font-size: 16px;
+}
+
+.settings-tips {
+  margin: -8px 0 8px 0;
+  font-size: 12px;
+  color: gray;
 }
 
 /* 开场白样式 */

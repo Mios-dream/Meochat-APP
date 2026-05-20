@@ -248,6 +248,13 @@ import EditAssistantDialog from '../components/EditAssistantDialog.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import Loader from '../components/Loader.vue'
 import BlurModal from '../components/BlurModal.vue'
+import { NotificationService } from '../services/NotificationService'
+
+// 默认助手名称（与后端 Config.DEFAULT_ASSISTANT_NAME 保持一致，禁止删除）
+const DEFAULT_ASSISTANT_NAME = '澪'
+
+// 通知服务实例（用于拦截删除默认助手时的提示）
+const notificationService = NotificationService.getInstance()
 
 // 从配置存储中获取配置
 const configStore = useConfigStore()
@@ -309,18 +316,24 @@ async function selectAssistant(assistant: AssistantInfo): Promise<void> {
 }
 
 // 计算属性
-const contextMenuItems = computed(() => [
-  {
-    icon: 'fa-solid fa-pen',
-    text: '编辑',
-    action: () => handleEditAssistant(contextMenuAssistant.value!)
-  },
-  {
-    icon: 'fa-solid fa-trash',
-    text: '删除',
-    action: () => handleDeleteAssistant(contextMenuAssistant.value!.name)
+const contextMenuItems = computed(() => {
+  const items = [
+    {
+      icon: 'fa-solid fa-pen',
+      text: '编辑',
+      action: () => handleEditAssistant(contextMenuAssistant.value!)
+    }
+  ]
+  // 默认助手不可删除，隐藏菜单项
+  if (contextMenuAssistant.value?.name !== DEFAULT_ASSISTANT_NAME) {
+    items.push({
+      icon: 'fa-solid fa-trash',
+      text: '删除',
+      action: () => handleDeleteAssistant(contextMenuAssistant.value!.name)
+    })
   }
-])
+  return items
+})
 
 // 显示右键菜单
 function showContextMenu(event: MouseEvent, assistant: AssistantInfo): void {
@@ -377,6 +390,13 @@ async function refreshAssistants(): Promise<void> {
 
 // 处理删除助手
 async function handleDeleteAssistant(name: string): Promise<void> {
+  // 兜底拦截：默认助手禁止删除（即使有其他入口绕过右键菜单）
+  if (name === DEFAULT_ASSISTANT_NAME) {
+    notificationService.error({
+      message: `默认助手「${name}」不可删除`
+    })
+    return
+  }
   // 设置确认对话框信息
   confirmMessage.value = `每一次的陪伴都值得珍藏，确定要与"${name}"就此告别吗？`
   assistantToDelete.value = name
