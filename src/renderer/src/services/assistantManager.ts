@@ -245,6 +245,20 @@ class AssistantManager {
       return false
     }
   }
+
+  /**
+   * 从 zip 角色压缩包导入助手，并刷新本地助手列表。
+   * @param zipPath zip 文件路径，压缩包内必须包含 info.yaml
+   */
+  public async importAssistantFromZip(
+    zipPath: string
+  ): Promise<{ success: true; data: AssistantInfo } | { success: false; error: string }> {
+    const result = await window.api.importAssistantFromZip(zipPath)
+    if (result.success) {
+      await this.loadAssistants()
+    }
+    return result
+  }
 }
 
 export { AssistantManager, type AssistantAssets, type AssistantInfo }

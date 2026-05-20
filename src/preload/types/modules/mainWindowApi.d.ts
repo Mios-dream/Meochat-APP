@@ -290,6 +290,14 @@ export interface MainWindowApi {
     fileData: ArrayBuffer
   ) => Promise<{ success: true; data: AssistantBaseInfo } | { success: false; error: string }>
 
+  /**
+   * 从 zip 角色压缩包导入助手目录与资源
+   * @param zipPath 角色压缩包路径，压缩包内必须包含 info.yaml
+   */
+  importAssistantFromZip: (
+    zipPath: string
+  ) => Promise<{ success: true; data: AssistantInfo } | { success: false; error: string }>
+
   // 日志相关API
   log: {
     debug: (message: string, details?: string) => void

@@ -177,5 +177,7 @@ contextBridge.exposeInMainWorld('api', {
     ),
   // 从角色卡片导入助手信息
   importAssistantFromCard: (imagePath: ArrayBuffer) =>
-    ipcRenderer.invoke('assistant:import-from-card', imagePath)
+    ipcRenderer.invoke('assistant:import-from-card', imagePath),
+  // 从 zip 角色压缩包导入助手目录与资源
+  importAssistantFromZip: (zipPath: string) => ipcRenderer.invoke('assistant:import-from-zip', zipPath)
 })

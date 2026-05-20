@@ -1017,8 +1017,6 @@ class ChatService {
           await this.playMotionSequence(pair.motionSequence, targetDuration, token)
         }
       }
-    } catch (error) {
-      console.error('播放音频失败:', error)
     } finally {
       this.isPlaying = false
       this.notifySpeechEnd()

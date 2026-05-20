@@ -170,7 +170,7 @@ export function setupAssistantServerIPC(): void {
   ipcMain.handle(
     'assistant:download-assistant-asset',
     async (event, { assistantName }: { assistantName: string }) => {
-      return await assistantService.downloadAssistantAsset(assistantName, (progress) => {
+      return await assistantService.downloadAssistantAssets(assistantName, (progress) => {
         event.sender.send('assistant:download-progress', { assistantName, progress })
       })
     }
@@ -236,5 +236,10 @@ export function setupAssistantServerIPC(): void {
     } catch (error) {
       return { success: false, error: (error as Error).message }
     }
+  })
+
+  // 从 zip 角色压缩包导入助手目录与资源
+  ipcMain.handle('assistant:import-from-zip', async (_event, zipPath: string) => {
+    return await assistantService.importAssistantFromZip(zipPath)
   })
 }

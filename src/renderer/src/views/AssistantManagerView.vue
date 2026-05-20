@@ -201,7 +201,17 @@
               </div>
               <div class="option-content">
                 <div class="option-title">导入角色卡</div>
-                <div class="option-description">通过导入角色卡快速创建助手</div>
+                <div class="option-description">通过导入图片角色卡快速创建助手</div>
+              </div>
+            </div>
+
+            <div class="option-item" @click="handleImportZipPackage">
+              <div class="option-icon">
+                <font-awesome-icon icon="fa-solid fa-file-zipper" />
+              </div>
+              <div class="option-content">
+                <div class="option-title">导入zip角色包</div>
+                <div class="option-description">导入包含 info.yaml 和 assets 的角色资源包</div>
               </div>
             </div>
           </div>
@@ -480,13 +490,51 @@ function closeAddAssistantDialog(): void {
 // 处理手动添加
 function handleManualAdd(): void {
   isImportFromCard.value = false
+  isVisibleSelectMethodDialog.value = false
   isVisibleAddAssistantDialog.value = true
 }
 
 // 处理导入角色卡
 function handleImportCharacterCard(): void {
   isImportFromCard.value = true
+  isVisibleSelectMethodDialog.value = false
   isVisibleAddAssistantDialog.value = true
+}
+
+// 处理导入 zip 角色包
+async function handleImportZipPackage(): Promise<void> {
+  isVisibleSelectMethodDialog.value = false
+  const selectResult = await window.api.fileSelectAPI.selectFile({
+    title: '选择zip角色包',
+    buttonLabel: '导入',
+    filters: [{ name: '角色压缩包', extensions: ['zip'] }]
+  })
+
+  if (!selectResult.success) {
+    if (selectResult.error !== '取消选择') {
+      notificationService.error({ message: selectResult.error })
+    }
+    return
+  }
+
+  assistantListLoading.value = true
+  try {
+    const importResult = await assistantManager.importAssistantFromZip(selectResult.filePath)
+    if (!importResult.success) {
+      notificationService.error({
+        message: importResult.error || 'zip角色包导入失败'
+      })
+      return
+    }
+
+    await refreshAssistants()
+  } catch (error) {
+    notificationService.error({
+      message: error instanceof Error ? error.message : 'zip角色包导入失败'
+    })
+  } finally {
+    assistantListLoading.value = false
+  }
 }
 
 // 当组件挂载时，获取助手状态
