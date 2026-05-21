@@ -1,6 +1,6 @@
 import { ContextManager } from '../core/context'
 import { ActionDispatcher } from '../core/dispatcher'
-import { InteractionEventPayload } from '@renderer/services/ChatService'
+import { InteractionEventPayload } from '@renderer/chat/ChatManager'
 
 export interface IEventHandler {
   eventType: string

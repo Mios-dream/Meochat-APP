@@ -1,5 +1,5 @@
 import { ContextManager } from '@renderer/core/interaction/core/context'
-import { InteractionEventPayload } from '@renderer/services/ChatService'
+import { InteractionEventPayload } from '@renderer/chat/ChatManager'
 import { ActionDispatcher } from '@renderer/core/interaction/core/dispatcher'
 import { EventModule } from '@renderer/core/interaction/types/eventModules'
 import { IEventHandler } from '@renderer/core/interaction/types/IEventHandler'

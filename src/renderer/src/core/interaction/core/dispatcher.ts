@@ -1,4 +1,4 @@
-import { ChatService, InteractionEventPayload } from '@renderer/services/ChatService'
+import { ChatManager, InteractionEventPayload } from '@renderer/chat/ChatManager'
 import { Context } from '@renderer/core/interaction/core/context'
 
 export interface EventReplyRequest {
@@ -11,11 +11,11 @@ export interface EventReplyRequest {
 }
 
 export class ActionDispatcher {
-  private chatService: ChatService
+  private chatService: ChatManager
   private lastSentAt = 0
 
   constructor() {
-    this.chatService = ChatService.getInstance()
+    this.chatService = ChatManager.getInstance()
   }
 
   /**

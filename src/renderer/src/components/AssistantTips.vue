@@ -7,8 +7,8 @@
 
 <script setup lang="ts">
 import { onActivated, onMounted, ref } from 'vue'
-import { ChatService } from '../services/ChatService'
-const chatService = ChatService.getInstance()
+import { ChatManager } from '../chat/ChatManager'
+const chatService = ChatManager.getInstance()
 const tipsElementRef = ref<HTMLElement | null>(null)
 // 初始化聊天服务
 

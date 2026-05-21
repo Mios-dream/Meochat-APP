@@ -3,7 +3,7 @@ import { ActionDispatcher } from '@renderer/core/interaction/core/dispatcher'
 import { IEventHandler } from '@renderer/core/interaction/types/IEventHandler'
 import { EventModule } from '@renderer/core/interaction/types/eventModules'
 import { useConfigStore } from '../stores/useConfigStore'
-import { InteractionEventPayload } from '@renderer/services/ChatService'
+import { InteractionEventPayload } from '@renderer/chat/ChatManager'
 
 export class IdleEventModule extends EventModule {
   private idleEventsTimer: ReturnType<typeof setTimeout> | null = null

@@ -2,13 +2,13 @@ import { EventCenter } from './eventCenter'
 import { ActionDispatcher } from './dispatcher'
 import { IEventHandler } from '../types/IEventHandler'
 import { ContextManager, Context } from './context'
-import { ChatService } from '@renderer/services/ChatService'
+import { ChatManager } from '@renderer/chat/ChatManager'
 
 export class EventSystem {
   // 事件处理器实例
   private handlers: Map<string, IEventHandler> = new Map()
   private lastDispatchByType: Map<string, number> = new Map()
-  private chatService: ChatService
+  private chatService: ChatManager
   // 正在分发事件时，忽略新的事件触发，避免重复分发和状态更新冲突
   private isDispatching = false
 
@@ -17,7 +17,7 @@ export class EventSystem {
     private contextManager: ContextManager,
     private dispatcher: ActionDispatcher
   ) {
-    this.chatService = ChatService.getInstance()
+    this.chatService = ChatManager.getInstance()
   }
 
   /**

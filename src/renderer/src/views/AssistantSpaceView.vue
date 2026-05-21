@@ -238,7 +238,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, Ref, watch, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ChatService } from '../services/ChatService'
+import { ChatManager } from '../chat/ChatManager'
 import { Live2DManager } from '../services/Live2dManager'
 import AssistantTips from '../components/AssistantTips.vue'
 import ModelErrorDisplay from '../components/ModelErrorDisplay.vue'
@@ -318,7 +318,7 @@ const isCapturingShortcut = ref(false)
 
 // 组件实例
 const live2DManager = Live2DManager.getInstance()
-const chatService = ChatService.getInstance()
+const chatService = ChatManager.getInstance()
 const diarySystem = new DiarySystem()
 const assistantManager = AssistantManager.getInstance()
 // 获取交互系统实例
@@ -428,7 +428,7 @@ onMounted(async () => {
     // 监听来自ChatBox的消息
     window.api.ipcRenderer.on('chat-box:send-message', async (_, data) => {
       try {
-        // 调用 ChatService 处理消息，并等待语音/动作播放完成后再解锁输入
+        // 调用 ChatManager 处理消息，并等待语音/动作播放完成后再解锁输入
         await chatService.chat(data.text)
         await chatService.waitForReplyPlaybackComplete()
       } finally {

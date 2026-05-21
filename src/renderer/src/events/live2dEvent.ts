@@ -2,7 +2,7 @@ import { ContextManager } from '@renderer/core/interaction/core/context'
 import { ActionDispatcher } from '@renderer/core/interaction/core/dispatcher'
 import { IEventHandler } from '@renderer/core/interaction/types/IEventHandler'
 import { EventModule } from '@renderer/core/interaction/types/eventModules'
-import { InteractionEventPayload } from '@renderer/services/ChatService'
+import { InteractionEventPayload } from '@renderer/chat/ChatManager'
 
 export class Live2dEventModule extends EventModule {
   private isListening = false

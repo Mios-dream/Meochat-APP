@@ -2,5 +2,5 @@ singleQuote: true
 semi: false
 printWidth: 100
 trailingComma: none
-endOfLine: 'auto'
+endOfLine: 'lf'
 tabWidth: 2
