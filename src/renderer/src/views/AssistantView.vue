@@ -68,6 +68,8 @@ const interactionSystem = InteractionSystem.getInstance()
 const wakewordService = WakewordService.getInstance()
 // Tips更新定时器,定时更新Tips内容以保持与语音输出同步
 let tipsUpdateInterval: ReturnType<typeof setTimeout> | null = null
+// 当前已激活的助手名称，用于过滤重复的助手切换事件，避免睡眠模式等状态被意外重置
+let currentAssistantName = ''
 
 /**
  * 注册由事件系统驱动的 Live2D 表现副作用。
@@ -240,7 +242,6 @@ async function reconnectWakewordState(): Promise<void> {
 // 初始化助手模型
 async function initAssistantModel(): Promise<boolean> {
   try {
-    let currentAssistantName = ''
     const response = await window.api.getCurrentAssistant()
     if (response.success && response.data) {
       currentAssistantName = response.data.name
@@ -288,13 +289,36 @@ async function switchModel(assistantName: string): Promise<boolean> {
       await live2DManager.switchModel('./turong/turong.model3.json')
       live2DManager.enableModel()
     }
+    // 模型切换后重新同步睡眠状态：switchModel 内部会 reset 睡眠控制器，
+    // 但交互系统的 SleepEventModule 仍处于 sleeping 状态，需要主动恢复 Live2D 侧的睡眠表现
+    restoreSleepState()
     return true
   } catch (error) {
-    loadError.value = true
-    await live2DManager.switchModel('./turong/turong.model3.json')
-    live2DManager.disabledModel()
-    console.error('切换Live2D模型失败:', error)
-    return false
+    console.error('切换Live2D模型失败，尝试恢复默认模型:', error)
+    // 尝试恢复默认模型，不直接标记 disabled，避免正常切换时进入错误的禁用状态
+    try {
+      await live2DManager.switchModel('./turong/turong.model3.json')
+      live2DManager.enableModel()
+      restoreSleepState()
+      return true
+    } catch (recoveryError) {
+      // 默认模型也加载失败，才标记为禁用状态
+      loadError.value = true
+      live2DManager.disabledModel()
+      console.error('恢复默认模型失败:', recoveryError)
+      return false
+    }
+  }
+}
+
+/**
+ * 恢复睡眠状态。
+ * 模型切换 / 重建后调用：若交互系统当前处于睡眠时段，重新让 Live2D 进入睡眠表现，
+ * 弥补 switchModel→sleepController.reset() 与 SleepEventModule 之间的状态脱节。
+ */
+function restoreSleepState(): void {
+  if (interactionSystem.isSleepMode()) {
+    live2DManager.enterSleepMode()
   }
 }
 
@@ -380,6 +404,10 @@ onMounted(async () => {
 
   // 监听助手切换事件
   window.api.onAssistantSwitched(async (assistant) => {
+    // 助手未变化时跳过模型重载，防止睡眠模式等运行状态被重置
+    if (assistant.name === currentAssistantName) return
+
+    currentAssistantName = assistant.name
     // 当助手切换时，重新初始化模型
     const modelSwitched = await switchModel(assistant.name)
     // 只有模型成功切换时才重连唤醒词状态

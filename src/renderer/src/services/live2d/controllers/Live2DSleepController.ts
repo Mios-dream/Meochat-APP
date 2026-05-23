@@ -350,7 +350,7 @@ export class Live2DSleepController {
     const delayMs = 6000 + Math.random() * 14000
     this.sleepMicroMotionTimer = setTimeout(() => {
       if (!this.sleeping || this.drowsyTalking || this.drowsyLingering) return
-      console.log('[Live2D] 触发睡眠微动')
+      // console.log('[Live2D] 触发睡眠微动')
 
       this.setSleepParameterTarget(
         {
