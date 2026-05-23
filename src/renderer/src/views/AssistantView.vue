@@ -79,6 +79,25 @@ function registerLive2DEffects(): void {
   effectDispatcher.register('live2d.exitSleep', () => live2DManager.exitSleepMode())
 }
 
+/**
+ * 注册 Live2D 点击/抚摸回调。
+ */
+function registerLive2DInteractionBridge(): void {
+  const partEventMap = {
+    head: 'live2d.hit.part.head',
+    face: 'live2d.hit.part.face',
+    body: 'live2d.hit.body',
+    hand: 'live2d.hit.part.hand',
+    leg: 'live2d.hit.part.leg',
+    'head.light': 'live2d.stroke.head.light',
+    'head.heavy': 'live2d.stroke.head.heavy'
+  }
+
+  live2DManager.onTap((partName) => {
+    interactionSystem.triggerEvent(partEventMap[partName])
+  })
+}
+
 // 计算属性
 const contextMenuItems = computed(() => [
   {
@@ -319,6 +338,7 @@ onMounted(async () => {
   const modelLoaded = await initAssistantModel()
   if (modelLoaded) {
     registerLive2DEffects()
+    registerLive2DInteractionBridge()
     syncInteractionSystemState()
     try {
       await syncWakewordState()

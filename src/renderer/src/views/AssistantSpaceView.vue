@@ -363,9 +363,6 @@ function percentToNormalized(value: number): number {
   return clampVolume(value / 100)
 }
 
-// 设置模型聚焦超时时间
-live2DManager.focus_timeout_ms = 500
-
 async function loadLive2DModel(): Promise<boolean> {
   try {
     const assistantAssets = await assistantManager.getAssistantAssets()
@@ -410,6 +407,25 @@ async function sendOnboardingWelcomeIfNeeded(): Promise<void> {
   }
 }
 
+/**
+ * 注册 Live2D 点击/抚摸回调。
+ */
+function registerLive2DInteractionBridge(): void {
+  const partEventMap = {
+    head: 'live2d.hit.part.head',
+    face: 'live2d.hit.part.face',
+    body: 'live2d.hit.body',
+    hand: 'live2d.hit.part.hand',
+    leg: 'live2d.hit.part.leg',
+    'head.light': 'live2d.stroke.head.light',
+    'head.heavy': 'live2d.stroke.head.heavy'
+  }
+
+  live2DManager.onTap((partName) => {
+    interactionSystem.triggerEvent(partEventMap[partName])
+  })
+}
+
 onMounted(async () => {
   currentAssistant.value = assistantManager.getCurrentAssistant()
   // 从配置加载快捷键设置
@@ -424,6 +440,7 @@ onMounted(async () => {
       return
     }
     await sendOnboardingWelcomeIfNeeded()
+    registerLive2DInteractionBridge()
     interactionSystem.start()
     // 监听来自ChatBox的消息
     window.api.ipcRenderer.on('chat-box:send-message', async (_, data) => {
