@@ -1,8 +1,9 @@
 import { ContextManager } from '@renderer/core/interaction/core/context'
-import { ActionDispatcher } from '@renderer/core/interaction/core/dispatcher'
+import { InteractionPayloadBuilder } from '@renderer/core/interaction/tools/payloadBuilder'
 import { IEventHandler } from '@renderer/core/interaction/types/IEventHandler'
 import { EventModule } from '@renderer/core/interaction/types/eventModules'
 import { InteractionEventPayload } from '@renderer/chat/ChatManager'
+import { InteractionEffect } from '@renderer/core/interaction/types/InteractionEffect'
 
 export class Live2dEventModule extends EventModule {
   private isListening = false
@@ -35,7 +36,7 @@ export class Live2dEventHandler implements IEventHandler {
     (contextManager: ContextManager) => Promise<InteractionEventPayload | null>
   > = {
     'live2d.hit.body': async (contextManager: ContextManager) => {
-      const result = ActionDispatcher.buildEventPayload({
+      const result = InteractionPayloadBuilder.buildEventPayload({
         event: 'live2d.hit.body',
         scene: '用户点击了角色身体区域，属于轻互动',
         context: contextManager.get(),
@@ -45,7 +46,7 @@ export class Live2dEventHandler implements IEventHandler {
       return result
     },
     'live2d.hit.part.head': async (contextManager: ContextManager) => {
-      const result = ActionDispatcher.buildEventPayload({
+      const result = InteractionPayloadBuilder.buildEventPayload({
         event: 'live2d.hit.part.head',
         scene: '用户点击了角色头部，语气可亲昵但不要过激',
         context: contextManager.get(),
@@ -55,7 +56,7 @@ export class Live2dEventHandler implements IEventHandler {
       return result
     },
     'live2d.hit.part.face': async (contextManager: ContextManager) => {
-      const result = ActionDispatcher.buildEventPayload({
+      const result = InteractionPayloadBuilder.buildEventPayload({
         event: 'live2d.hit.part.face',
         scene: '用户点击了角色脸部，表现轻微害羞或打趣',
         context: contextManager.get(),
@@ -65,7 +66,7 @@ export class Live2dEventHandler implements IEventHandler {
       return result
     },
     'live2d.hit.part.hand': async (contextManager: ContextManager) => {
-      const result = ActionDispatcher.buildEventPayload({
+      const result = InteractionPayloadBuilder.buildEventPayload({
         event: 'live2d.hit.part.hand',
         scene: '用户点击了角色手部，可生成牵手或互动感回应',
         context: contextManager.get(),
@@ -75,7 +76,7 @@ export class Live2dEventHandler implements IEventHandler {
       return result
     },
     'live2d.hit.part.leg': async (contextManager: ContextManager) => {
-      const result = ActionDispatcher.buildEventPayload({
+      const result = InteractionPayloadBuilder.buildEventPayload({
         event: 'live2d.hit.part.leg',
         scene: '用户点击了角色腿部，保持轻松互动',
         context: contextManager.get(),
@@ -85,7 +86,7 @@ export class Live2dEventHandler implements IEventHandler {
       return result
     },
     'live2d.stroke.head.light': async (contextManager: ContextManager) => {
-      const result = ActionDispatcher.buildEventPayload({
+      const result = InteractionPayloadBuilder.buildEventPayload({
         event: 'live2d.stroke.head.light',
         scene: '用户轻柔抚摸角色头部，整体偏温柔治愈',
         context: contextManager.get(),
@@ -95,7 +96,7 @@ export class Live2dEventHandler implements IEventHandler {
       return result
     },
     'live2d.stroke.head.heavy': async (contextManager: ContextManager) => {
-      const result = ActionDispatcher.buildEventPayload({
+      const result = InteractionPayloadBuilder.buildEventPayload({
         event: 'live2d.stroke.head.heavy',
         scene: '用户较重力度抚摸头部，表达撒娇提醒更温柔',
         context: contextManager.get(),
@@ -106,18 +107,14 @@ export class Live2dEventHandler implements IEventHandler {
     }
   }
 
-  async handle(
-    event: string,
-    contextManager: ContextManager,
-    dispatcher: ActionDispatcher
-  ): Promise<void> {
+  async handle(event: string, contextManager: ContextManager): Promise<InteractionEffect[]> {
     console.log(`收到Live2D事件: ${event}`)
     const handler = this.responseHandlers[event]
-    if (handler) {
-      const result = await handler(contextManager)
-      if (result) {
-        await dispatcher.send(result)
-      }
+    if (!handler) {
+      return []
     }
+
+    const result = await handler(contextManager)
+    return result ? [{ type: 'chat', payload: result }] : []
   }
 }

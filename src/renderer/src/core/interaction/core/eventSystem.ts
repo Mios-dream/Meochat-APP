@@ -1,23 +1,22 @@
 import { EventCenter } from './eventCenter'
-import { ActionDispatcher } from './dispatcher'
 import { IEventHandler } from '../types/IEventHandler'
 import { ContextManager, Context } from './context'
 import { ChatManager } from '@renderer/chat/ChatManager'
+import { EffectDispatcher } from './effectDispatcher'
 
 export class EventSystem {
   // 事件处理器实例
   private handlers: Map<string, IEventHandler> = new Map()
   private lastDispatchByType: Map<string, number> = new Map()
   private chatService: ChatManager
-  // 正在分发事件时，忽略新的事件触发，避免重复分发和状态更新冲突
-  private isDispatching = false
+  private effectDispatcher: EffectDispatcher
 
   constructor(
     private eventCenter: EventCenter,
-    private contextManager: ContextManager,
-    private dispatcher: ActionDispatcher
+    private contextManager: ContextManager
   ) {
     this.chatService = ChatManager.getInstance()
+    this.effectDispatcher = new EffectDispatcher()
   }
 
   /**
@@ -30,6 +29,14 @@ export class EventSystem {
   }
 
   /**
+   * 获取统一效果执行器。
+   * 外层系统可以用它注册 Live2D、页面样式等具体表现。
+   */
+  getEffectDispatcher(): EffectDispatcher {
+    return this.effectDispatcher
+  }
+
+  /**
    * 安装事件监听器：监听特定事件类型，触发时更新上下文并处理事件
    * @param eventType 事件类型（如 "mouse", "app"），监听该类型的所有事件（如 "mouse.idle", "app.focus"）
    */
@@ -39,30 +46,18 @@ export class EventSystem {
         this.contextManager.update(context)
       }
 
-      this.handleIncomingEvent(event)
+      this.handleEvent(event)
     })
   }
 
   /**
-   * 处理传入事件：执行中忽略，对话中忽略，否则检查冷却后直接分发
+   * 处理传入事件。
+   * 本阶段只更新对话状态和检查事件冷却；聊天中的跳过逻辑由 chat effect 自己处理。
    * @param event 完整事件字符串（如 "mouse.idle"），根据类型检查冷却并分发事件
    */
-  private handleIncomingEvent(event: string): void {
-    const passiveEvents = new Set(['mouse.idle', 'mouse.busy', 'system.battery-level'])
-    if (passiveEvents.has(event)) {
-      return
-    }
-
-    if (this.isDispatching) {
-      return
-    }
-
+  private handleEvent(event: string): void {
     const isInConversation = this.chatService.getReplyStatus()
     this.contextManager.update({ isInConversation })
-
-    if (isInConversation) {
-      return
-    }
 
     const eventType = event.split('.')[0] || event
     if (!this.checkCooldown(eventType)) {
@@ -104,15 +99,12 @@ export class EventSystem {
         lastEventType: event
       })
 
-      this.isDispatching = true
-      // 触发事件处理器逻辑，传入事件字符串、上下文管理器和动作分发器
+      // 触发事件处理器逻辑，获取返回的效果列表并交由效果执行器处理，捕获并记录错误
       handler
-        .handle(event, this.contextManager, this.dispatcher)
+        .handle(event, this.contextManager)
+        .then((effects) => this.effectDispatcher.dispatchAll(effects))
         .catch((error) => {
           console.error('事件分发失败:', error)
-        })
-        .finally(() => {
-          this.isDispatching = false
         })
     }
   }

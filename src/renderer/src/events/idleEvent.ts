@@ -1,9 +1,10 @@
 import { Context, ContextManager } from '@renderer/core/interaction/core/context'
-import { ActionDispatcher } from '@renderer/core/interaction/core/dispatcher'
+import { InteractionPayloadBuilder } from '@renderer/core/interaction/tools/payloadBuilder'
 import { IEventHandler } from '@renderer/core/interaction/types/IEventHandler'
 import { EventModule } from '@renderer/core/interaction/types/eventModules'
 import { useConfigStore } from '../stores/useConfigStore'
 import { InteractionEventPayload } from '@renderer/chat/ChatManager'
+import { InteractionEffect } from '@renderer/core/interaction/types/InteractionEffect'
 
 export class IdleEventModule extends EventModule {
   private idleEventsTimer: ReturnType<typeof setTimeout> | null = null
@@ -101,18 +102,14 @@ export class IdleEventHandler implements IEventHandler {
     }
   }
 
-  async handle(
-    event: string,
-    contextManager: ContextManager,
-    dispatcher: ActionDispatcher
-  ): Promise<void> {
+  async handle(event: string, contextManager: ContextManager): Promise<InteractionEffect[]> {
     const handler = this.responseHandlers[event]
-    if (handler) {
-      const result = await handler(contextManager)
-      if (result) {
-        await dispatcher.send(result)
-      }
+    if (!handler) {
+      return []
     }
+
+    const result = await handler(contextManager)
+    return result ? [{ type: 'chat', payload: result }] : []
   }
 
   private async generateAIMessage(
@@ -122,7 +119,7 @@ export class IdleEventHandler implements IEventHandler {
     context: Context
   ): Promise<InteractionEventPayload | null> {
     const selectedTheme = this.chatTheme[Math.floor(Math.random() * this.chatTheme.length)]
-    return ActionDispatcher.buildEventPayload({
+    return InteractionPayloadBuilder.buildEventPayload({
       event: `idle.${eventType}`,
       scene: `空闲主动对话。主题：${selectedTheme}；事件描述：${eventDescription}`,
       context,

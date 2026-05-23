@@ -39,6 +39,7 @@ export interface Context {
     description: string
     timestamp: number
   }
+  sleepMode?: boolean
 }
 
 export class ContextManager {

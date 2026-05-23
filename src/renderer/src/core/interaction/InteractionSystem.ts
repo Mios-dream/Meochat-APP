@@ -1,8 +1,8 @@
 // index.ts
 import { EventCenter } from './core/eventCenter'
 import { ContextManager } from './core/context'
-import { ActionDispatcher } from './core/dispatcher'
 import { EventSystem } from './core/eventSystem'
+import { EffectDispatcher } from './core/effectDispatcher'
 import { EventModule } from './types/eventModules'
 import { TimeEventHandler, TimeEventModule } from '@renderer/events/timeEvent'
 import { IdleEventHandler, IdleEventModule } from '@renderer/events/idleEvent'
@@ -11,6 +11,7 @@ import { Live2dEventHandler, Live2dEventModule } from '@renderer/events/live2dEv
 import { MouseEventHandler, MouseEventModule } from '@renderer/events/mouseEvent'
 import { ApplicationEventHandler, ApplicationEventModule } from '@renderer/events/applicationEvent'
 import { SystemEventHandler, SystemEventModule } from '@renderer/events/systemEvent'
+import { SleepEventHandler, SleepEventModule } from '@renderer/events/sleepEvent'
 
 export class InteractionSystem {
   private static instance: InteractionSystem | null = null
@@ -19,8 +20,6 @@ export class InteractionSystem {
   private eventCenter: EventCenter
   // 上下文管理器，用于管理应用状态
   private contextManager: ContextManager
-  // 响应分发器，用于处理事件响应执行具体的动作
-  private dispatcher: ActionDispatcher
   // 事件系统，用于注册事件触发器，并将事件发送到事件中心触发
   private eventSystem: EventSystem
   // 事件模块列表
@@ -43,8 +42,7 @@ export class InteractionSystem {
     // 初始化核心组件
     this.eventCenter = new EventCenter()
     this.contextManager = new ContextManager()
-    this.dispatcher = new ActionDispatcher()
-    this.eventSystem = new EventSystem(this.eventCenter, this.contextManager, this.dispatcher)
+    this.eventSystem = new EventSystem(this.eventCenter, this.contextManager)
     // 初始化事件模块
     this.initializeEventModules()
   }
@@ -53,6 +51,7 @@ export class InteractionSystem {
    * 初始化事件模块,添加需要的事件模块到列表中,通常是定时任务
    */
   private initializeEventModules(): void {
+    this.eventModules.push(new SleepEventModule(this.eventCenter))
     this.eventModules.push(new TimeEventModule(this.eventCenter))
     this.eventModules.push(new IdleEventModule(this.eventCenter))
     this.eventModules.push(new FestivalEventModule(this.eventCenter))
@@ -75,6 +74,7 @@ export class InteractionSystem {
     this.eventSystem.registerHandler(new MouseEventHandler())
     this.eventSystem.registerHandler(new ApplicationEventHandler())
     this.eventSystem.registerHandler(new SystemEventHandler())
+    this.eventSystem.registerHandler(new SleepEventHandler())
     this.handlersRegistered = true
   }
 
@@ -135,9 +135,26 @@ export class InteractionSystem {
   }
 
   /**
+   * 获取统一效果执行器。
+   * 页面层可通过该执行器注册 Live2D、样式变化等具体表现能力。
+   */
+  getEffectDispatcher(): EffectDispatcher {
+    return this.eventSystem.getEffectDispatcher()
+  }
+
+  /**
    * 手动触发事件
+   * 在睡眠模式下会过滤大部分自动事件，仅保留轻交互
    */
   triggerEvent(event: string): void {
     this.eventCenter.emit(event)
+  }
+
+  /**
+   * 判断当前是否处于睡眠模式。
+   * 睡眠状态由 sleep.* 事件写入上下文，供外部按需查询。
+   */
+  isSleepMode(): boolean {
+    return this.contextManager.get().sleepMode ?? false
   }
 }

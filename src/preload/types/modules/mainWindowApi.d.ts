@@ -373,20 +373,6 @@ export interface MainWindowApi {
     { success: true; data: SystemResources } | { success: false; error: string }
   >
 
-  /**
-   * 设置性能模式
-   */
-  setPerformanceMode: (
-    mode: 'high' | 'balanced' | 'low'
-  ) => Promise<{ success: boolean; error?: string }>
-
-  /**
-   * 获取当前性能模式
-   */
-  getPerformanceMode: () => Promise<
-    { success: true; data: string } | { success: false; error: string }
-  >
-
   onboarding: {
     getState: () => Promise<OnboardingState>
     setMode: (mode: OnboardingMode) => Promise<OnboardingState>

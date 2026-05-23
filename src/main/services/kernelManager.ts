@@ -6,8 +6,6 @@ import path from 'path'
 import axios from 'axios'
 import StreamZip from 'node-stream-zip'
 import log from '../utils/logger'
-
-import { setConfig } from '../config/configManager'
 import type { KernelRemoteVersion, KernelUpdateState } from '../../renderer/src/types/KernelInfo'
 import { resolveAppDataDir, resolveLogDir } from '../utils/pathResolve'
 import type {
@@ -805,7 +803,6 @@ class KernelManager {
 
     // 更新状态
     this.state.currentVersion = version
-    setConfig('activeKernelVersion', version)
 
     log.info(`内核 v${version} 升级完成: ${targetDir}`)
   }

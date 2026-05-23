@@ -16,18 +16,10 @@ export const useConfigStore = defineStore('config', () => {
     quietMode: false,
     desktopSpeechBoard: true,
     appSpeechBoard: true,
-    idleTime: 2,
-    mouseIdleMinutes: 5,
-    autoEventCooldownMs: 8000,
-    appReminderMinutes: 60,
-    lowBatteryThreshold: 20,
-    live2dStrokeSpeedThreshold: 360,
     assistantEnabled: false,
     currentAssistant: '',
     themeColor: '#fb7299',
-    chatShortcut: 'Alt+A',
-    pythonTasks: [],
-    performanceMode: 'balanced'
+    chatShortcut: 'Alt+A'
   })
 
   async function loadConfig(): Promise<void> {

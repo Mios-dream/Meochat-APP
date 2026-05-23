@@ -2,7 +2,6 @@ import { Live2DModel, MotionPriority, config } from 'untitled-pixi-live2d-engine
 import { Application, WebGLRenderer } from 'pixi.js'
 import throttle from '../utils/Throttle'
 import { InteractionSystem } from '@renderer/core/interaction/InteractionSystem'
-import { useConfigStore } from '../stores/useConfigStore'
 
 // 设置模型配置
 config.motionFadingDuration = 500
@@ -12,13 +11,16 @@ config.expressionFadingDuration = 500
 interface MotionFrameOptions {
   transitionMs?: number
   holdMs?: number
+  releaseTargetParams?: Record<string, number>
 }
 
 export class Live2DManager {
   // 单例模式
   private static instance: Live2DManager
-  // 是否禁用模型的自动动作和交互，进入纯展示状态
+  // 是否禁用模型,用于错误状态，静止交互
   public disabled = false
+  // 是否进入睡眠模式，睡眠模式下模型会进入类似睡梦中的状态，眼睛微闭，动作缓慢，并且注视会变为参数微调而不是直接对焦鼠标位置
+  public sleepModel = false
   // 用于清理 initListeners 注册的 DOM 事件监听器，避免重复注册
   private listenerAbortController: AbortController | null = null
   // 画布元素
@@ -41,6 +43,8 @@ export class Live2DManager {
   private ignoreState = false
   // 恢复模型可交互状态的定时器
   private restoreTimer: ReturnType<typeof setTimeout> | null = null
+  // 睡眠微动定时器，用于偶发模拟睡梦中的眼皮和表情变化
+  private sleepMicroMotionTimer: ReturnType<typeof setTimeout> | null = null
 
   // 用于画布内鼠标跟踪
   // 鼠标点击和长按状态
@@ -87,6 +91,8 @@ export class Live2DManager {
   private overlayLastTickAt = 0
   // 当前叠加层过渡时长，单位 ms，null 表示使用默认值
   private overlayTransitionMs: number | null = null
+  // 当前叠加层释放目标，默认回到参数配置里的目标值，部分动作可覆盖为触发前原值
+  private overlayReleaseTargetParams: Record<string, number> = {}
 
   // 当前口型开合度，用于语音驱动口型时的平滑过渡
   private currentMouthOpenY = 0
@@ -277,10 +283,13 @@ export class Live2DManager {
       clearTimeout(this.restoreTimer)
     }
 
+    this.stopSleepMicroMotion()
+
     this.isSpeaking = false
     this.currentMouthOpenY = 0
     this.overlayCurrentParams = {}
     this.overlayTargetParams = {}
+    this.overlayReleaseTargetParams = {}
     this.overlayHoldUntil = 0
     this.overlayLastTickAt = 0
     this.overlayTransitionMs = null
@@ -302,25 +311,15 @@ export class Live2DManager {
   }
 
   /**
-   * 禁用模型的自动动作和交互，进入纯展示状态
+   * 禁用模型
    * 返回是否成功禁用（需要模型存在）
    */
   public disabledModel(): boolean {
     if (!this.model || !this.model.internalModel) return false
 
-    // this.model.internalModel.updateFocus = () => {} // 视线跟随
-    this.model.internalModel.motionManager.state.shouldRequestIdleMotion = () => false // idle 动作
-    const eyeBlink = (
-      this.model.internalModel as unknown as {
-        eyeBlink?: { updateParameters?: (...args: unknown[]) => void }
-      }
-    ).eyeBlink
-    if (eyeBlink) {
-      eyeBlink.updateParameters = () => {}
-    }
-    // 将眼睑参数设置为闭合状态
-    this.setModelParameterValue('ParamEyeLOpen', 0)
-    this.setModelParameterValue('ParamEyeROpen', 0)
+    this.setMotionIdleEnabled(false)
+    this.setEyeBlinkEnabled(false)
+    this.setEyeOpenValue(0)
     this.disabled = true
     return true
   }
@@ -440,11 +439,9 @@ export class Live2DManager {
 
             if (this.isPositionOnModelHead(cssX, cssY)) {
               const speedPxPerSecond = (this.strokeDistance / strokeDurationMs) * 1000
-              const configStore = useConfigStore()
-              const speedThreshold = Math.max(
-                60,
-                Number(configStore.config.live2dStrokeSpeedThreshold || 360)
-              )
+
+              const speedThreshold = 360
+
               interactionSystem.triggerEvent(
                 speedPxPerSecond >= speedThreshold
                   ? 'live2d.stroke.head.heavy'
@@ -592,6 +589,7 @@ export class Live2DManager {
     this.currentMouthOpenY = 0
     this.overlayCurrentParams = {}
     this.overlayTargetParams = {}
+    this.overlayReleaseTargetParams = {}
     this.overlayHoldUntil = 0
     this.overlayLastTickAt = 0
     this.overlayTransitionMs = null
@@ -731,20 +729,6 @@ export class Live2DManager {
   }
 
   /**
-   * 取消聚焦状态
-   */
-  public disableFocus(): void {
-    if (this.isFocusEnabled) {
-      this.isFocusEnabled = false
-      // 重置模型视线到模型（中心）
-      if (this.model) {
-        // this.model.focus(this.model.x, this.model.y)
-        this.model.internalModel.focusController.focus(0, 0, false)
-      }
-    }
-  }
-
-  /**
    * 平滑地将模型焦点移回中心位置
    * @param duration 过渡持续时间（毫秒）
    */
@@ -805,6 +789,24 @@ export class Live2DManager {
     windowY: number
   ): void {
     if (!this.model || !this.app || !this.isFocusEnabled) return
+
+    // 睡眠模式下使用参数微调代替注视
+    if (this.sleepModel) {
+      const { x: centerX, y: centerY } = this.getCanvasCenter()
+      const normalizedX = (screenX - windowX - centerX) / (centerX || 1)
+      const normalizedY = (screenY - windowY - centerY) / (centerY || 1)
+
+      this.applyMotionFrame(
+        {
+          ParamAngleX: normalizedX * 5,
+          ParamAngleY: -normalizedY * 5,
+          ParamBodyAngleX: normalizedX * 5
+        },
+        { transitionMs: 300, holdMs: 500 }
+      )
+      return
+    }
+
     // 直接传入相对于窗口的坐标
     const relativeX = screenX - windowX
     const relativeY = screenY - windowY
@@ -1056,6 +1058,8 @@ export class Live2DManager {
     const holdDuration = this.clampDuration(options?.holdMs ?? this.overlayDurationMs, 300, 10000)
     // 直接更新目标参数和持续时间，不重置 overlayCurrentParams
     this.overlayTargetParams = targetParams
+    // 如果外部指定了 releaseTargetParams，使用它；否则保持现有设置（可能是上次调用时设置的，也可能是默认值）
+    this.overlayReleaseTargetParams = options?.releaseTargetParams ?? {}
     // holdUntil 设为当前时间加上持续时长，tickMotionOverlay 会根据这个时间判断是保持阶段还是释放阶段
     this.overlayHoldUntil = performance.now() + holdDuration
   }
@@ -1081,12 +1085,14 @@ export class Live2DManager {
     if (!this.model) {
       this.overlayCurrentParams = {}
       this.overlayTargetParams = {}
+      this.overlayReleaseTargetParams = {}
       this.overlayHoldUntil = 0
       this.overlayTransitionMs = null
       return
     }
     // 清空目标，让 tickMotionOverlay 执行平滑释放，不立即归零
     this.overlayTargetParams = {}
+    this.overlayReleaseTargetParams = {}
     this.overlayHoldUntil = 0
     this.overlayTransitionMs = null
   }
@@ -1132,7 +1138,7 @@ export class Live2DManager {
       // 当前值来自 overlayCurrentParams，目标值根据阶段选择 overlayTargetParams 或各参数的 releaseTargetValue
       const currentValue = this.overlayCurrentParams[paramId] ?? 0
       // 保持阶段目标为 overlayTargetParams[paramId]，释放阶段目标为参数的 releaseTargetValue（眼睛为1，其他为0）
-      const releaseTarget = cfg.releaseTargetValue ?? 0
+      const releaseTarget = this.overlayReleaseTargetParams[paramId] ?? cfg.releaseTargetValue ?? 0
       const targetValue = isHolding ? (this.overlayTargetParams[paramId] ?? 0) : releaseTarget
 
       // 用时间步长计算本帧进度，再经缓动函数映射
@@ -1143,6 +1149,7 @@ export class Live2DManager {
 
       // 释放阶段接近目标值时直接清除，避免长尾抖动
       if (!isHolding && Math.abs(nextValue - releaseTarget) < 0.005) {
+        this.setModelParameterValue(paramId, releaseTarget)
         delete this.overlayCurrentParams[paramId]
         continue
       }
@@ -1153,6 +1160,7 @@ export class Live2DManager {
     // 如果当前没有任何参数需要保持，清空目标参数，确保模型平滑过渡回默认状态
     if (!isHolding) {
       this.overlayTargetParams = {}
+      this.overlayReleaseTargetParams = {}
     }
   }
 
@@ -1163,9 +1171,6 @@ export class Live2DManager {
    */
   public async speak(audioData: ArrayBuffer, volume: number = this.volume): Promise<void> {
     if (this.disabled) return
-
-    // const audioUrl = URL.createObjectURL(new Blob([audioData]))
-    // this.model?.speak(audioUrl)
 
     return new Promise((resolve, reject) => {
       try {
@@ -1384,6 +1389,119 @@ export class Live2DManager {
       }
     }
   }, 200) // 每 200ms 检测一次
+
+  /**
+   * 进入睡眠待机状态
+   * 禁用模型自动动作、眨眼和注视，眼睛保持闭合
+   */
+  public enterSleepMode(): void {
+    if (!this.model || !this.model.internalModel) return
+
+    this.setMotionIdleEnabled(false)
+    this.setEyeBlinkEnabled(false)
+    this.setEyeOpenValue(0)
+
+    this.sleepModel = true
+    this.scheduleSleepMicroMotion()
+    console.log('[Live2D] 进入睡眠待机状态')
+  }
+
+  /**
+   * 退出睡眠状态
+   * 恢复模型自动动作
+   */
+  public exitSleepMode(): void {
+    if (!this.model || !this.model.internalModel) return
+
+    this.sleepModel = false
+    this.stopSleepMicroMotion()
+    this.setMotionIdleEnabled(true)
+    this.clearMotionFrame()
+
+    console.log('[Live2D] 退出睡眠状态')
+  }
+
+  /**
+   * 设置 idle 动画是否启用
+   */
+  private setMotionIdleEnabled(enabled: boolean): void {
+    if (!this.model?.internalModel) return
+    this.model.internalModel.motionManager.state.shouldRequestIdleMotion = () => enabled
+  }
+
+  /**
+   * 设置眨眼是否启用
+   */
+  private setEyeBlinkEnabled(enabled: boolean): void {
+    if (!this.model?.internalModel) return
+    const eyeBlink = (
+      this.model.internalModel as unknown as {
+        eyeBlink?: { updateParameters?: (...args: unknown[]) => void }
+      }
+    ).eyeBlink
+    if (eyeBlink) {
+      eyeBlink.updateParameters = enabled ? undefined : () => {}
+    }
+  }
+
+  /**
+   * 设置眼睛开合度
+   */
+  private setEyeOpenValue(value: number): void {
+    this.setModelParameterValue('ParamEyeLOpen', value)
+    this.setModelParameterValue('ParamEyeROpen', value)
+  }
+
+  /**
+   * 调度下一次睡眠微动。
+   * 睡眠状态下低频随机触发，避免规律动作破坏“睡着”的感觉。
+   */
+  private scheduleSleepMicroMotion(): void {
+    this.stopSleepMicroMotion()
+    if (!this.sleepModel || !this.model) return
+
+    const delayMs = 6000 + Math.random() * 14000
+    this.sleepMicroMotionTimer = setTimeout(() => {
+      if (!this.sleepModel || !this.model) return
+      console.log('[Live2D] 触发睡眠微动')
+      const releaseTargetParams: Record<string, number> = {
+        ParamEyeLOpen: 0,
+        ParamEyeROpen: 0
+      }
+      // 少量眼皮张开并叠加轻微表情参数，模拟睡梦中的无意识变化。
+      this.applyMotionFrame(
+        {
+          ParamEyeLOpen: 20,
+          ParamEyeROpen: 20
+        },
+        {
+          transitionMs: 200,
+          holdMs: 900,
+          releaseTargetParams
+        }
+      )
+      this.scheduleSleepMicroMotion()
+    }, delayMs)
+  }
+
+  /**
+   * 停止睡眠微动定时器。
+   * 退出睡眠或销毁模型时调用，防止睡醒后继续触发睡眠表情。
+   */
+  private stopSleepMicroMotion(): void {
+    if (this.sleepMicroMotionTimer) {
+      clearTimeout(this.sleepMicroMotionTimer)
+      this.sleepMicroMotionTimer = null
+    }
+  }
+
+  /**
+   * 获取画布中心坐标
+   */
+  private getCanvasCenter(): { x: number; y: number } {
+    if (!this.app) return { x: 0, y: 0 }
+    return { x: this.app.screen.width / 2, y: this.app.screen.height / 2 }
+  }
 
   /**
    * 将 CubismIdHandle / csmString 规范化为字符串 ID。

@@ -1,8 +1,9 @@
 import { ContextManager } from '@renderer/core/interaction/core/context'
-import { ActionDispatcher } from '@renderer/core/interaction/core/dispatcher'
+import { InteractionPayloadBuilder } from '@renderer/core/interaction/tools/payloadBuilder'
 import { IEventHandler } from '@renderer/core/interaction/types/IEventHandler'
 import { EventModule } from '@renderer/core/interaction/types/eventModules'
 import { InteractionEventPayload } from '@renderer/chat/ChatManager'
+import { InteractionEffect } from '@renderer/core/interaction/types/InteractionEffect'
 
 interface BatteryPayload {
   percent: number
@@ -99,7 +100,7 @@ export class SystemEventHandler implements IEventHandler {
     (contextManager: ContextManager) => Promise<InteractionEventPayload | null>
   > = {
     'system.charging': async (contextManager: ContextManager) => {
-      const result = ActionDispatcher.buildEventPayload({
+      const result = InteractionPayloadBuilder.buildEventPayload({
         event: 'system.charging',
         scene: '设备已接入电源并开始充电',
         context: contextManager.get(),
@@ -109,7 +110,7 @@ export class SystemEventHandler implements IEventHandler {
       return result
     },
     'system.discharging': async (contextManager: ContextManager) => {
-      const result = ActionDispatcher.buildEventPayload({
+      const result = InteractionPayloadBuilder.buildEventPayload({
         event: 'system.discharging',
         scene: '设备已切换到电池供电模式',
         context: contextManager.get(),
@@ -121,7 +122,7 @@ export class SystemEventHandler implements IEventHandler {
     'system.battery-level': async () => null,
     'system.lowBattery': async (contextManager: ContextManager) => {
       const percent = contextManager.get().batteryStatus?.percent ?? 0
-      const result = ActionDispatcher.buildEventPayload({
+      const result = InteractionPayloadBuilder.buildEventPayload({
         event: 'system.lowBattery',
         scene: `设备电量偏低，当前电量约${percent}%`,
         context: contextManager.get(),
@@ -132,19 +133,13 @@ export class SystemEventHandler implements IEventHandler {
     }
   }
 
-  async handle(
-    event: string,
-    contextManager: ContextManager,
-    dispatcher: ActionDispatcher
-  ): Promise<void> {
+  async handle(event: string, contextManager: ContextManager): Promise<InteractionEffect[]> {
     const handler = this.responseHandlers[event]
     if (!handler) {
-      return
+      return []
     }
 
     const result = await handler(contextManager)
-    if (result) {
-      await dispatcher.send(result)
-    }
+    return result ? [{ type: 'chat', payload: result }] : []
   }
 }

@@ -1,9 +1,10 @@
 import { ContextManager } from '@renderer/core/interaction/core/context'
-import { ActionDispatcher } from '@renderer/core/interaction/core/dispatcher'
+import { InteractionPayloadBuilder } from '@renderer/core/interaction/tools/payloadBuilder'
 import { IEventHandler } from '@renderer/core/interaction/types/IEventHandler'
 import { EventModule } from '@renderer/core/interaction/types/eventModules'
 import randomSelect from '@renderer/utils/RandomSelect'
 import { InteractionEventPayload } from '@renderer/chat/ChatManager'
+import { InteractionEffect } from '@renderer/core/interaction/types/InteractionEffect'
 
 interface MouseResumePayload {
   idleDurationMs: number
@@ -91,7 +92,7 @@ export class MouseEventHandler implements IEventHandler {
         '用户已经很久没有和你互动了，你可以表达一下想被关注的心情',
         `用户已经${minutes}分钟没有理你了，你可以主动找话题聊聊`
       ]
-      const result = ActionDispatcher.buildEventPayload({
+      const result = InteractionPayloadBuilder.buildEventPayload({
         event: 'mouse.resume',
         scene: randomSelect(response)!,
         context,
@@ -104,20 +105,13 @@ export class MouseEventHandler implements IEventHandler {
     'mouse.busy': async () => null
   }
 
-  async handle(
-    event: string,
-    contextManager: ContextManager,
-    dispatcher: ActionDispatcher
-  ): Promise<void> {
+  async handle(event: string, contextManager: ContextManager): Promise<InteractionEffect[]> {
     const handler = this.responseHandlers[event]
     if (!handler) {
-      return
+      return []
     }
 
     const result = await handler(contextManager)
-    if (result) {
-      await dispatcher.send(result)
-    }
+    return result ? [{ type: 'chat', payload: result }] : []
   }
 }
-

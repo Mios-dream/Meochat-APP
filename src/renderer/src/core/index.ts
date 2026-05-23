@@ -1,7 +1,7 @@
 export { InteractionSystem } from './interaction/InteractionSystem'
 export { EventCenter } from './interaction/core/eventCenter'
 export { ContextManager } from './interaction/core/context'
-export { ActionDispatcher } from './interaction/core/dispatcher'
+export { InteractionPayloadBuilder } from './interaction/tools/payloadBuilder'
 export { EventSystem } from './interaction/core/eventSystem'
 export { EventModule } from './interaction/types/eventModules'
 export type { IEventHandler } from './interaction/types/IEventHandler'

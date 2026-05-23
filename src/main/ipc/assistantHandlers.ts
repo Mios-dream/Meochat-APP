@@ -9,7 +9,6 @@ import { uIOhook } from 'uiohook-napi'
 
 import log from '../utils/logger'
 import { AssistantService } from '../services/assistantService'
-import { getConfig } from '../config/configManager'
 
 let mouseTrackingInterval: NodeJS.Timeout | null = null
 let isMousePressed = false // 追踪鼠标按下状态
@@ -169,7 +168,7 @@ function setupAssistantIPC(): void {
       } else {
         const mousePos = robot.getMousePos()
         const now = Date.now()
-        const idleThresholdMs = Math.max(1, Number(getConfig('mouseIdleMinutes') || 5)) * 60 * 1000
+        const idleThresholdMs = 5 * 60 * 1000
         const moved = mousePos.x !== lastMouseX || mousePos.y !== lastMouseY
 
         if (moved) {

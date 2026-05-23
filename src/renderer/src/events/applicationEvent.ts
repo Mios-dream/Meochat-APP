@@ -1,9 +1,9 @@
 import { InteractionEventPayload } from '@renderer/chat/ChatManager'
 import { ContextManager } from '@renderer/core/interaction/core/context'
-import { ActionDispatcher } from '@renderer/core/interaction/core/dispatcher'
+import { InteractionPayloadBuilder } from '@renderer/core/interaction/tools/payloadBuilder'
 import { IEventHandler } from '@renderer/core/interaction/types/IEventHandler'
 import { EventModule } from '@renderer/core/interaction/types/eventModules'
-import { useConfigStore } from '../stores/useConfigStore'
+import { InteractionEffect } from '@renderer/core/interaction/types/InteractionEffect'
 
 interface AppUsagePayload {
   processName: string
@@ -25,17 +25,10 @@ export class ApplicationEventModule extends EventModule {
   private readonly switchReplyProbability = 0.3
 
   private handleUsagePayload(payload: AppUsagePayload): void {
-    const configStore = useConfigStore()
-    const reminderMinutes = Math.max(10, Number(configStore.config.appReminderMinutes || 60))
+    const reminderMinutes = 60
     const thresholdMs = reminderMinutes * 60 * 1000
-    const cooldownMs = Math.max(
-      10 * 60 * 1000,
-      Number(configStore.config.autoEventCooldownMs || 8000) * 5
-    )
-    const switchCooldownMs = Math.max(
-      30 * 1000,
-      Number(configStore.config.autoEventCooldownMs || 8000)
-    )
+    const cooldownMs = 10 * 60 * 1000
+    const switchCooldownMs = 30 * 1000
     const appName = payload?.processName || 'unknown'
     const continuousMs = Number(payload?.continuousMs || 0)
     const now = Date.now()
@@ -147,7 +140,7 @@ export class ApplicationEventHandler implements IEventHandler {
     continuousMinutes: number,
     context: ReturnType<ContextManager['get']>
   ): Promise<InteractionEventPayload | null> {
-    const result = ActionDispatcher.buildEventPayload({
+    const result = InteractionPayloadBuilder.buildEventPayload({
       event: 'app.overuse',
       scene: `用户已连续使用${_appName}较长时间,应用标题${windowTitle || '未知'}；请以你扮演的角色的口吻自然地关心一下`,
       context,
@@ -163,7 +156,7 @@ export class ApplicationEventHandler implements IEventHandler {
     windowTitle: string,
     context: ReturnType<ContextManager['get']>
   ): Promise<InteractionEventPayload | null> {
-    const result = ActionDispatcher.buildEventPayload({
+    const result = InteractionPayloadBuilder.buildEventPayload({
       event: 'app.switch',
       scene: `当前用户正在使用应用${appName},应用标题${windowTitle}，请以你扮演的角色的口吻自然地回应一句`,
       context,
@@ -201,19 +194,13 @@ export class ApplicationEventHandler implements IEventHandler {
     }
   }
 
-  async handle(
-    event: string,
-    contextManager: ContextManager,
-    dispatcher: ActionDispatcher
-  ): Promise<void> {
+  async handle(event: string, contextManager: ContextManager): Promise<InteractionEffect[]> {
     const handler = this.responseHandlers[event]
     if (!handler) {
-      return
+      return []
     }
 
     const result = await handler(contextManager)
-    if (result) {
-      await dispatcher.send(result)
-    }
+    return result ? [{ type: 'chat', payload: result }] : []
   }
 }

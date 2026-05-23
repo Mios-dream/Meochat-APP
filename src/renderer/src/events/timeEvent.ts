@@ -1,8 +1,9 @@
 import { ContextManager } from '@renderer/core/interaction/core/context'
-import { ActionDispatcher } from '@renderer/core/interaction/core/dispatcher'
+import { InteractionPayloadBuilder } from '@renderer/core/interaction/tools/payloadBuilder'
 import { IEventHandler } from '@renderer/core/interaction/types/IEventHandler'
 import { EventModule } from '@renderer/core/interaction/types/eventModules'
 import { InteractionEventPayload } from '@renderer/chat/ChatManager'
+import { InteractionEffect } from '@renderer/core/interaction/types/InteractionEffect'
 
 export class TimeEventModule extends EventModule {
   private timeEventsTimer: ReturnType<typeof setTimeout> | null = null
@@ -40,7 +41,7 @@ export class TimeEventHandler implements IEventHandler {
     (contextManager: ContextManager) => Promise<InteractionEventPayload | null>
   > = {
     'time.morning': async (contextManager: ContextManager) => {
-      const result = ActionDispatcher.buildEventPayload({
+      const result = InteractionPayloadBuilder.buildEventPayload({
         event: 'time.morning',
         scene: '现在是上午了，和用户说声早安',
         context: contextManager.get(),
@@ -50,7 +51,7 @@ export class TimeEventHandler implements IEventHandler {
       return result
     },
     'time.noon': async (contextManager: ContextManager) => {
-      const result = ActionDispatcher.buildEventPayload({
+      const result = InteractionPayloadBuilder.buildEventPayload({
         event: 'time.noon',
         scene: '现在是中午了，提醒用户休息一下',
         context: contextManager.get(),
@@ -60,7 +61,7 @@ export class TimeEventHandler implements IEventHandler {
       return result
     },
     'time.afternoon': async (contextManager: ContextManager) => {
-      const result = ActionDispatcher.buildEventPayload({
+      const result = InteractionPayloadBuilder.buildEventPayload({
         event: 'time.afternoon',
         scene: '现在是下午了，和用户说声下午好',
         context: contextManager.get(),
@@ -70,7 +71,7 @@ export class TimeEventHandler implements IEventHandler {
       return result
     },
     'time.night': async (contextManager: ContextManager) => {
-      const result = ActionDispatcher.buildEventPayload({
+      const result = InteractionPayloadBuilder.buildEventPayload({
         event: 'time.night',
         scene: '现在是晚上了，如果很晚了可以关心一下用户的休息',
         context: contextManager.get(),
@@ -81,17 +82,17 @@ export class TimeEventHandler implements IEventHandler {
     }
   }
 
-  async handle(
-    event: string,
-    contextManager: ContextManager,
-    dispatcher: ActionDispatcher
-  ): Promise<void> {
-    const handler = this.responseHandlers[event]
-    if (handler) {
-      const result = await handler(contextManager)
-      if (result) {
-        await dispatcher.send(result)
-      }
+  async handle(event: string, contextManager: ContextManager): Promise<InteractionEffect[]> {
+    if (contextManager.get().sleepMode) {
+      return []
     }
+
+    const handler = this.responseHandlers[event]
+    if (!handler) {
+      return []
+    }
+
+    const result = await handler(contextManager)
+    return result ? [{ type: 'chat', payload: result }] : []
   }
 }

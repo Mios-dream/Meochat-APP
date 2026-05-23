@@ -1,10 +1,11 @@
 import { ContextManager } from '@renderer/core/interaction/core/context'
 import { InteractionEventPayload } from '@renderer/chat/ChatManager'
-import { ActionDispatcher } from '@renderer/core/interaction/core/dispatcher'
+import { InteractionPayloadBuilder } from '@renderer/core/interaction/tools/payloadBuilder'
 import { EventModule } from '@renderer/core/interaction/types/eventModules'
 import { IEventHandler } from '@renderer/core/interaction/types/IEventHandler'
 import { AssistantManager } from '../services/assistantManager'
 import lunisolar from 'lunisolar'
+import { InteractionEffect } from '@renderer/core/interaction/types/InteractionEffect'
 
 class FestivalEventHandler implements IEventHandler {
   eventType = 'festival'
@@ -67,23 +68,19 @@ class FestivalEventHandler implements IEventHandler {
       const assistantName = assistant?.name || '助手'
       return this.generateFestivalMessage(
         `${assistantName}的生日`,
-        `今天�?{assistantName}的生日，这是一个属于助手自己的节日！为自己庆祝一下吧！`
+        `今天是${assistantName}的生日，这是一个属于助手自己的节日！为自己庆祝一下吧！`
       )
     }
   }
 
-  async handle(
-    event: string,
-    contextManager: ContextManager,
-    dispatcher: ActionDispatcher
-  ): Promise<void> {
+  async handle(event: string, contextManager: ContextManager): Promise<InteractionEffect[]> {
     const handler = this.responseHandlers[event]
-    if (handler) {
-      const result = await handler(contextManager)
-      if (result) {
-        await dispatcher.send(result)
-      }
+    if (!handler) {
+      return []
     }
+
+    const result = await handler(contextManager)
+    return result ? [{ type: 'chat', payload: result }] : []
   }
 
   private async generateFestivalMessage(
@@ -91,9 +88,9 @@ class FestivalEventHandler implements IEventHandler {
     festivalDescription: string,
     context?: ReturnType<ContextManager['get']>
   ): Promise<InteractionEventPayload | null> {
-    const result = ActionDispatcher.buildEventPayload({
+    const result = InteractionPayloadBuilder.buildEventPayload({
       event: `festival.${festivalName}`,
-      scene: `当前节日�?{festivalName}。节日描述：${festivalDescription}。请给出节日氛围感祝福。`,
+      scene: `当前节日为${festivalName}。节日描述：${festivalDescription}。请给出节日氛围感祝福。`,
       context: context || { lastInteraction: Date.now(), isBusy: false },
       maxLength: 100,
       fallback: `${festivalName}快乐，愿你今天也有好心情。`

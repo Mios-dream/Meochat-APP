@@ -69,6 +69,16 @@ const wakewordService = WakewordService.getInstance()
 // Tips更新定时器,定时更新Tips内容以保持与语音输出同步
 let tipsUpdateInterval: ReturnType<typeof setTimeout> | null = null
 
+/**
+ * 注册由事件系统驱动的 Live2D 表现副作用。
+ * 事件处理器只声明 Live2D 动作，具体模型调用集中在页面初始化阶段绑定。
+ */
+function registerLive2DEffects(): void {
+  const effectDispatcher = interactionSystem.getEffectDispatcher()
+  effectDispatcher.register('live2d.enterSleep', () => live2DManager.enterSleepMode())
+  effectDispatcher.register('live2d.exitSleep', () => live2DManager.exitSleepMode())
+}
+
 // 计算属性
 const contextMenuItems = computed(() => [
   {
@@ -308,6 +318,7 @@ onMounted(async () => {
   // 初始化模型，只有成功加载模型后才启用服务
   const modelLoaded = await initAssistantModel()
   if (modelLoaded) {
+    registerLive2DEffects()
     syncInteractionSystemState()
     try {
       await syncWakewordState()
@@ -320,24 +331,20 @@ onMounted(async () => {
 
   // 注册语音播放事件 — 用于控制Tips窗口
   chatService.onSpeechStart(async (message) => {
-    try {
-      const isVisible = await window.api.isAssistantVisible()
-      // const isVisible = false // 暂时不检查窗口可见性，直接显示Tips
-      console.log('语音开始播放，当前窗口可见:', isVisible)
-      if (!isVisible) {
-        // console.log('语音开始播放，显示Tips:', message)
-        window.api.showTips(message)
-        // 定期更新Tips消息内容
-        tipsUpdateInterval = setInterval(() => {
-          const currentText = chatService.getCurrentDisplayText()
-          // console.log('更新Tips内容:', currentText)
-          if (currentText) {
-            window.api.updateTips(currentText)
-          }
-        }, 1000)
-      }
-    } catch {
-      // Tips不可用时静默处理
+    const isVisible = await window.api.isAssistantVisible()
+    // const isVisible = false // 暂时不检查窗口可见性，直接显示Tips
+    console.log('语音开始播放，当前窗口可见:', isVisible)
+    if (!isVisible) {
+      // console.log('语音开始播放，显示Tips:', message)
+      window.api.showTips(message)
+      // 定期更新Tips消息内容
+      tipsUpdateInterval = setInterval(() => {
+        const currentText = chatService.getCurrentDisplayText()
+        // console.log('更新Tips内容:', currentText)
+        if (currentText) {
+          window.api.updateTips(currentText)
+        }
+      }, 1000)
     }
   })
 

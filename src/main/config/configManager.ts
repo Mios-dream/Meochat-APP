@@ -26,18 +26,6 @@ const schema: Schema<AppConfig> = {
   desktopSpeechBoard: { type: 'boolean', default: true },
   // 是否启用应用内台词板
   appSpeechBoard: { type: 'boolean', default: true },
-  // 应用使用提醒时间，单位分钟
-  idleTime: { type: 'number', default: 2 },
-  // 闲置认定时间，单位分钟
-  mouseIdleMinutes: { type: 'number', default: 5 },
-  // 自动事件全局冷却时间，单位毫秒
-  autoEventCooldownMs: { type: 'number', default: 8000 },
-  // 同一应用持续使用提醒时间，单位分钟
-  appReminderMinutes: { type: 'number', default: 60 },
-  // 低电量阈值，单位百分比
-  lowBatteryThreshold: { type: 'number', default: 20 },
-  // Live2D 抚摸速度阈值，单位像素/秒
-  live2dStrokeSpeedThreshold: { type: 'number', default: 360 },
   // 助手是否开启
   assistantEnabled: { type: 'boolean', default: false },
   // 当前助手
@@ -46,10 +34,6 @@ const schema: Schema<AppConfig> = {
   themeColor: { type: 'string', default: '#fb7299' },
   // 聊天快捷键
   chatShortcut: { type: 'string', default: 'Alt+A' },
-  // Python服务配置
-  pythonTasks: { type: 'array', default: [] },
-  // 性能模式
-  performanceMode: { type: 'string', default: 'balanced' },
   // 助手窗口位置和大小
   assistantWindowBounds: {
     type: 'object'

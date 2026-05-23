@@ -20,6 +20,7 @@ export class EventCenter {
   /**
    * 触发事件
    * @param event
+   * @param context - 可选的事件上下文数据，处理器可以根据这些数据做出不同的响应
    */
   emit(event: string, context?: Partial<Context>): void {
     // console.log(`事件触发: ${event}`)

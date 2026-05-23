@@ -1,7 +1,6 @@
 import { BrowserWindow, powerMonitor, app, ipcMain } from 'electron'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
-import { getConfig } from '../config/configManager'
 import { ForegroundAppMonitor, ForegroundAppUsagePayload } from '../services/foregroundAppMonitor'
 
 const execFileAsync = promisify(execFile)
@@ -84,7 +83,7 @@ async function broadcastBatteryStatus(): Promise<void> {
     return
   }
 
-  const threshold = Number(getConfig('lowBatteryThreshold') || 20)
+  const threshold = 20
   broadcast('assistantEvent:battery-level', {
     percent: battery.percent,
     isCharging: battery.isCharging,
