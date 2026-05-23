@@ -83,6 +83,7 @@ function registerLive2DEffects(): void {
 
 /**
  * 注册 Live2D 点击/抚摸回调。
+ * 睡眠模式下触摸有 70% 概率触发唤醒，30% 概率保留原交互逻辑。
  */
 function registerLive2DInteractionBridge(): void {
   const partEventMap = {
@@ -96,6 +97,10 @@ function registerLive2DInteractionBridge(): void {
   }
 
   live2DManager.onTap((partName) => {
+    if (interactionSystem.isSleepMode() && Math.random() < 0.7) {
+      interactionSystem.triggerEvent('sleep.wakeup')
+      return
+    }
     interactionSystem.triggerEvent(partEventMap[partName])
   })
 }

@@ -8,6 +8,8 @@ export interface EventReplyRequest {
   maxLength?: number
   extraRules?: string[]
   fallback?: string
+  /** 是否保持睡眠闭眼状态，梦呓等场景下为 true，不触发眼皮微张。 */
+  keepSleepEyes?: boolean
 }
 
 /**
@@ -26,7 +28,8 @@ export class InteractionPayloadBuilder {
       context: request.context as unknown as Record<string, unknown>,
       generation_motion: false,
       include_history: true,
-      history_limit: 5
+      history_limit: 5,
+      keepSleepEyes: request.keepSleepEyes
     }
   }
 }

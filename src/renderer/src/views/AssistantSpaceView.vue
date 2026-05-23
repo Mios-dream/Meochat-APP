@@ -408,7 +408,18 @@ async function sendOnboardingWelcomeIfNeeded(): Promise<void> {
 }
 
 /**
+ * 注册由事件系统驱动的 Live2D 表现副作用。
+ * 事件处理器只声明 Live2D 动作，具体模型调用集中在页面初始化阶段绑定。
+ */
+function registerLive2DEffects(): void {
+  const effectDispatcher = interactionSystem.getEffectDispatcher()
+  effectDispatcher.register('live2d.enterSleep', () => live2DManager.enterSleepMode())
+  effectDispatcher.register('live2d.exitSleep', () => live2DManager.exitSleepMode())
+}
+
+/**
  * 注册 Live2D 点击/抚摸回调。
+ * 睡眠模式下触摸有 70% 概率触发唤醒，30% 概率保留原交互逻辑。
  */
 function registerLive2DInteractionBridge(): void {
   const partEventMap = {
@@ -422,6 +433,10 @@ function registerLive2DInteractionBridge(): void {
   }
 
   live2DManager.onTap((partName) => {
+    if (interactionSystem.isSleepMode() && Math.random() < 0.7) {
+      interactionSystem.triggerEvent('sleep.wakeup')
+      return
+    }
     interactionSystem.triggerEvent(partEventMap[partName])
   })
 }
@@ -440,6 +455,7 @@ onMounted(async () => {
       return
     }
     await sendOnboardingWelcomeIfNeeded()
+    registerLive2DEffects()
     registerLive2DInteractionBridge()
     interactionSystem.start()
     // 监听来自ChatBox的消息

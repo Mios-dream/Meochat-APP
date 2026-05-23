@@ -26,6 +26,8 @@ export interface InteractionEventPayload {
   include_history?: boolean
   /** 后端读取历史上下文时的数量限制。 */
   history_limit?: number
+  /** 是否保持睡眠闭眼状态，梦呓等场景下为 true，不触发眼皮微张。 */
+  keepSleepEyes?: boolean
 }
 
 /**
@@ -217,6 +219,7 @@ class ChatManager {
       const configStore = useConfigStore()
       const useMotionGenerate = configStore.config.generateMotion
       this.streamProcessor.reset(useMotionGenerate)
+      this.playbackController.setKeepSleepEyesClosed(payload.keepSleepEyes === true)
       this.abortController = new AbortController()
 
       const response = await fetch(this.apiUrl.value + '/api/interaction/message', {

@@ -43,6 +43,8 @@ export class ChatPlaybackController {
   private isPlaying = false
   /** 当前播放循环是否是在睡眠模式下启动，用于结束后恢复睡眠表情。 */
   private sleepTalkActive = false
+  /** 是否保持睡眠闭眼状态，不触发眼皮微张。 */
+  private keepSleepEyesClosed = false
   /** 当前播放音量，范围 0-1。 */
   private volume = 1.0
   /** 当前累积展示在台词板上的回复文本。 */
@@ -73,6 +75,11 @@ export class ChatPlaybackController {
   /** 重置台词板累积文本，通常在新回复开始或中断时调用。 */
   public resetDisplayText(): void {
     this.currentDisplayText = ''
+  }
+
+  /** 设置是否保持睡眠闭眼状态，梦呓等场景下不触发眼皮微张。 */
+  public setKeepSleepEyesClosed(keep: boolean): void {
+    this.keepSleepEyesClosed = keep
   }
 
   /** 获取当前累积展示文本。 */
@@ -176,6 +183,7 @@ export class ChatPlaybackController {
   /** 如果当前处于睡眠模式，则在整段回复期间切换为半睡半醒眼神。 */
   private startSleepTalkMotionIfNeeded(): void {
     if (!this.live2DManager?.sleepModel) return
+    if (this.keepSleepEyesClosed) return
 
     this.sleepTalkActive = true
     this.live2DManager.startSleepTalkMotion()

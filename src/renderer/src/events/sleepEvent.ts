@@ -7,11 +7,12 @@ import { AssistantManager } from '@renderer/services/assistantManager'
 import { InteractionEffect } from '@renderer/core/interaction/types/InteractionEffect'
 
 /** 睡眠时间段配置 */
-const SLEEP_TIME = { startHour: 13, endHour: 7 }
+const SLEEP_TIME = { startHour: 23, endHour: 7 }
 /** 睡眠状态检查间隔 (毫秒) */
 const SLEEP_CHECK_INTERVAL = 60 * 1000
 /** 梦话触发间隔配置 (毫秒) */
-const DREAM_TALK_INTERVAL = { min: 10 * 60 * 1000, max: 30 * 60 * 1000 }
+// const DREAM_TALK_INTERVAL = { min: 10 * 60 * 1000, max: 30 * 60 * 1000 }
+const DREAM_TALK_INTERVAL = { min: 30 * 1000, max: 60 * 1000 }
 
 /**
  * 睡眠事件模块
@@ -162,10 +163,11 @@ export class SleepEventHandler implements IEventHandler {
       const assistant = AssistantManager.getInstance().getCurrentAssistant()
       return InteractionPayloadBuilder.buildEventPayload({
         event: 'sleep.talk',
-        scene: `${assistant?.name}正在睡觉，无意中说了一些梦话，梦话内容要符合${assistant?.name}的性格和近期经历，语句可以不完整、逻辑跳跃`,
+        scene: `${assistant?.name}正在睡觉，无意中说了一些梦话，语句可以不完整、逻辑跳跃`,
         context: contextManager.get(),
         maxLength: 20,
-        fallback: '（梦呓）嗯...不要...'
+        fallback: '（梦呓）嗯...不要...',
+        keepSleepEyes: true
       })
     }
   }
