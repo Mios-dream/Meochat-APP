@@ -41,6 +41,8 @@ export class ChatPlaybackController {
   private playbackQueue: ChatPlaybackSegment[] = []
   /** 防止重复启动播放循环。 */
   private isPlaying = false
+  /** 当前播放循环是否是在睡眠模式下启动，用于结束后恢复睡眠表情。 */
+  private sleepTalkActive = false
   /** 当前播放音量，范围 0-1。 */
   private volume = 1.0
   /** 当前累积展示在台词板上的回复文本。 */
@@ -116,6 +118,7 @@ export class ChatPlaybackController {
     this.motionSequenceToken++
     this.live2DManager?.clearMotionFrame()
     this.live2DManager?.stopSpeaking()
+    this.finishSleepTalkMotion()
   }
 
   /**
@@ -127,6 +130,7 @@ export class ChatPlaybackController {
     if (this.isPlaying || this.playbackQueue.length === 0) return
 
     this.isPlaying = true
+    this.startSleepTalkMotionIfNeeded()
 
     try {
       let speechStarted = false
@@ -164,8 +168,25 @@ export class ChatPlaybackController {
       }
     } finally {
       this.isPlaying = false
+      this.finishSleepTalkMotion()
       this.notifySpeechEnd()
     }
+  }
+
+  /** 如果当前处于睡眠模式，则在整段回复期间切换为半睡半醒眼神。 */
+  private startSleepTalkMotionIfNeeded(): void {
+    if (!this.live2DManager?.sleepModel) return
+
+    this.sleepTalkActive = true
+    this.live2DManager.startSleepTalkMotion()
+  }
+
+  /** 整段回复结束或中断后，恢复睡眠闭眼表现。 */
+  private finishSleepTalkMotion(): void {
+    if (!this.sleepTalkActive) return
+
+    this.sleepTalkActive = false
+    this.live2DManager?.stopSleepTalkMotion()
   }
 
   /** 播放带音频的队列项，优先使用 Live2DManager，缺失时降级为普通 Audio 播放。 */

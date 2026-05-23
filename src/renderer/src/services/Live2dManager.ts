@@ -151,7 +151,7 @@ export class Live2DManager {
 
     this.pointerController.destroy()
 
-    this.sleepController.stopSleepMicroMotion()
+    this.sleepController.reset()
     this.speechController.reset()
     this.motionOverlayController.reset()
 
@@ -238,6 +238,7 @@ export class Live2DManager {
     // 模型切换后重置语音/动作覆盖状态，避免沿用旧模型参数状态
     this.speechController.reset()
     this.motionOverlayController.reset()
+    this.sleepController.reset()
 
     this.motionHookController.reset()
     this.installMotionManagerHook()
@@ -449,6 +450,7 @@ export class Live2DManager {
    */
   private handleAfterMotionUpdate(): void {
     this.motionOverlayController.tick(performance.now(), this.model?.internalModel.coreModel)
+    this.sleepController.flushSleepParameters()
 
     // 最后写入口型，确保语音驱动不被动作覆盖。
     if (this.speechController.isSpeaking()) {
@@ -482,6 +484,20 @@ export class Live2DManager {
   }
 
   /**
+   * 睡眠模式下对话开始时，让模型保持半睡半醒的眼神表现。
+   */
+  public startSleepTalkMotion(): void {
+    this.sleepController.startDrowsyTalkEyeMotion()
+  }
+
+  /**
+   * 睡眠模式下对话结束时，让模型重新闭眼回到睡眠待机表现。
+   */
+  public stopSleepTalkMotion(): void {
+    this.sleepController.stopDrowsyTalkEyeMotion()
+  }
+
+  /**
    * 播放音频,并同步口型 (使用二进制音频数据)
    * @param audioData 音频二进制数据
    * @param volume 音量值 (0.0 to 1.0)
@@ -507,7 +523,7 @@ export class Live2DManager {
       (enabled) => this.setMotionIdleEnabled(enabled),
       (enabled) => this.setEyeBlinkEnabled(enabled),
       (value) => this.setEyeOpenValue(value),
-      (parameters, options) => this.applyMotionFrame(parameters, options)
+      (parameters) => this.applySleepParameters(parameters)
     )
   }
 
@@ -551,5 +567,16 @@ export class Live2DManager {
   private setEyeOpenValue(value: number): void {
     this.setModelParameterValue('ParamEyeLOpen', value)
     this.setModelParameterValue('ParamEyeROpen', value)
+  }
+
+  /**
+   * 直接写入睡眠模式眼部参数，避免被动作覆盖层释放逻辑干扰。
+   */
+  private applySleepParameters(parameters: Record<string, number>): void {
+    if (!this.model) return
+
+    for (const [paramId, value] of Object.entries(parameters)) {
+      this.setModelParameterValue(paramId, value)
+    }
   }
 }

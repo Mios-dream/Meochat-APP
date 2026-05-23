@@ -86,7 +86,8 @@ export class EventSystem {
   }
 
   /**
-   * 分发事件：根据事件类型找到处理器，更新上下文并执行处理器逻辑，捕获错误
+   * 分发事件：根据事件类型找到处理器，更新上下文并执行处理器逻辑，捕获错误。
+   * 睡眠模式过滤由各处理器自行读取上下文决定，不在调度层统一拦截。
    * @param event 完整事件字符串（如 "mouse.idle"），根据类型找到处理器并执行，更新上下文的 lastEventTime 和 lastEventType
    */
   private dispatchEvent(event: string): void {
@@ -99,7 +100,6 @@ export class EventSystem {
         lastEventType: event
       })
 
-      // 触发事件处理器逻辑，获取返回的效果列表并交由效果执行器处理，捕获并记录错误
       handler
         .handle(event, this.contextManager)
         .then((effects) => this.effectDispatcher.dispatchAll(effects))

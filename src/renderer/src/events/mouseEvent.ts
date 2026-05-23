@@ -106,6 +106,10 @@ export class MouseEventHandler implements IEventHandler {
   }
 
   async handle(event: string, contextManager: ContextManager): Promise<InteractionEffect[]> {
+    if (contextManager.get().sleepMode) {
+      return []
+    }
+
     const handler = this.responseHandlers[event]
     if (!handler) {
       return []
