@@ -98,7 +98,7 @@ class ChatManager {
 
   /** 获取当前助手的本地聊天历史。 */
   public getChatHistory(): ChatMessage[] {
-    return this.chatHistoryStore.get(this.getCurrentAssistantName())
+    return this.chatHistoryStore.get()
   }
 
   /** 从后端拉取当前助手聊天历史，并同步到本地历史缓存。 */
@@ -115,7 +115,7 @@ class ChatManager {
     }
 
     const result = (await response.json()) as ChatHistoryApiResponse
-    return this.chatHistoryStore.syncFromApi(result, this.getCurrentAssistantName())
+    return this.chatHistoryStore.syncFromApi(result)
   }
 
   /** 清空全部助手的本地聊天历史缓存。 */
@@ -170,8 +170,7 @@ class ChatManager {
     this.interruptCurrentPlayback()
 
     try {
-      const assistantName = this.getCurrentAssistantName()
-      this.chatHistoryStore.push(assistantName, { role: 'user', content: message })
+      this.chatHistoryStore.push({ role: 'user', content: message })
       this.abortController = new AbortController()
 
       const configStore = useConfigStore()
@@ -184,7 +183,7 @@ class ChatManager {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          msg: this.chatHistoryStore.get(assistantName),
+          msg: this.chatHistoryStore.get(),
           generation_motion: useMotionGenerate
         }),
         signal: this.abortController.signal
@@ -205,7 +204,7 @@ class ChatManager {
       }
 
       console.error('请求失败:', error)
-      this.chatHistoryStore.popLast(this.getCurrentAssistantName())
+      this.chatHistoryStore.popLast()
       return false
     }
   }
@@ -351,16 +350,11 @@ class ChatManager {
   private handleStreamComplete(finalText?: string): void {
     const textToSave = (finalText || this.getCurrentDisplayText()).trim()
     if (textToSave) {
-      this.chatHistoryStore.push(this.getCurrentAssistantName(), {
+      this.chatHistoryStore.push({
         role: 'assistant',
         content: textToSave
       })
     }
-  }
-
-  /** 获取当前助手名称，缺失时返回空字符串以兼容旧逻辑。 */
-  private getCurrentAssistantName(): string {
-    return this.assistantManager.getCurrentAssistant()?.name || ''
   }
 
   /** 刷新当前助手数据，失败只记录日志，不影响聊天主流程。 */

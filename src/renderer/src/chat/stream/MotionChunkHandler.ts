@@ -15,19 +15,10 @@ export class MotionChunkHandler {
   /** 规范化并合并动作帧到对应 sentence_id 的同步状态。 */
   public handle(data: ChatMotionChunk): void {
     const motionSequence = normalizeMotionFrame(data)
-
-    if (motionSequence.length === 0) return
-
     const state = this.context.getSentenceState(data.sentence_id)
-
-    if (data.source_text && !state.displayMessage) {
-      state.displayMessage = data.source_text
-      if (!state.message) {
-        state.message = data.source_text
-      }
-    }
-
-    state.motionSequence = [...(state.motionSequence || []), ...motionSequence]
+    state.motionSequence = motionSequence
+    state.message = data.source_text
+    state.motionChunkState = true
     this.context.setSentenceState(data.sentence_id, state)
   }
 }

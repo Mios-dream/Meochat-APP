@@ -13,26 +13,14 @@ export class AudioChunkHandler {
   public handle(data: ChatAudioChunk): void {
     const state = this.context.getSentenceState(data.sentence_id)
     const hasAudioFile = Boolean(data.file)
-    const hasSpokenMessage = Boolean(data.message?.trim())
-    const hasSourceText = Boolean(data.source_text?.trim())
-
-    if (hasSourceText) {
-      state.displayMessage = data.source_text
-    }
-    if (hasSpokenMessage) {
-      state.message = data.message
-      if (!hasSourceText && !state.displayMessage) {
-        state.displayMessage = data.message
-      }
-    }
 
     if (hasAudioFile) {
       state.audioBlob = audioBase64ToBlob(data.file, 'audio/wav')
-      state.audioMissing = false
     } else {
-      state.audioMissing = true
       state.audioBlob = undefined
     }
+
+    state.audioChunkState = true
 
     this.context.setSentenceState(data.sentence_id, state)
   }

@@ -30,37 +30,39 @@ const MAX_HISTORY_LENGTH = 20
  */
 export class ChatHistoryStore {
   /** key 为助手名称，value 为该助手最近的聊天上下文。 */
-  private history: Map<string, ChatMessage[]> = new Map()
+  private history: ChatMessage[]
+
+  constructor() {
+    this.history = []
+  }
 
   /** 获取指定助手的聊天历史；没有缓存时返回空数组。 */
-  public get(assistantName: string): ChatMessage[] {
-    return this.history.get(assistantName) || []
+  public get(): ChatMessage[] {
+    return this.history || []
   }
 
   /** 新增一条历史消息，并按最大历史长度裁剪。 */
-  public push(assistantName: string, message: ChatMessage): void {
-    const messages = this.history.get(assistantName) || []
-    messages.push(message)
-    this.history.set(assistantName, trimChatHistory(messages, MAX_HISTORY_LENGTH))
+  public push(message: ChatMessage): void {
+    this.history.push(message)
+    this.history = trimChatHistory(this.history, MAX_HISTORY_LENGTH)
   }
 
   /** 删除指定助手最后一条消息，通常用于用户消息发送失败后的回滚。 */
-  public popLast(assistantName: string): void {
-    const messages = this.history.get(assistantName)
-    if (messages && messages.length > 0) {
-      messages.pop()
+  public popLast(): void {
+    if (this.history.length > 0) {
+      this.history.pop()
     }
   }
 
   /** 使用后端历史接口返回值同步本地缓存。 */
-  public syncFromApi(result: ChatHistoryApiResponse, currentAssistantName: string): ChatMessage[] {
+  public syncFromApi(result: ChatHistoryApiResponse): ChatMessage[] {
     const normalizedHistory = normalizeChatHistory(result.data)
     const assistantNameFromResponse =
       typeof result.assistant === 'string' ? result.assistant.trim() : ''
-    const assistantName = assistantNameFromResponse || currentAssistantName
+    const assistantName = assistantNameFromResponse
 
     if (assistantName) {
-      this.history.set(assistantName, trimChatHistory(normalizedHistory, MAX_HISTORY_LENGTH))
+      this.history = trimChatHistory(normalizedHistory, MAX_HISTORY_LENGTH)
     }
 
     return normalizedHistory
@@ -68,7 +70,7 @@ export class ChatHistoryStore {
 
   /** 清空全部助手的本地历史缓存。 */
   public clear(): void {
-    this.history = new Map()
+    this.history = []
   }
 }
 

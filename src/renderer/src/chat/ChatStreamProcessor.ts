@@ -14,7 +14,7 @@ export interface ChatTextChunk {
   /** 句子序号，用于和同句的音频、动作帧配对。 */
   sentence_id: number
   /** 保留括号动作描述的原文，台词板展示优先使用它。 */
-  source_text: string
+  message: string
   /** 后端可选完成标记。 */
   done?: boolean
 }
@@ -73,12 +73,14 @@ export interface SentenceAssemblyState {
   sentenceId: number
   /** 台词板展示优先文本。 */
   displayMessage: string
-  /** 实际朗读文本或文本兜底内容。 */
-  message: string
+  /** 实际朗读文本 */
+  message?: string
+  /** 判断当前句子是否已接收音频 chunk。 */
+  audioChunkState?: boolean
   /** 当前句子的语音 Blob。 */
   audioBlob?: Blob
-  /** 后端已明确返回无音频，用于允许仅动作或仅文本入队。 */
-  audioMissing: boolean
+  /** 判断当前句子是否已接收动作 chunk。 */
+  motionChunkState?: boolean
   /** 当前句子的动作序列。 */
   motionSequence?: Live2DMotionStep[]
   /** 是否已经进入播放队列，防止重复入队。 */
@@ -102,11 +104,11 @@ export class ChatStreamProcessor implements SentenceAssemblyContext {
   /** 按 sentence_id 暂存尚未满足入队条件的文本、音频和动作。 */
   private pendingSentences: Map<number, SentenceAssemblyState> = new Map()
   /** 下一个允许入队的 sentence_id，确保播放顺序稳定。 */
-  private nextSentenceId: number | null = null
+  private nextSentenceId: number = 1
   /** SSE 文本缓冲区，用于处理网络 chunk 截断 JSON 行的问题。 */
   private chunkBuffer = ''
   /** 当前回复是否期望动作帧，用于决定有音频但还没动作时能否提前入队。 */
-  private expectMotionForStream = false
+  private useMotion = false
   /** 文本 chunk 处理器。 */
   private readonly textHandler = new TextChunkHandler(this)
   /** 音频 chunk 处理器。 */
@@ -124,17 +126,17 @@ export class ChatStreamProcessor implements SentenceAssemblyContext {
   ) {}
 
   /** 开始新一轮流式回复前重置内部状态。 */
-  public reset(expectMotionForStream: boolean): void {
+  public reset(useMotion: boolean): void {
     this.pendingSentences.clear()
-    this.nextSentenceId = null
+    this.nextSentenceId = 1
     this.chunkBuffer = ''
-    this.expectMotionForStream = expectMotionForStream
+    this.useMotion = useMotion
   }
 
   /** 清除所有待同步数据和残留缓冲，通常用于中断当前回复。 */
   public clearPending(): void {
     this.pendingSentences.clear()
-    this.nextSentenceId = null
+    this.nextSentenceId = 1
     this.chunkBuffer = ''
   }
 
@@ -154,7 +156,6 @@ export class ChatStreamProcessor implements SentenceAssemblyContext {
       sentenceId,
       displayMessage: '',
       message: '',
-      audioMissing: false,
       isQueued: false
     }
   }
@@ -239,17 +240,17 @@ export class ChatStreamProcessor implements SentenceAssemblyContext {
     switch (data.type) {
       case 'text':
         this.textHandler.handle(data)
+        this.checkAndEnqueue(data.sentence_id)
         return
       case 'motion_frame':
         this.motionHandler.handle(data)
-        await this.queueReadySegments()
+        this.checkAndEnqueue(data.sentence_id)
         return
       case 'audio':
         this.audioHandler.handle(data)
-        await this.queueReadySegments()
+        this.checkAndEnqueue(data.sentence_id)
         return
       case 'done':
-        await this.queueRemainingSegmentsOnComplete()
         this.onComplete(data.full_text)
         return
       default:
@@ -257,78 +258,27 @@ export class ChatStreamProcessor implements SentenceAssemblyContext {
     }
   }
 
-  /** 把当前已满足条件的句子按 sentence_id 严格顺序入队。 */
-  private async queueReadySegments(): Promise<void> {
-    while (true) {
-      const sentenceId = this.resolveNextSentenceId()
-      if (sentenceId === null) {
-        break
-      }
-
-      const state = this.pendingSentences.get(sentenceId)
-      if (!state || state.isQueued) {
-        break
-      }
-
-      const hasMotion = Boolean(state.motionSequence?.length)
-      const hasAudio = Boolean(state.audioBlob)
-      const displayMessage = state.displayMessage || state.message
-      const hasDisplayText = Boolean(displayMessage.trim())
-      const canQueue =
-        (hasAudio && hasMotion) ||
-        (hasMotion && state.audioMissing) ||
-        (hasAudio && !this.expectMotionForStream) ||
-        (!hasAudio && !hasMotion && state.audioMissing && hasDisplayText)
-
-      if (!canQueue) break
-
-      const segment = await this.createQueueSegment(
-        state,
-        displayMessage,
-        hasMotion,
-        hasDisplayText
-      )
-
-      state.isQueued = true
-      this.pendingSentences.delete(sentenceId)
-      this.nextSentenceId = sentenceId + 1
-      this.enqueue(segment)
-    }
-  }
-
-  /** 完成事件兜底刷新，避免回复尾部因为缺少动作或音频而丢失。 */
-  private async queueRemainingSegmentsOnComplete(): Promise<void> {
-    if (this.pendingSentences.size === 0) {
+  /** 检查指定 sentence_id 是否满足入队条件，满足时创建播放段并入队。 */
+  private checkAndEnqueue(sentenceId: number): void {
+    const state = this.pendingSentences.get(sentenceId)
+    if (!state || state.isQueued) {
       return
     }
-
-    const sentenceIds = Array.from(this.pendingSentences.keys()).sort((a, b) => a - b)
-
-    for (const sentenceId of sentenceIds) {
-      const state = this.pendingSentences.get(sentenceId)
-      if (!state || state.isQueued) {
-        continue
-      }
-
-      const hasMotion = Boolean(state.motionSequence?.length)
-      const hasAudio = Boolean(state.audioBlob)
-      const displayMessage = state.displayMessage || state.message
-      const hasDisplayText = Boolean(displayMessage.trim())
-
-      if (!hasMotion && !hasAudio && !hasDisplayText) {
-        this.pendingSentences.delete(sentenceId)
-        continue
-      }
-
-      const segment = await this.createQueueSegment(
-        state,
-        displayMessage,
-        hasMotion,
-        hasDisplayText
-      )
+    // 如果预期有动作但还没收到动作 chunk，进行等待。如果没有动作预期则不等待，收到音频 chunk 就入队，保证有内容可播。
+    const motionAvailable = this.useMotion ? state.motionChunkState : true
+    const audioAvailable = state.audioChunkState || false
+    if (motionAvailable && audioAvailable) {
       state.isQueued = true
-      this.pendingSentences.delete(sentenceId)
-      this.enqueue(segment)
+      this.createQueueSegment(
+        state,
+        state.displayMessage,
+        Boolean(state.motionSequence),
+        Boolean(state.displayMessage)
+      ).then((segment) => {
+        this.enqueue(segment)
+        this.pendingSentences.delete(sentenceId)
+      })
+      this.nextSentenceId += 1
     }
   }
 
@@ -353,24 +303,6 @@ export class ChatStreamProcessor implements SentenceAssemblyContext {
     }
 
     return segment
-  }
-
-  /** 解析下一个可尝试出队的 sentence_id。 */
-  private resolveNextSentenceId(): number | null {
-    if (this.pendingSentences.size === 0) {
-      return null
-    }
-
-    if (this.nextSentenceId === null) {
-      const allIds = Array.from(this.pendingSentences.keys())
-      this.nextSentenceId = Math.min(...allIds)
-    }
-
-    if (this.nextSentenceId === null || !this.pendingSentences.has(this.nextSentenceId)) {
-      return null
-    }
-
-    return this.nextSentenceId
   }
 }
 
