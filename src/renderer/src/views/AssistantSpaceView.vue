@@ -482,6 +482,7 @@ onUnmounted(() => {
   if (configStore.config.assistantEnabled) {
     window.api.openAssistant()
   }
+  interactionSystem.stop()
   live2DManager.destroy()
 })
 
