@@ -161,7 +161,7 @@ class ChatManager {
   }
 
   /** 发送用户聊天消息。 */
-  public async chat(message: string): Promise<boolean> {
+  public async chat(message: string, isSleepMode: boolean = false): Promise<boolean> {
     if (!message || !message.trim()) {
       return false
     }
@@ -184,7 +184,8 @@ class ChatManager {
         },
         body: JSON.stringify({
           msg: this.chatHistoryStore.get(),
-          generation_motion: useMotionGenerate
+          generation_motion: useMotionGenerate,
+          is_sleep_mode: isSleepMode
         }),
         signal: this.abortController.signal
       })

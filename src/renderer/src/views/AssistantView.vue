@@ -352,8 +352,10 @@ onMounted(async () => {
   // 监听来自ChatBox的消息
   window.api.ipcRenderer.on('chat-box:send-message', async (_, data) => {
     try {
+      // 获取当前睡眠模式状态，传递给后端识别
+      const isSleepMode = interactionSystem.isSleepMode()
       // 调用 ChatManager 处理消息，并等待语音/动作播放完成后再解锁输入
-      await chatService.chat(data.text)
+      await chatService.chat(data.text, isSleepMode)
       await chatService.waitForReplyPlaybackComplete()
     } finally {
       // 发送状态更新给 ChatBox

@@ -218,6 +218,7 @@ export class Live2DSleepController {
   /**
    * 调度睡眠对话期间的半醒眼神。
    * 使用低频随机目标模拟刚醒时视线无法稳定聚焦的状态。
+   * @param delayMs 距离下一次半醒眼神更新的延迟，单位毫秒。
    */
   private scheduleDrowsyTalkEyeMotion(delayMs: number): void {
     if (!this.sleeping || !this.drowsyTalking) return
@@ -225,15 +226,18 @@ export class Live2DSleepController {
     this.drowsyTalkTimer = setTimeout(() => {
       if (!this.sleeping || !this.drowsyTalking) return
 
-      const openness = 0.28 + Math.random() * 0.16
+      // 半醒对话时的基础眼睛开合度。
+      const openness = 0.28 + Math.random() * 0.3
+      // 左右眼开合差，避免眼神过于对称。
       const asymmetry = (Math.random() - 0.5) * 0.06
+      // 眼球游移，模拟困倦时视线不稳定。
       const eyeBallX = (Math.random() - 0.5) * 0.34
       const eyeBallY = -0.1 + (Math.random() - 0.5) * 0.22
 
       this.setSleepParameterTarget(
         {
-          ParamEyeLOpen: this.clamp(openness + asymmetry, 0.18, 0.48),
-          ParamEyeROpen: this.clamp(openness - asymmetry, 0.18, 0.48),
+          ParamEyeLOpen: this.clamp(openness + asymmetry, 0.18, 0.78),
+          ParamEyeROpen: this.clamp(openness - asymmetry, 0.18, 0.78),
           ParamEyeBallX: eyeBallX,
           ParamEyeBallY: eyeBallY,
           ParamAngleX: eyeBallX * 3,
@@ -278,8 +282,10 @@ export class Live2DSleepController {
     this.drowsyTalkTimer = setTimeout(() => {
       if (!this.sleeping || !this.drowsyLingering || this.drowsyTalking) return
 
+      // 余醒阶段更轻微的开合与左右差。
       const openness = 0.22 + Math.random() * 0.12
       const asymmetry = (Math.random() - 0.5) * 0.05
+      // 余醒阶段的轻微眼球游移。
       const eyeBallX = (Math.random() - 0.5) * 0.24
       const eyeBallY = -0.14 + (Math.random() - 0.5) * 0.14
 
