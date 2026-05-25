@@ -42,7 +42,6 @@ export class SleepEventModule extends EventModule {
       clearInterval(this.checkTimer)
       this.checkTimer = null
     }
-    this.exitSleepMode()
   }
 
   /**
