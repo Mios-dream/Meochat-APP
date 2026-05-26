@@ -515,10 +515,42 @@ export class Live2DManager {
 
   /**
    * 进入睡眠待机状态
-   * 禁用模型自动动作、眨眼和注视，眼睛保持闭合
+   * 先停止所有原生动画（包括当前空闲动画），再清除动作帧覆盖，
+   * 然后禁用模型自动动作、眨眼和注视，眼睛保持闭合
    */
   public enterSleepMode(): void {
-    if (!this.model) return
+    if (!this.model?.internalModel) return
+
+    // 清空覆盖层
+    this.clearMotionFrame()
+    // // 禁用待机动画
+    this.setMotionIdleEnabled(false)
+
+    this.model.internalModel.motionManager.stopAllMotions()
+
+    this.applyMotionFrame(
+      {
+        ParamEyeLOpen: 0,
+        ParamEyeROpen: 0,
+        ParamAngleX: 0,
+        ParamAngleY: 0,
+        ParamAngleZ: 0,
+        ParamBodyAngleX: 0,
+        ParamBodyAngleY: 0,
+        ParamBodyAngleZ: 0,
+        ParamBrowLForm: 0,
+        ParamBrowRForm: 0,
+        ParamEyeLSmile: 0,
+        ParamEyeRSmile: 0,
+        ParamMouthOpenY: 0,
+        ParamMouthForm: 0
+      },
+      {
+        transitionMs: 2000
+      }
+    )
+
+    // 进入睡眠模式，禁用空闲动画和眨眼
     this.sleepController.enterSleepMode(
       (enabled) => this.setMotionIdleEnabled(enabled),
       (enabled) => this.setEyeBlinkEnabled(enabled),

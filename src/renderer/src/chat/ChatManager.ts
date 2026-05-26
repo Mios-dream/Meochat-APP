@@ -51,6 +51,8 @@ class ChatManager {
   private readonly live2DManager: Live2DManager | null
   /** 当前请求控制器，用于中断正在进行的聊天或 TTS 请求。 */
   private abortController: AbortController | null = null
+  /** 对话中标志，防止自动交互事件在对话进行中重复触发。 */
+  public isChatting: boolean = false
 
   /** 后端 API 基础地址，随配置中的 baseUrl 响应式变化。 */
   private apiUrl = computed(() => {
@@ -167,6 +169,7 @@ class ChatManager {
     }
 
     if (this.live2DManager?.disabled) return false
+
     this.interruptCurrentPlayback()
 
     try {
@@ -213,6 +216,10 @@ class ChatManager {
   /** 发送自动交互事件消息，复用普通聊天的流处理和播放管线。 */
   public async interactionChat(payload: InteractionEventPayload): Promise<string | null> {
     if (this.live2DManager?.disabled) return null
+    if (this.isChatting) return null
+    if (this.playbackController.isReplying()) return null
+
+    this.isChatting = true
     this.interruptCurrentPlayback()
 
     try {
@@ -250,6 +257,8 @@ class ChatManager {
 
       console.error('交互请求失败:', error)
       return null
+    } finally {
+      this.isChatting = false
     }
   }
 

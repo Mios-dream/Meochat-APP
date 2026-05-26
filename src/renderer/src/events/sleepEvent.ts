@@ -7,7 +7,7 @@ import { AssistantManager } from '@renderer/services/assistantManager'
 import { InteractionEffect } from '@renderer/core/interaction/types/InteractionEffect'
 
 /** 睡眠时间段配置 */
-const SLEEP_TIME = { startHour: 23, endHour: 7 }
+const SLEEP_TIME = { startHour: 22, endHour: 7 }
 /** 睡眠状态检查间隔 (毫秒) */
 const SLEEP_CHECK_INTERVAL = 60 * 1000
 /** 梦话触发间隔配置 (毫秒) */
@@ -174,15 +174,31 @@ export class SleepEventHandler implements IEventHandler {
 
   /**
    * 将 sleep.* 事件转换为声明式副作用。
-   * 睡眠进入、退出和微动返回 Live2D/UI effects，梦话和唤醒返回聊天 effect。
+   * 睡眠进入和退出同时返回 Live2D 表现和聊天回复，梦话和唤醒返回聊天 effect。
    */
   async handle(event: string, contextManager: ContextManager): Promise<InteractionEffect[]> {
     if (event === 'sleep.enter') {
-      return [{ type: 'live2d.enterSleep' }]
+      const assistant = AssistantManager.getInstance().getCurrentAssistant()
+      const chatPayload = InteractionPayloadBuilder.buildEventPayload({
+        event: 'sleep.enter',
+        scene: `${assistant?.name}看到夜深了，准备进入睡眠模式，用困倦和温柔的晚安语气,给${assistant?.user || '阁下'}说个晚安吧~`,
+        context: contextManager.get(),
+        maxLength: 30,
+        fallback: '（打了个哈欠）阁下，夜深了，晚安...'
+      })
+      return [{ type: 'chat', payload: chatPayload }, { type: 'live2d.enterSleep' }]
     }
 
     if (event === 'sleep.exit') {
-      return [{ type: 'live2d.exitSleep' }]
+      const assistant = AssistantManager.getInstance().getCurrentAssistant()
+      const chatPayload = InteractionPayloadBuilder.buildEventPayload({
+        event: 'sleep.exit',
+        scene: `${assistant?.name}从睡眠中醒来，表现出刚睡醒的慵懒和元气`,
+        context: contextManager.get(),
+        maxLength: 30,
+        fallback: '（伸懒腰）早上好呀阁下...'
+      })
+      return [{ type: 'chat', payload: chatPayload }, { type: 'live2d.exitSleep' }]
     }
 
     const handler = this.responseHandlers[event]

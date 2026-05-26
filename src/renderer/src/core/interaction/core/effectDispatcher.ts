@@ -55,7 +55,7 @@ export class EffectDispatcher {
    */
   private registerBuiltInExecutors(): void {
     this.register('chat', async (effect) => {
-      if (this.chatService.getReplyStatus()) {
+      if (this.chatService.isChatting) {
         return
       }
 
