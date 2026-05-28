@@ -1,6 +1,10 @@
 import { Live2DModel, config } from 'untitled-pixi-live2d-engine'
 import { Application } from 'pixi.js'
-import { setModelParameterValue as writeModelParameterValue } from './live2d/tools/parameterAccess'
+import {
+  getModelParameterValue,
+  hasModelParameter,
+  setModelParameterValue as writeModelParameterValue
+} from './live2d/tools/parameterAccess'
 import type { Live2DPartName, MotionFrameOptions, Live2DPointerPorts } from './live2d/types'
 import { Live2DMotionOverlayController } from './live2d/controllers/Live2DMotionOverlayController'
 import { Live2DSpeechController } from './live2d/controllers/Live2DSpeechController'
@@ -8,6 +12,12 @@ import { Live2DMotionHookController } from './live2d/controllers/Live2DMotionHoo
 import { Live2DTransformController } from './live2d/controllers/Live2DTransformController'
 import { Live2DSleepController } from './live2d/controllers/Live2DSleepController'
 import { Live2DPointerController } from './live2d/controllers/Live2DPointerController'
+
+interface ExpressionParameter {
+  Id: string
+  Value: number
+  Blend: string
+}
 
 // 设置模型配置
 config.motionFadingDuration = 500
@@ -37,6 +47,8 @@ export class Live2DManager {
   private canvasElement: HTMLCanvasElement | null = null
   // 渲染器
   public app: Application | null = null
+  // 设置默认帧率为 60，避免过高帧率导致性能问题
+  private fps = 60
   // 模型对象
   private model: Live2DModel | null = null
   // 音频上下文
@@ -47,6 +59,8 @@ export class Live2DManager {
   private isFocusEnabled = false
   // 外部注册的部位回调，Live2DManager 只负责识别具体部位/动作
   private partHandler: ((partName: Live2DPartName) => void) | null = null
+  // 表情文件名 → 完整 URL 的映射（由扫描 live2d 目录构建）
+  private expressionMap: Map<string, { parameters: ExpressionParameter[] }> = new Map()
 
   // 语音控制器负责音频播放、音量和口型驱动
   private readonly speechController = new Live2DSpeechController()
@@ -126,6 +140,8 @@ export class Live2DManager {
       autoUpdate: true
     })
 
+    this.setFPS(this.fps)
+
     this.installMotionManagerHook()
 
     this.resetModelTransform()
@@ -134,6 +150,9 @@ export class Live2DManager {
     this.app.stage.addChild(this.model)
     // 初始化 AudioContext
     this.audioContext = new AudioContext()
+
+    // 扫描 live2d 目录构建表情文件映射
+    void this.initExpressionMap()
   }
 
   /**
@@ -168,6 +187,13 @@ export class Live2DManager {
       this.app.destroy(true)
       this.app = null
       this.canvasElement = null
+    }
+  }
+
+  public setFPS(fps: number): void {
+    this.fps = fps
+    if (this.app) {
+      this.app.ticker.maxFPS = fps
     }
   }
 
@@ -247,6 +273,17 @@ export class Live2DManager {
 
     // 重置模型变换
     this.resetModelTransform()
+
+    void this.initExpressionMap()
+  }
+
+  /**
+   * 扫描 live2d 目录构建表情文件构建表情与参数映射
+   */
+  private async initExpressionMap(): Promise<void> {
+    this.expressionMap = await window.api.scanLive2dExpressions()
+
+    console.log(`[Live2DManager] 表情文件扫描完成: ${this.expressionMap.size} 个文件, `)
   }
 
   /**
@@ -473,6 +510,88 @@ export class Live2DManager {
   }
 
   /**
+   * 应用表情。
+   *
+   * 如果模型有 ExpressionManager（即 model3.json 定义了 Expressions），
+   * 使用原生表情系统播放对应名称的表情；
+   * 否则（VTube Studio 等模型），读取同目录下的 {name}.exp3.json 文件，
+   * 解析其中的参数定义并直接写入模型。
+   * @param expressionName 表情名称，对应 exp3.json 文件名（如"shy"）。
+   */
+  public applyExpression(expressionName: string): void {
+    if (!this.model?.internalModel) return
+
+    // if (this.model.internalModel.motionManager.expressionManager) {
+    //   void this.model.expression(expressionName)
+    //   return
+    // }
+
+    const expression = this.expressionMap.get(expressionName)
+    if (!expression) {
+      console.warn(`[Live2DManager] 未找到表情文件: ${expressionName}`)
+      return
+    }
+
+    const coreModel = this.model.internalModel.coreModel
+    const expressionFrame = this.buildExpressionFrame(coreModel, expression.parameters)
+
+    console.log(`[Live2DManager] 应用表情: ${expressionName}, 参数帧:`, expressionFrame)
+    if (!expressionFrame) {
+      console.warn(`[Live2DManager] 表情文件无有效参数: ${expressionName}`)
+      return
+    }
+
+    this.motionOverlayController.applyExpressionFrame(expressionFrame, coreModel, {
+      transitionMs: 220,
+      holdMs: 2000
+    })
+  }
+
+  /**
+   * 应用多个表情，合并成同一帧叠加写入。
+   * @param expressionNames 表情名称列表，对应 exp3.json 文件名（如"shy"）。
+   */
+  public applyExpressions(expressionNames: string[]): void {
+    if (!this.model?.internalModel || !this.expressionMap || expressionNames.length === 0) return
+
+    const expressions = expressionNames
+      .map((name) => ({ name, expression: this.expressionMap.get(name) }))
+      .filter(
+        (item): item is { name: string; expression: { parameters: ExpressionParameter[] } } => {
+          if (!item.expression) {
+            console.warn(`[Live2DManager] 未找到表情文件: ${item.name}`)
+            return false
+          }
+          return true
+        }
+      )
+
+    if (expressions.length === 0) {
+      return
+    }
+
+    const coreModel = this.model.internalModel.coreModel
+    const expressionFrame = this.buildCombinedExpressionFrame(
+      coreModel,
+      expressions.map((item) => item.expression.parameters)
+    )
+
+    console.log(
+      `[Live2DManager] 应用组合表情: ${expressions.map((item) => item.name).join(', ')}, 参数帧:`,
+      expressionFrame
+    )
+    if (!expressionFrame) {
+      console.warn('[Live2DManager] 组合表情无有效参数')
+      return
+    }
+
+    this.motionOverlayController.applyExpressionFrame(expressionFrame, coreModel, {
+      transitionMs: 220,
+      holdMs: 2000
+    })
+  }
+
+  /**
    * 清除当前的动作帧覆盖，平滑恢复模型参数到正常状态
    */
   public clearMotionFrame(): void {
@@ -610,5 +729,80 @@ export class Live2DManager {
     for (const [paramId, value] of Object.entries(parameters)) {
       this.setModelParameterValue(paramId, value)
     }
+  }
+
+  /**
+   * 将表情定义转换成可直接重写到模型上的固定参数帧。
+   */
+  private buildExpressionFrame(
+    coreModel: unknown,
+    parameters: ExpressionParameter[]
+  ): Record<string, number> | null {
+    if (!coreModel || !Array.isArray(parameters) || parameters.length === 0) return null
+
+    const frame: Record<string, number> = {}
+
+    for (const parameter of parameters) {
+      const paramId = parameter?.Id
+      const rawValue = parameter?.Value
+      if (!paramId || typeof rawValue !== 'number' || Number.isNaN(rawValue)) continue
+      if (!hasModelParameter(coreModel, paramId)) continue
+
+      const currentValue = getModelParameterValue(coreModel, paramId)
+      if (currentValue === null) continue
+
+      frame[paramId] = this.blendExpressionValue(currentValue, rawValue, parameter.Blend)
+    }
+
+    return Object.keys(frame).length > 0 ? frame : null
+  }
+
+  /**
+   * 将多个表情参数按顺序叠加成同一帧参数。
+   */
+  private buildCombinedExpressionFrame(
+    coreModel: unknown,
+    expressionParameterSets: ExpressionParameter[][]
+  ): Record<string, number> | null {
+    if (!coreModel || expressionParameterSets.length === 0) return null
+
+    const frame: Record<string, number> = {}
+
+    for (const parameters of expressionParameterSets) {
+      if (!Array.isArray(parameters) || parameters.length === 0) continue
+
+      for (const parameter of parameters) {
+        const paramId = parameter?.Id
+        const rawValue = parameter?.Value
+        if (!paramId || typeof rawValue !== 'number' || Number.isNaN(rawValue)) continue
+        if (!hasModelParameter(coreModel, paramId)) continue
+
+        const baseValue =
+          paramId in frame ? frame[paramId] : getModelParameterValue(coreModel, paramId)
+
+        if (baseValue === null || baseValue === undefined) continue
+
+        frame[paramId] = this.blendExpressionValue(baseValue, rawValue, parameter.Blend)
+      }
+    }
+
+    return Object.keys(frame).length > 0 ? frame : null
+  }
+
+  /**
+   * 根据 Blend 类型计算表情参数的最终写入值。
+   */
+  private blendExpressionValue(currentValue: number, value: number, blend: string): number {
+    const normalizedBlend = blend.trim().toLowerCase()
+
+    if (normalizedBlend === 'add') {
+      return currentValue + value
+    }
+
+    if (normalizedBlend === 'multiply') {
+      return currentValue * value
+    }
+
+    return value
   }
 }

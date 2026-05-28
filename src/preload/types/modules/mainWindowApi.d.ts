@@ -265,6 +265,22 @@ export interface MainWindowApi {
    */
   saveAssistantAssets: (assets: AssistantAssets) => Promise<{ success: boolean; error?: string }>
   /**
+   * 扫描 Live2D 目录下的所有 .exp3.json 表情文件，并读取每个文件的参数 ID。
+   * @param assistantName 助手名称
+   */
+  scanLive2dExpressions: () => Promise<
+    Map<
+      string,
+      {
+        parameters: {
+          Id: string
+          Value: number
+          Blend: string
+        }[]
+      }
+    >
+  >
+  /**
    * 上传并提取Live2D模型到助手资产目录
    * @param fileData 模型文件数据
    * @param assistantName 助手名称

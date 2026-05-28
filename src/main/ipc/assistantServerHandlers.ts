@@ -1,6 +1,9 @@
 import { ipcMain } from 'electron'
+import fs from 'fs'
+import path from 'path'
 import { AssistantService } from '../services/assistantService'
 import { AssistantAssets } from '../../renderer/src/types/AssistantInfo'
+import { resolveAppDataDir } from '../utils/pathResolve'
 
 /**
  * 设置助手服务IPC
@@ -242,4 +245,86 @@ export function setupAssistantServerIPC(): void {
   ipcMain.handle('assistant:import-from-zip', async (_event, zipPath: string) => {
     return await assistantService.importAssistantFromZip(zipPath)
   })
+
+  /**
+   * 扫描模型文件所在目录下的所有 .exp3.json 表情文件，并读取每个文件的参数 ID。
+   * @param modelJsonPath 模型 JSON 相对路径，如 "assistants/澪/assets/live2d/turong/turong.model3.json"
+   * @returns 表情文件信息列表，包含文件名、相对路径和参数 ID
+   */
+  ipcMain.handle(
+    'assistant:scan-live2d-expressions',
+    async (): Promise<
+      Map<
+        string,
+        {
+          parameters: {
+            Id: string
+            Value: number
+            Blend: string
+          }[]
+        }
+      >
+    > => {
+      try {
+        const assistant = assistantService.getCurrentAssistant()
+        if (!assistant) return new Map()
+
+        const assets = await assistantService.getAssistantAssets(assistant.name)
+
+        const modelPath = assets?.live2d?.modelPath
+
+        if (!modelPath) return new Map()
+
+        const absoluteDir = path.join(resolveAppDataDir(), modelPath)
+
+        if (!fs.existsSync(absoluteDir)) return new Map()
+
+        const results: Map<
+          string,
+          {
+            parameters: {
+              Id: string
+              Value: number
+              Blend: string
+            }[]
+          }
+        > = new Map()
+
+        const walkDir = (dir: string): void => {
+          let entries: fs.Dirent[]
+          try {
+            entries = fs.readdirSync(dir, { withFileTypes: true })
+          } catch {
+            // 读取目录失败（如权限问题），直接忽略该目录
+            return
+          }
+          for (const entry of entries) {
+            const full = path.join(dir, entry.name)
+            if (entry.isDirectory()) {
+              walkDir(full)
+            } else if (entry.name.endsWith('.exp3.json')) {
+              // 表情名，称取文件名去掉扩展部分，如 "shy.exp3.json" → "shy"
+              const name = entry.name.replace(/\.exp3\.json$/, '')
+
+              try {
+                const content = JSON.parse(fs.readFileSync(full, 'utf8'))
+
+                if (Array.isArray(content?.Parameters) && content.Parameters.length > 0) {
+                  results.set(name, { parameters: content.Parameters })
+                }
+              } catch {
+                // 读取失败不影响扫描结果
+                console.error(`读取表情文件失败 ${full}`)
+              }
+            }
+          }
+        }
+
+        walkDir(absoluteDir)
+        return results
+      } catch {
+        return new Map()
+      }
+    }
+  )
 }

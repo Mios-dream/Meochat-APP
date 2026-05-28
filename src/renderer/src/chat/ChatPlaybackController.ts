@@ -6,6 +6,8 @@ export interface Live2DMotionStep {
   durationMs: number
   /** 当前步骤要应用到 Live2D 模型的参数。 */
   parameters: Record<string, number>
+  /** 表情名称列表，对应模型 .exp3.json 中定义的 expression。 */
+  expression?: string[]
 }
 
 /** 已完成同步、可进入播放队列的聊天播放片段。 */
@@ -253,6 +255,18 @@ export class ChatPlaybackController {
       const transitionMs = Math.min(980, Math.max(220, Math.floor(scaledDuration * 0.88)))
       const holdMs = scaledDuration + Math.min(220, Math.floor(scaledDuration * 0.24))
       const waitMs = Math.max(100, scaledDuration)
+
+      if (step.expression && step.expression.length > 0) {
+        console.log(
+          `[ChatPlaybackController] Applying expressions: ${step.expression.join(', ')}`
+        )
+        this.live2DManager.applyExpressions(step.expression)
+      }
+
+      console.log(`[ChatPlaybackController] Playing motion step with params:`, mergedParams, {
+        transitionMs,
+        holdMs
+      })
 
       this.live2DManager.applyMotionFrame(mergedParams, { transitionMs, holdMs })
       await new Promise((resolve) => window.setTimeout(resolve, waitMs))

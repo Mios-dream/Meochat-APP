@@ -45,7 +45,8 @@ function normalizeMotionFrame(data: ChatMotionChunk): Live2DMotionStep[] {
 
     normalized.push({
       durationMs: clampMotionDuration(motion.duration),
-      parameters: params
+      parameters: params,
+      expression: motion.expression
     })
   }
 

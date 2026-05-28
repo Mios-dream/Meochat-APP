@@ -34,6 +34,8 @@ export interface ChatMotionChunk {
     action?: string
     /** Live2D 参数 ID 到参数值的映射。 */
     parameters?: Record<string, number>
+    /** 表情名称，对应模型 .exp3.json 中定义的 expression（如"脸红"）。 */
+    expression?: string[]
   }>
   /** 兼容后端可能直接返回的持续时间字段。 */
   duration?: number

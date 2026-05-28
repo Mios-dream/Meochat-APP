@@ -179,5 +179,8 @@ contextBridge.exposeInMainWorld('api', {
   importAssistantFromCard: (imagePath: ArrayBuffer) =>
     ipcRenderer.invoke('assistant:import-from-card', imagePath),
   // 从 zip 角色压缩包导入助手目录与资源
-  importAssistantFromZip: (zipPath: string) => ipcRenderer.invoke('assistant:import-from-zip', zipPath)
+  importAssistantFromZip: (zipPath: string) =>
+    ipcRenderer.invoke('assistant:import-from-zip', zipPath),
+  // 扫描 Live2D 表情文件
+  scanLive2dExpressions: () => ipcRenderer.invoke('assistant:scan-live2d-expressions')
 })

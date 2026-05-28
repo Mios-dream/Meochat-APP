@@ -38,9 +38,7 @@ function isDevelopment(): boolean {
 /**
  * 解析应用数据目录。
  *
- * - 开发模式：使用 Electron 标准的 userData 目录（%APPDATA%/MoeChat-APP 等）
- *   避免因 exe 位于 node_modules/ 内部导致 appData 被创建到错误位置。
- * - 生产模式（便携版）：优先使用 exe 同级目录下的 appData/，
+ *优先使用 exe 同级目录下的 appData/，
  *   不可写时回退到 userData。
  */
 function resolveAppDataDir(): string {
