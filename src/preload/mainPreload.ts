@@ -25,10 +25,17 @@ contextBridge.exposeInMainWorld('api', {
   getCurrentVersion: () => ipcRenderer.invoke('updater:get-current-version'),
   checkForUpdate: () => ipcRenderer.invoke('updater:check-for-update'),
   confirmUpdate: () => ipcRenderer.invoke('updater:confirm-update'),
-  onStatus: (callback: (msg: string) => void) =>
-    ipcRenderer.on('updater:update-status', (_, msg) => callback(msg)),
-  onProgress: (callback: (percent: number) => void) =>
-    ipcRenderer.on('updater:update-progress', (_, percent) => callback(percent)),
+  onStatus: (callback: (msg: string) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, msg: string): void => callback(msg)
+    ipcRenderer.on('updater:update-status', handler)
+    return () => ipcRenderer.removeListener('updater:update-status', handler)
+  },
+  onProgress: (callback: (percent: number) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, percent: number): void =>
+      callback(percent)
+    ipcRenderer.on('updater:update-progress', handler)
+    return () => ipcRenderer.removeListener('updater:update-progress', handler)
+  },
   checkCloudVersion: () => ipcRenderer.invoke('updater:check-cloud-version'),
 
   // 内核管理 API

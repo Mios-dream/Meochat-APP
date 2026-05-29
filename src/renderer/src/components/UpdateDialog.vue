@@ -46,7 +46,7 @@
 <script setup lang="ts">
 import BlurModal from './BlurModal.vue'
 import MarkdownRenderer from './MarkdownRenderer.vue'
-import { ref } from 'vue'
+import { onUnmounted, ref } from 'vue'
 
 interface Props {
   modelValue: boolean
@@ -67,8 +67,12 @@ const emit = defineEmits<Emits>()
 const isUpdating = ref(false)
 const downloadProgress = ref(0)
 
-window.api.onProgress((percent: number) => {
+const removeUpdateProgressListener = window.api.onProgress((percent: number) => {
   downloadProgress.value = percent
+})
+
+onUnmounted(() => {
+  removeUpdateProgressListener()
 })
 
 const startUpdate = (): void => {

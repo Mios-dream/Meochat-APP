@@ -13,7 +13,7 @@
     <!-- 主视觉区域 -->
     <div class="core-sanctuary">
       <!-- 光环 -->
-      <div class="halo-ring" :class="{ active: isOperating }">
+      <div class="halo-ring" :class="{ active: isOperating, dormant: isServiceDown }">
         <div class="halo-inner"></div>
         <div class="halo-outer"></div>
       </div>
@@ -916,6 +916,15 @@ onUnmounted(() => {
   opacity: 0.8;
 }
 
+.halo-ring.dormant {
+  opacity: 0.15;
+}
+
+.halo-ring.dormant .halo-inner,
+.halo-ring.dormant .halo-outer {
+  animation: none;
+}
+
 .halo-inner {
   position: absolute;
   inset: 0;
@@ -1093,13 +1102,17 @@ onUnmounted(() => {
 
 .core-dormant .core-aura {
   background: radial-gradient(circle, rgba(200, 189, 216, 0.12) 0%, transparent 70%);
-  animation: auraPulse 4s ease-in-out infinite;
+  animation: none;
 }
 .core-dormant .core-heart {
   filter: drop-shadow(0 0 15px rgba(200, 189, 216, 0.35));
 }
 .core-dormant .heart-path {
-  animation: heartBeat 3s ease-in-out infinite;
+  animation: none;
+}
+.core-dormant .core-pulse {
+  animation: none;
+  opacity: 0;
 }
 
 /* ─── 可变双翼 (翅膀羽翼形态) ──────────────────────────────────── */

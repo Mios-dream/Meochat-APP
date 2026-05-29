@@ -109,11 +109,11 @@ export interface MainWindowApi {
   /**
    * 监听更新状态
    */
-  onStatus: (callback: (msg: string) => void) => void
+  onStatus: (callback: (msg: string) => void) => () => void
   /**
    * 监听更新进度
    */
-  onProgress: (callback: (percent: number) => void) => void
+  onProgress: (callback: (percent: number) => void) => () => void
 
   checkCloudVersion: () => Promise<
     | {

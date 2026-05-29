@@ -172,7 +172,7 @@ import { NotificationService } from '../services/NotificationService'
 import { mergeServerConfig, normalizeServerConfig } from '../types/serverConfig'
 import type { ServerConfig } from '../types/serverConfig'
 import { storeToRefs } from 'pinia'
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 
 const configStore = useConfigStore()
 const { config } = storeToRefs(configStore)
@@ -294,7 +294,7 @@ const openSupportPage = (): void => {
 }
 
 // 监听更新状态
-window.api.onStatus((msg) => {
+const removeUpdateStatusListener = window.api.onStatus((msg) => {
   console.log('状态更新:', msg)
   notificationService.info({
     title: '状态更新',
@@ -303,9 +303,14 @@ window.api.onStatus((msg) => {
 })
 
 // 监听下载进度
-window.api.onProgress((percent) => {
+const removeUpdateProgressListener = window.api.onProgress((percent) => {
   downloadProgress.value = percent
   console.log('下载进度:', percent)
+})
+
+onUnmounted(() => {
+  removeUpdateStatusListener()
+  removeUpdateProgressListener()
 })
 
 async function checkForUpdatesAndConfirm(): Promise<void> {
