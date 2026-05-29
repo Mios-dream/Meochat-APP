@@ -257,16 +257,14 @@ export class ChatPlaybackController {
       const waitMs = Math.max(100, scaledDuration)
 
       if (step.expression && step.expression.length > 0) {
-        console.log(
-          `[ChatPlaybackController] Applying expressions: ${step.expression.join(', ')}`
-        )
+        console.log(`[ChatPlaybackController] Applying expressions: ${step.expression.join(', ')}`)
         this.live2DManager.applyExpressions(step.expression)
       }
 
-      console.log(`[ChatPlaybackController] Playing motion step with params:`, mergedParams, {
-        transitionMs,
-        holdMs
-      })
+      // console.log(`[ChatPlaybackController] Playing motion step with params:`, mergedParams, {
+      //   transitionMs,
+      //   holdMs
+      // })
 
       this.live2DManager.applyMotionFrame(mergedParams, { transitionMs, holdMs })
       await new Promise((resolve) => window.setTimeout(resolve, waitMs))

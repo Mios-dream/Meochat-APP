@@ -75,6 +75,9 @@ export class Live2DManager {
   // 指针控制器负责画布内鼠标、拖动、点击、抚摸和桌宠穿透
   private readonly pointerController = new Live2DPointerController()
 
+  // 保存的原始眨眼 updateParameters 方法引用，用于恢复
+  private originalEyeBlinkUpdate: ((...args: unknown[]) => void) | null = null
+
   /**
    * 为指针控制器组装最小能力端口。
    * 这样控制器只依赖所需能力，不再依赖整个 Live2DManager 类。
@@ -139,6 +142,8 @@ export class Live2DManager {
       autoHitTest: true,
       autoUpdate: true
     })
+
+    this.fixEyeBlinkParameters()
 
     this.setFPS(this.fps)
 
@@ -217,6 +222,8 @@ export class Live2DManager {
   public enableModel(): boolean {
     if (!this.model || !this.model.internalModel) return false
     this.disabled = false
+    this.setMotionIdleEnabled(true)
+    this.setEyeBlinkEnabled(true)
     return true
   }
 
@@ -265,6 +272,7 @@ export class Live2DManager {
     this.speechController.reset()
     this.motionOverlayController.reset()
     this.sleepController.reset()
+    this.originalEyeBlinkUpdate = null
 
     this.motionHookController.reset()
     this.installMotionManagerHook()
@@ -273,6 +281,8 @@ export class Live2DManager {
 
     // 重置模型变换
     this.resetModelTransform()
+
+    this.fixEyeBlinkParameters()
 
     void this.initExpressionMap()
   }
@@ -576,10 +586,10 @@ export class Live2DManager {
       expressions.map((item) => item.expression.parameters)
     )
 
-    console.log(
-      `[Live2DManager] 应用组合表情: ${expressions.map((item) => item.name).join(', ')}, 参数帧:`,
-      expressionFrame
-    )
+    // console.log(
+    //   `[Live2DManager] 应用组合表情: ${expressions.map((item) => item.name).join(', ')}, 参数帧:`,
+    //   expressionFrame
+    // )
     if (!expressionFrame) {
       console.warn('[Live2DManager] 组合表情无有效参数')
       return
@@ -711,17 +721,91 @@ export class Live2DManager {
   }
 
   /**
+   * 修复 eyeBlink 参数为空的问题
+   * 引擎有时无法正确解析模型配置中的 EyeBlink 参数，导致 _parameterIds 为空
+   * 此方法手动补全参数，确保眨眼功能正常工作
+   */
+  private fixEyeBlinkParameters(): void {
+    if (!this.model?.internalModel) return
+
+    const internalModel = this.model.internalModel as unknown as Record<string, unknown>
+    const eyeBlink = internalModel.eyeBlink as
+      | { _parameterIds?: { getSize?: () => number; pushBack?: (id: unknown) => void } }
+      | undefined
+
+    if (!eyeBlink) {
+      console.warn('[Live2D] fixEyeBlinkParameters: eyeBlink 不存在')
+      return
+    }
+
+    const size = eyeBlink._parameterIds?.getSize?.() ?? 0
+    if (size > 0) {
+      console.log('[Live2D] eyeBlink._parameterIds 已有参数，无需修复')
+      return
+    }
+
+    // 手动添加眨眼参数
+    console.log('[Live2D] 修复 eyeBlink._parameterIds，添加 ParamEyeLOpen 和 ParamEyeROpen')
+
+    // 获取 idManager 来获取参数 ID
+    const idManager = (
+      this.model.internalModel as unknown as { idManager?: { getId?: (id: string) => unknown } }
+    ).idManager
+
+    if (idManager?.getId && eyeBlink._parameterIds?.pushBack) {
+      eyeBlink._parameterIds.pushBack(idManager.getId('ParamEyeLOpen'))
+      eyeBlink._parameterIds.pushBack(idManager.getId('ParamEyeROpen'))
+      console.log(
+        '[Live2D] eyeBlink._parameterIds 修复完成，当前大小:',
+        eyeBlink._parameterIds.getSize?.()
+      )
+    } else {
+      console.warn('[Live2D] 无法修复 eyeBlink._parameterIds：idManager 或 pushBack 不可用')
+    }
+  }
+
+  /**
    * 设置眨眼是否启用
    */
   private setEyeBlinkEnabled(enabled: boolean): void {
-    if (!this.model?.internalModel) return
-    const eyeBlink = (
-      this.model.internalModel as unknown as {
-        eyeBlink?: { updateParameters?: (...args: unknown[]) => void }
+    if (!this.model?.internalModel) {
+      console.warn('[Live2D] setEyeBlinkEnabled: model 或 internalModel 不存在')
+      return
+    }
+
+    const internalModel = this.model.internalModel as unknown as Record<string, unknown>
+    console.log('[Live2D] setEyeBlinkEnabled:', {
+      enabled,
+      hasEyeBlink: !!internalModel.eyeBlink,
+      eyeBlinkType: typeof internalModel.eyeBlink,
+      eyeBlinkKeys: internalModel.eyeBlink ? Object.keys(internalModel.eyeBlink as object) : [],
+      hasOriginalRef: !!this.originalEyeBlinkUpdate
+    })
+
+    const eyeBlink = internalModel.eyeBlink as
+      | { updateParameters?: (...args: unknown[]) => void }
+      | undefined
+
+    if (!eyeBlink) {
+      console.warn('[Live2D] eyeBlink 对象不存在，无法控制眨眼')
+      return
+    }
+
+    if (enabled) {
+      if (this.originalEyeBlinkUpdate) {
+        eyeBlink.updateParameters = this.originalEyeBlinkUpdate
+        this.originalEyeBlinkUpdate = null
+        console.log('[Live2D] 眨眼已恢复，原始方法已还原')
+      } else {
+        console.log('[Live2D] 眨眼启用：无保存的原始方法，跳过恢复')
       }
-    ).eyeBlink
-    if (eyeBlink) {
-      eyeBlink.updateParameters = enabled ? undefined : () => {}
+    } else {
+      if (eyeBlink.updateParameters && !this.originalEyeBlinkUpdate) {
+        this.originalEyeBlinkUpdate = eyeBlink.updateParameters.bind(eyeBlink)
+        console.log('[Live2D] 原始眨眼方法已保存')
+      }
+      eyeBlink.updateParameters = () => {}
+      console.log('[Live2D] 眨眼已禁用，updateParameters 替换为空函数')
     }
   }
 
