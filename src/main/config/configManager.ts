@@ -37,7 +37,9 @@ const schema: Schema<AppConfig> = {
   // 助手窗口位置和大小
   assistantWindowBounds: {
     type: 'object'
-  }
+  },
+  // 是否处于睡眠模式
+  sleepMode: { type: 'boolean', default: false }
 }
 
 const appDataDir = resolveAppDataDir()

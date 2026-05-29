@@ -665,7 +665,7 @@ export class Live2DManager {
         ParamMouthForm: 0
       },
       {
-        transitionMs: 2000
+        transitionMs: 1000
       }
     )
 
@@ -673,7 +673,6 @@ export class Live2DManager {
     this.sleepController.enterSleepMode(
       (enabled) => this.setMotionIdleEnabled(enabled),
       (enabled) => this.setEyeBlinkEnabled(enabled),
-      (value) => this.setEyeOpenValue(value),
       (parameters) => this.applySleepParameters(parameters)
     )
   }
@@ -683,9 +682,23 @@ export class Live2DManager {
    * 恢复模型自动动作
    */
   public exitSleepMode(): void {
+    if (!this.model?.internalModel) return
+
     this.sleepController.exitSleepMode(
       (enabled) => this.setMotionIdleEnabled(enabled),
+      (enabled) => this.setEyeBlinkEnabled(enabled),
       () => this.clearMotionFrame()
+    )
+
+    // 恢复眼睛到睁开状态，使用缓慢过渡
+    this.applyMotionFrame(
+      {
+        ParamEyeLOpen: 1,
+        ParamEyeROpen: 1
+      },
+      {
+        transitionMs: 1500
+      }
     )
   }
 

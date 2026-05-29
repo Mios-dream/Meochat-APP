@@ -57,13 +57,13 @@ const PARAM_CONFIG: Record<string, ParamConfig> = {
   },
   ParamEyeLOpen: {
     transitionMs: 130,
-    easing: 'easeInCubic',
+    easing: 'easeOutCubic',
     releaseMs: 700,
     releaseTargetValue: 1
   },
   ParamEyeROpen: {
     transitionMs: 130,
-    easing: 'easeInCubic',
+    easing: 'easeOutCubic',
     releaseMs: 700,
     releaseTargetValue: 1
   }

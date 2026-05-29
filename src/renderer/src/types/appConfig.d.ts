@@ -33,4 +33,6 @@ export interface AppConfig {
   chatShortcut: string
   // 桌宠助手窗口位置
   assistantWindowBounds?: Electron.Rectangle
+  // 是否处于睡眠模式
+  sleepMode: boolean
 }

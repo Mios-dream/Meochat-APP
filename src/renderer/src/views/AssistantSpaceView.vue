@@ -458,6 +458,11 @@ onMounted(async () => {
     registerLive2DEffects()
     registerLive2DInteractionBridge()
     interactionSystem.start()
+
+    // 读取配置中的睡眠状态，自动应用睡眠模式
+    if (config.value.sleepMode) {
+      live2DManager.enterSleepMode()
+    }
     // 监听来自ChatBox的消息
     window.api.ipcRenderer.on('chat-box:send-message', async (_, data) => {
       try {

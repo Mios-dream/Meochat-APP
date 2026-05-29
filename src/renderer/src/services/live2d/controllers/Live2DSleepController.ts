@@ -37,19 +37,26 @@ export class Live2DSleepController {
   enterSleepMode(
     setMotionIdleEnabled: (enabled: boolean) => void,
     setEyeBlinkEnabled: (enabled: boolean) => void,
-    setEyeOpenValue: (value: number) => void,
     writeSleepParameters: SleepParameterWriter
   ): void {
     setMotionIdleEnabled(false)
     setEyeBlinkEnabled(false)
-    setEyeOpenValue(0)
 
     this.sleeping = true
     this.drowsyTalking = false
     this.drowsyLingering = false
     this.sleepParameterWriter = writeSleepParameters
-    this.currentParameters = createClosedSleepParameters()
-    this.setSleepParameterTarget(createClosedSleepParameters(), 120)
+    // 从当前眼睛开合状态开始过渡，而不是直接设置为闭眼
+    this.currentParameters = {
+      ParamEyeLOpen: 1,
+      ParamEyeROpen: 1,
+      ParamEyeBallX: 0,
+      ParamEyeBallY: 0,
+      ParamAngleX: 0,
+      ParamAngleY: 0
+    }
+    // 缓慢闭眼过渡，时长 1800ms
+    this.setSleepParameterTarget(createClosedSleepParameters(), 1800)
     this.startSleepParameterLoop()
     this.clearDrowsyTimers()
     this.scheduleSleepMicroMotion()
@@ -59,10 +66,12 @@ export class Live2DSleepController {
   /**
    * 退出睡眠状态。
    * @param setMotionIdleEnabled 是否启用 idle 动画的设置函数。
+   * @param setEyeBlinkEnabled 是否启用眨眼的设置函数。
    * @param clearMotionFrame 清除动作覆盖的函数。
    */
   exitSleepMode(
     setMotionIdleEnabled: (enabled: boolean) => void,
+    setEyeBlinkEnabled: (enabled: boolean) => void,
     clearMotionFrame: () => void
   ): void {
     this.sleeping = false
@@ -73,6 +82,7 @@ export class Live2DSleepController {
     this.stopSleepParameterLoop()
     this.sleepParameterWriter = null
     setMotionIdleEnabled(true)
+    setEyeBlinkEnabled(true)
     clearMotionFrame()
     console.log('[Live2D] 退出睡眠状态')
   }

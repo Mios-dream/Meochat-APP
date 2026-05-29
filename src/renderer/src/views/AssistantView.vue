@@ -371,6 +371,11 @@ onMounted(async () => {
     registerLive2DEffects()
     registerLive2DInteractionBridge()
     syncInteractionSystemState()
+
+    // 读取配置中的睡眠状态，自动应用睡眠模式
+    if (config.value.sleepMode) {
+      live2DManager.enterSleepMode()
+    }
     try {
       await syncWakewordState()
     } catch (error) {

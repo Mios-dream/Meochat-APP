@@ -5,11 +5,12 @@ import { EventModule } from '@renderer/core/interaction/types/eventModules'
 import { InteractionEventPayload } from '@renderer/chat/ChatManager'
 import { AssistantManager } from '@renderer/services/assistantManager'
 import { InteractionEffect } from '@renderer/core/interaction/types/InteractionEffect'
+import { useConfigStore } from '@renderer/stores/useConfigStore'
 
 /** 睡眠时间段配置 */
 const SLEEP_TIME = { startHour: 22, endHour: 7 }
 /** 睡眠状态检查间隔 (毫秒) */
-const SLEEP_CHECK_INTERVAL = 60 * 1000
+const SLEEP_CHECK_INTERVAL = 10 * 1000
 /** 梦话触发间隔配置 (毫秒) */
 // const DREAM_TALK_INTERVAL = { min: 10 * 60 * 1000, max: 30 * 60 * 1000 }
 const DREAM_TALK_INTERVAL = { min: 60 * 1000, max: 5 * 60 * 1000 }
@@ -22,13 +23,22 @@ export class SleepEventModule extends EventModule {
   private sleeping = false
   private checkTimer: ReturnType<typeof setInterval> | null = null
   private dreamTalkTimer: ReturnType<typeof setTimeout> | null = null
+  private configStore = useConfigStore()
 
   /**
    * 启动睡眠事件模块。
-   * 初始化睡眠上下文，并按固定间隔检查当前时间是否需要进入或退出睡眠模式。
+   * 读取配置判断当前是否已在睡眠模式，避免重复触发进入睡眠语音。
+   * 按固定间隔检查当前时间是否需要进入或退出睡眠模式。
    */
   start(): void {
     if (this.checkTimer) return
+
+    // 读取配置中的睡眠状态，如果已在睡眠模式则同步本地状态，不触发进入语音
+    if (this.configStore.config.sleepMode) {
+      this.sleeping = true
+      this.startDreamTalkTimer()
+    }
+
     this.checkTimeAndToggle()
     this.checkTimer = setInterval(() => this.checkTimeAndToggle(), SLEEP_CHECK_INTERVAL)
   }
@@ -75,24 +85,26 @@ export class SleepEventModule extends EventModule {
 
   /**
    * 进入睡眠模式。
-   * 更新模块内部状态，并发出 sleep.enter 事件让处理器生成对应副作用。
+   * 更新模块内部状态和配置，并发出 sleep.enter 事件让处理器生成对应副作用。
    */
   private enterSleepMode(): void {
     if (this.sleeping) return
 
     this.sleeping = true
+    this.configStore.updateConfig('sleepMode', true)
     this.startDreamTalkTimer()
     this.eventCenter.emit('sleep.enter', { sleepMode: this.sleeping })
   }
 
   /**
    * 退出睡眠模式。
-   * 停止睡眠期间的定时任务，并发出 sleep.exit 事件让处理器恢复表现状态。
+   * 停止睡眠期间的定时任务，更新配置，并发出 sleep.exit 事件让处理器恢复表现状态。
    */
   private exitSleepMode(): void {
     if (!this.sleeping) return
 
     this.sleeping = false
+    this.configStore.updateConfig('sleepMode', false)
     this.stopDreamTalkTimer()
     this.eventCenter.emit('sleep.exit', { sleepMode: this.sleeping })
   }
