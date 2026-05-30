@@ -31,8 +31,7 @@ contextBridge.exposeInMainWorld('api', {
     return () => ipcRenderer.removeListener('updater:update-status', handler)
   },
   onProgress: (callback: (percent: number) => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, percent: number): void =>
-      callback(percent)
+    const handler = (_event: Electron.IpcRendererEvent, percent: number): void => callback(percent)
     ipcRenderer.on('updater:update-progress', handler)
     return () => ipcRenderer.removeListener('updater:update-progress', handler)
   },
@@ -60,13 +59,12 @@ contextBridge.exposeInMainWorld('api', {
     checkEnvironment: () => ipcRenderer.invoke('kernel:check-environment'),
     setupEnvironment: () => ipcRenderer.invoke('kernel:setup-environment'),
     downloadModels: () => ipcRenderer.invoke('kernel:download-models'),
-    getLogs: () => ipcRenderer.invoke('kernel:get-logs'),
     startBackend: () => ipcRenderer.invoke('kernel:start-backend'),
     stopBackend: () => ipcRenderer.invoke('kernel:stop-backend'),
     restartBackend: () => ipcRenderer.invoke('kernel:restart-backend'),
     getBackendStatus: () => ipcRenderer.invoke('kernel:get-backend-status'),
     getBackendLogs: () => ipcRenderer.invoke('kernel:get-backend-logs'),
-    getStreamLogs: () => ipcRenderer.invoke('kernel:get-stream-logs'),
+    getOperationLogs: () => ipcRenderer.invoke('kernel:get-operation-logs'),
     checkBackendHealth: () => ipcRenderer.invoke('kernel:check-backend-health'),
     onServiceState: (callback: (state: unknown) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, state: unknown): void => callback(state)

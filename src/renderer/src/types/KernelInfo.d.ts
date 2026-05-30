@@ -72,15 +72,3 @@ export interface EnvironmentCheckResult {
   /** 是否需要执行环境安装 */
   needsSetup: boolean
 }
-
-/**
- * 内核日志条目
- */
-export interface KernelLogEntry {
-  /** 时间戳 */
-  time: string
-  /** 日志级别 */
-  level: 'info' | 'warn' | 'error' | 'success'
-  /** 日志内容 */
-  message: string
-}

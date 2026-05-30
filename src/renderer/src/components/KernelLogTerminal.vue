@@ -94,15 +94,10 @@ watch(
 function subscribeStream(): void {
   if (unsubStream) return
 
-  unsubStream = window.api.kernel.onServiceStream((base64: string) => {
+  unsubStream = window.api.kernel.onServiceStream((data: ArrayBuffer) => {
     if (!term) return
-    try {
-      const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0))
-      const text = new TextDecoder().decode(bytes)
-      term.write(text)
-    } catch {
-      // 解码失败，静默忽略
-    }
+
+    term.write(new Uint8Array(data))
   })
 
   // 加载已有日志（作为历史记录写入终端）
@@ -121,39 +116,33 @@ async function loadHistory(): Promise<void> {
   }
 
   try {
-    console.log('[KernelLogTerminal] 开始加载历史日志...')
+    // 加载原始 Buffer 流日志（保留 ANSI 转义序列，用于终端回显）
+    const rawStreamLogs = await window.api.kernel.getOperationLogs()
 
-    // 加载操作流日志（uv sync、模型下载等）
-    const streamLogs = await window.api.kernel.getStreamLogs()
-    console.log(`[KernelLogTerminal] 获取到 ${streamLogs?.length ?? 0} 条操作流日志`)
-
-    if (Array.isArray(streamLogs) && streamLogs.length > 0) {
-      for (const line of streamLogs) {
-        term.write(line + '\r\n')
-      }
-      term.write('\r\n')
-    }
-
-    // 加载后端服务日志
-    const logs = await window.api.kernel.getBackendLogs()
-    console.log(`[KernelLogTerminal] 获取到 ${logs?.length ?? 0} 条后端服务日志`)
-
-    if (Array.isArray(logs) && logs.length > 0) {
-      // term.write('\x1b[90m─── 后端服务日志 ───\r\n\x1b[0m')
-      for (const line of logs) {
-        term.write(line + '\r\n')
+    if (Array.isArray(rawStreamLogs) && rawStreamLogs.length > 0) {
+      for (const buffer of rawStreamLogs) {
+        term.write(new Uint8Array(buffer))
       }
     }
 
-    if ((!streamLogs || streamLogs.length === 0) && (!logs || logs.length === 0)) {
-      term.write('\x1b[90m─── 暂无历史日志 ───\r\n\x1b[0m')
+    // 加载原始 Buffer 后端服务日志（保留 ANSI 转义序列）
+    const rawBackendLogs = await window.api.kernel.getBackendLogs()
+
+    if (Array.isArray(rawBackendLogs) && rawBackendLogs.length > 0) {
+      for (const buffer of rawBackendLogs) {
+        term.write(new Uint8Array(buffer))
+      }
     }
 
-    term.write('\x1b[90m─── 以上为历史日志 ───\r\n\x1b[0m')
-    console.log('[KernelLogTerminal] 历史日志写入完成')
+    if (
+      (!rawStreamLogs || rawStreamLogs.length === 0) &&
+      (!rawBackendLogs || rawBackendLogs.length === 0)
+    ) {
+      term.write('暂无历史日志\r\n')
+    }
   } catch (error) {
     console.error('[KernelLogTerminal] 加载历史日志失败:', error)
-    term.write('\x1b[31m─── 加载历史日志失败 ───\r\n\x1b[0m')
+    term.write('加载历史日志失败\r\n')
   }
 }
 

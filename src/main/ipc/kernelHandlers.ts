@@ -115,21 +115,10 @@ function setupKernelIPC(): void {
     }
   })
 
-  /** 获取操作日志 */
-  ipcMain.handle('kernel:get-logs', () => {
+  /** 获取操作流日志（uv sync、模型下载等） */
+  ipcMain.handle('kernel:get-operation-logs', () => {
     try {
       const logs = kernelManager.getOperationLogs()
-      return { success: true, data: logs }
-    } catch (error) {
-      const msg = (error as Error).message
-      return { success: false, error: msg }
-    }
-  })
-
-  /** 获取操作流日志（uv sync、模型下载等） */
-  ipcMain.handle('kernel:get-stream-logs', () => {
-    try {
-      const logs = kernelManager.getStreamLogs()
       return logs
     } catch (error) {
       const msg = (error as Error).message
@@ -195,10 +184,9 @@ function setupKernelIPC(): void {
     return kernelServiceManager.getBackendStatus()
   })
 
-  /** 获取后端服务日志 */
+  /** 获取后端服务日志*/
   ipcMain.handle('kernel:get-backend-logs', () => {
     const logs = kernelServiceManager.getBackendLogs()
-    console.log(`[IPC] kernel:get-backend-logs 返回 ${logs.length} 条日志`)
     return logs
   })
 

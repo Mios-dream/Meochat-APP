@@ -12,7 +12,6 @@ import type {
   EnvironmentCheckResult,
   EnvironmentCheckItem
 } from '../../renderer/src/types/KernelInfo'
-import type { KernelLogEntry } from '../../renderer/src/types/KernelInfo'
 import { decodeBuffer } from '../utils/buffer'
 
 const execAsync = promisify(exec)
@@ -36,7 +35,7 @@ const PRESERVED_DATA_DIRS = ['data', '.venv']
 const PRESERVED_DATA_FILES = ['config.yaml']
 
 /** 向所有窗口广播原始数据流 */
-function broadcastToAllWindows(channel: string, payload: string): void {
+function broadcastToAllWindows(channel: string, payload: Buffer): void {
   BrowserWindow.getAllWindows().forEach((win) => {
     if (!win.isDestroyed()) {
       win.webContents.send(channel, payload)
@@ -57,8 +56,8 @@ class KernelManager {
     error: null
   }
 
-  /** 操作日志（uv sync、模型下载等） */
-  private operationLogs: string[] = []
+  /** 操作日志（uv sync、模型下载等，存储原始 Buffer，保留 ANSI 转义序列） */
+  private operationLogs: Buffer[] = []
   private readonly maxOperationLogs = 200
 
   private constructor() {
@@ -149,24 +148,17 @@ class KernelManager {
     this.notifyState()
   }
 
-  /** 添加操作日志 */
-  private addOperationLog(message: string): void {
-    if (!message) return
-    const lines = message
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0)
-
-    if (lines.length === 0) return
-
-    this.operationLogs.push(...lines)
+  /** 添加操作日志（存储原始 Buffer，保留 ANSI 转义序列） */
+  addOperationLog(data: Buffer): void {
+    if (!data || data.length === 0) return
+    this.operationLogs.push(data)
     if (this.operationLogs.length > this.maxOperationLogs) {
       this.operationLogs = this.operationLogs.slice(-this.maxOperationLogs)
     }
   }
 
-  /** 获取操作流日志（uv sync、模型下载等） */
-  getStreamLogs(): string[] {
+  /** 获取操作流日志（用于日志记录） */
+  getOperationLogs(): Buffer[] {
     return [...this.operationLogs]
   }
 
@@ -363,11 +355,11 @@ class KernelManager {
       const errorLines: string[] = []
 
       child.stdout.on('data', (data: Buffer) => {
-        broadcastToAllWindows(SERVICE_STREAM_CHANNEL, data.toString('base64'))
+        broadcastToAllWindows(SERVICE_STREAM_CHANNEL, data)
+        this.addOperationLog(data)
         const text = data.toString('utf-8').trim()
         if (text) {
           log.info(`[model-dl] ${text}`)
-          this.addOperationLog(`[model-dl] ${text}`)
           this.state.statusText = text.slice(0, 100)
           // 模型下载进度粗略估算（modelscope snapshot_download 不提供精确进度）
           const prevProgress = this.state.progress
@@ -377,12 +369,12 @@ class KernelManager {
       })
 
       child.stderr.on('data', (data: Buffer) => {
-        broadcastToAllWindows(SERVICE_STREAM_CHANNEL, data.toString('base64'))
+        broadcastToAllWindows(SERVICE_STREAM_CHANNEL, data)
+        this.addOperationLog(data)
         const text = data.toString('utf-8').trim()
         if (text) {
           errorLines.push(text)
           log.warn(`[model-dl stderr] ${text}`)
-          this.addOperationLog(`[model-dl stderr] ${text}`)
         }
       })
 
@@ -413,55 +405,6 @@ class KernelManager {
         }
       })
     })
-  }
-
-  /**
-   * 获取操作日志（最近的操作记录）
-   */
-  getOperationLogs(): KernelLogEntry[] {
-    const logs: KernelLogEntry[] = []
-
-    if (this.state.currentVersion) {
-      logs.push({
-        time: new Date().toISOString(),
-        level: 'info',
-        message: `当前内核版本: v${this.state.currentVersion}`
-      })
-    } else {
-      logs.push({
-        time: new Date().toISOString(),
-        level: 'warn',
-        message: '未安装内核'
-      })
-    }
-
-    if (this.state.latestVersion) {
-      logs.push({
-        time: new Date().toISOString(),
-        level: this.state.updateAvailable ? 'info' : 'success',
-        message: this.state.updateAvailable
-          ? `发现新版本: v${this.state.latestVersion.version}`
-          : `内核已是最新版本 v${this.state.latestVersion.version}`
-      })
-    }
-
-    if (this.state.operationStatus !== 'idle' && this.state.operationStatus !== 'done') {
-      logs.push({
-        time: new Date().toISOString(),
-        level: 'info',
-        message: `[${this.state.operationStatus}] ${this.state.statusText} (${this.state.progress}%)`
-      })
-    }
-
-    if (this.state.error) {
-      logs.push({
-        time: new Date().toISOString(),
-        level: 'error',
-        message: this.state.error
-      })
-    }
-
-    return logs
   }
 
   /** 检查远端是否有新内核版本 */
@@ -925,11 +868,11 @@ class KernelManager {
       let lastProgress = 0
 
       child.stdout.on('data', (data: Buffer) => {
-        broadcastToAllWindows(SERVICE_STREAM_CHANNEL, data.toString('base64'))
+        broadcastToAllWindows(SERVICE_STREAM_CHANNEL, data)
+        this.addOperationLog(data)
         const text = decodeBuffer(data).trim()
         if (text) {
           log.info(`[uv] ${text}`)
-          this.addOperationLog(`[uv] ${text}`)
           // 解析 uv 输出估算进度
           if (
             text.includes('Resolved') ||
@@ -943,12 +886,12 @@ class KernelManager {
       })
 
       child.stderr.on('data', (data: Buffer) => {
-        broadcastToAllWindows(SERVICE_STREAM_CHANNEL, data.toString('base64'))
+        broadcastToAllWindows(SERVICE_STREAM_CHANNEL, data)
+        this.addOperationLog(data)
         const text = decodeBuffer(data).trim()
         if (text) {
           errorLines.push(text)
           log.warn(`[uv stderr] ${text}`)
-          this.addOperationLog(`[uv stderr] ${text}`)
         }
       })
 
@@ -1005,8 +948,8 @@ class KernelServiceManager {
   /** 后端进程退出码（进程退出后记录） */
   private backendExitCode: number | null = null
 
-  /** 后端服务日志 */
-  private backendLogs: string[] = []
+  /** 后端服务日志（存储原始 Buffer，保留 ANSI 转义序列） */
+  private backendLogs: Buffer[] = []
   private readonly maxBackendLogs = 100
 
   /** 日志文件最大大小 (1MB) */
@@ -1022,16 +965,13 @@ class KernelServiceManager {
 
   /** 原始数据流广播，发送原始二进制数据给渲染进程 */
   private broadcastStream(data: Buffer): void {
-    broadcastToAllWindows(SERVICE_STREAM_CHANNEL, data.toString('base64'))
+    broadcastToAllWindows(SERVICE_STREAM_CHANNEL, data)
   }
 
   public kernelManager: KernelManager
 
   private constructor() {
     this.kernelManager = KernelManager.getInstance()
-    log.info(`[KernelServiceManager] 构造函数被调用，开始加载持久化日志`)
-    this.loadPersistedLogs()
-    log.info(`[KernelServiceManager] 构造函数完成，backendLogs 长度: ${this.backendLogs.length}`)
     // 确保应用退出时正确关闭后端服务
     app.on('before-quit', () => {
       this.stopBackend()
@@ -1047,51 +987,32 @@ class KernelServiceManager {
 
   /**
    * 添加后端日志并广播，同时持久化到文件
+   * @param data 原始 Buffer 数据（保留 ANSI 转义序列）
    */
-  private addBackendLog(message: string): void {
-    if (!message) return
-    const lines = message
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0)
+  private addBackendLog(data: Buffer): void {
+    if (!data || data.length === 0) return
 
-    if (lines.length === 0) return
-
-    this.backendLogs.push(...lines)
+    this.backendLogs.push(data)
     if (this.backendLogs.length > this.maxBackendLogs) {
       this.backendLogs = this.backendLogs.slice(-this.maxBackendLogs)
     }
     this.notifyServiceState()
-    this.persistLogs(lines)
+
+    // 持久化到文件时解码为纯文本
+    const text = decodeBuffer(data)
+    const lines = text
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0)
+    if (lines.length > 0) {
+      this.persistLogs(lines)
+    }
   }
 
-  /**
-   * 从文件加载持久化的后端日志
-   */
-  private loadPersistedLogs(): void {
-    try {
-      const logFile = this.backendLogFile
-      log.info(`[loadPersistedLogs] 尝试加载日志文件: ${logFile}`)
-      log.info(`[loadPersistedLogs] 文件是否存在: ${fs.existsSync(logFile)}`)
-
-      if (fs.existsSync(logFile)) {
-        const raw = fs.readFileSync(logFile, 'utf-8')
-
-        const lines = raw
-          .split(/\r?\n/)
-          .map((line) => line.trim())
-          .filter((line) => line.length > 0)
-
-        log.info(`[loadPersistedLogs] 文件包含 ${lines.length} 行日志`)
-        this.backendLogs = lines.slice(-this.maxBackendLogs)
-        log.info(`[loadPersistedLogs] 加载了 ${this.backendLogs.length} 条历史日志`)
-      } else {
-        log.info(`[loadPersistedLogs] 日志文件不存在: ${logFile}`)
-      }
-    } catch (error) {
-      log.error(`[loadPersistedLogs] 加载日志失败:`, (error as Error).message)
-      log.error(`[loadPersistedLogs] 错误堆栈:`, (error as Error).stack)
-    }
+  /** 添加系统日志（纯文本，转为 Buffer 存储） */
+  private addSystemLog(message: string): void {
+    if (!message) return
+    this.addBackendLog(Buffer.from(message, 'utf-8'))
   }
 
   /**
@@ -1152,19 +1073,17 @@ class KernelServiceManager {
   /**
    * 获取后端服务状态
    */
-  getBackendStatus(): { running: boolean; pid: number; logs: string[] } {
+  getBackendStatus(): { running: boolean; pid: number } {
     return {
       running: this.backendRunning,
-      pid: this.backendPid,
-      logs: [...this.backendLogs]
+      pid: this.backendPid
     }
   }
 
   /**
-   * 获取后端日志
+   * 获取后端日志（用于终端显示）
    */
-  getBackendLogs(): string[] {
-    log.info(`[getBackendLogs] 返回 ${this.backendLogs.length} 条日志`)
+  getBackendLogs(): Buffer[] {
     return [...this.backendLogs]
   }
 
@@ -1206,9 +1125,9 @@ class KernelServiceManager {
     }
 
     log.info(`[KernelManager] 启动后端服务: uv run ${scriptPath} (cwd: ${kernelPath})`)
-    this.addBackendLog(`[系统] 正在启动内核后端服务...`)
-    this.addBackendLog(`[系统] uv run ${scriptPath}`)
-    this.addBackendLog(`[系统] 工作目录: ${kernelPath}`)
+    this.addSystemLog(`[系统] 正在启动内核后端服务...\r\n`)
+    this.addSystemLog(`[系统] uv run ${scriptPath}\r\n`)
+    this.addSystemLog(`[系统] 工作目录: ${kernelPath}\r\n`)
 
     try {
       // 使用内嵌 uv 运行（uv 自动管理 Python 版本）
@@ -1234,21 +1153,19 @@ class KernelServiceManager {
 
       this.backendProcess.stdout.on('data', (data: Buffer) => {
         this.broadcastStream(data)
-        const text = decodeBuffer(data)
-        if (text) this.addBackendLog(text)
+        this.addBackendLog(data)
       })
 
       this.backendProcess.stderr.on('data', (data: Buffer) => {
         this.broadcastStream(data)
-        const text = decodeBuffer(data)
-        if (text) this.addBackendLog(text)
+        this.addBackendLog(data)
       })
 
       this.backendProcess.on('error', (err: Error) => {
         this.backendRunning = false
         this.backendProcess = null
         this.backendExitCode = this.backendExitCode ?? -1
-        this.addBackendLog(`[系统] 后端服务进程错误: ${err.message}`)
+        this.addSystemLog(`[系统] 后端服务进程错误: ${err.message}`)
         this.notifyServiceState()
         log.error('[KernelManager] 后端服务进程错误:', err.message)
       })
@@ -1258,12 +1175,12 @@ class KernelServiceManager {
         this.backendProcess = null
         this.backendPid = -1
         this.backendExitCode = code
-        this.addBackendLog(`[系统] 后端服务已退出 (退出码: ${code}, 信号: ${signal})`)
+        this.addSystemLog(`[系统] 后端服务已退出 (退出码: ${code}, 信号: ${signal})`)
         this.notifyServiceState()
         log.info(`[KernelManager] 后端服务已退出 (code=${code}, signal=${signal})`)
       })
 
-      this.addBackendLog(`[系统] 后端服务已启动 (PID: ${this.backendPid})`)
+      this.addSystemLog(`[系统] 后端服务已启动 (PID: ${this.backendPid})`)
       this.notifyServiceState()
 
       log.info(`[KernelManager] 后端服务启动成功 (PID: ${this.backendPid})`)
@@ -1272,7 +1189,7 @@ class KernelServiceManager {
       const msg = (error as Error).message
       this.backendRunning = false
       this.backendProcess = null
-      this.addBackendLog(`[系统] 启动后端服务失败: ${msg}`)
+      this.addSystemLog(`[系统] 启动后端服务失败: ${msg}`)
       this.notifyServiceState()
       log.error('[KernelManager] 启动后端服务失败:', msg)
       return { success: false, error: msg }
@@ -1288,7 +1205,7 @@ class KernelServiceManager {
       return { success: true }
     }
 
-    this.addBackendLog('[系统] 正在停止后端服务...')
+    this.addSystemLog('[系统] 正在停止后端服务...')
     log.info('[KernelManager] 正在停止后端服务...')
 
     // 强制结束整个进程树（兜底保障，确保子进程也被清理）
@@ -1316,7 +1233,7 @@ class KernelServiceManager {
     this.backendRunning = false
     this.backendPid = -1
     this.backendExitCode = null
-    this.addBackendLog('[系统] 后端服务已停止')
+    this.addSystemLog('[系统] 后端服务已停止')
     this.notifyServiceState()
     log.info('[KernelManager] 后端服务已停止')
     return { success: true }
@@ -1349,7 +1266,7 @@ class KernelServiceManager {
         const exitCode = this.backendExitCode
         const errorMsg =
           exitCode !== null ? `后端进程已退出 (退出码: ${exitCode})` : '后端进程异常终止'
-        this.addBackendLog(`[系统] ✗ ${errorMsg}`)
+        this.addSystemLog(`[系统] ✗ ${errorMsg}`)
         return { healthy: false, error: errorMsg, stillRunning: false }
       }
 
@@ -1358,7 +1275,7 @@ class KernelServiceManager {
           timeout: 3000
         })
         if (response.status === 200) {
-          // this.addBackendLog(`[系统] 后端服务健康检查通过 (端口 ${port})`)
+          // this.addSystemLog(`[系统] 后端服务健康检查通过 (端口 ${port})`)
           return { healthy: true }
         }
       } catch {
@@ -1374,12 +1291,12 @@ class KernelServiceManager {
       const exitCode = this.backendExitCode
       const errorMsg =
         exitCode !== null ? `后端进程已退出 (退出码: ${exitCode})` : '后端进程异常终止'
-      this.addBackendLog(`[系统] ✗ ${errorMsg}`)
+      this.addSystemLog(`[系统] ✗ ${errorMsg}`)
       return { healthy: false, error: errorMsg, stillRunning: false }
     }
 
     // 进程仍在运行但健康检查超时 → 不视为错误，服务可能仍在启动
-    this.addBackendLog(
+    this.addSystemLog(
       `[系统] 后端服务健康检查超时，但进程仍在运行 (端口 ${port}, 尝试 ${maxAttempts} 次)`
     )
     return { healthy: false, stillRunning: true }

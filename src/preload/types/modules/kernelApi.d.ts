@@ -1,7 +1,6 @@
 import type {
   KernelUpdateState,
-  EnvironmentCheckResult,
-  KernelLogEntry
+  EnvironmentCheckResult
 } from '../../../renderer/src/types/KernelInfo'
 
 export interface KernelApi {
@@ -37,8 +36,6 @@ export interface KernelApi {
     setupEnvironment: () => Promise<{ success: boolean; error?: string }>
     /** 下载 AI 模型（embedding, ASR 等），首次安装后调用 */
     downloadModels: () => Promise<{ success: boolean; error?: string }>
-    /** 获取内核操作日志 */
-    getLogs: () => Promise<{ success: boolean; data?: KernelLogEntry[]; error?: string }>
     /** 启动后端服务 */
     startBackend: () => Promise<{ success: boolean; error?: string }>
     /** 停止后端服务 */
@@ -46,11 +43,11 @@ export interface KernelApi {
     /** 重启后端服务 */
     restartBackend: () => Promise<{ success: boolean; error?: string }>
     /** 获取后端服务状态 */
-    getBackendStatus: () => Promise<{ running: boolean; pid: number; logs: string[] }>
-    /** 获取后端服务日志 */
-    getBackendLogs: () => Promise<string[]>
+    getBackendStatus: () => Promise<{ running: boolean; pid: number }>
+    /** 获取后端服务日志*/
+    getBackendLogs: () => Promise<ArrayBuffer[]>
     /** 获取操作流日志（uv sync、模型下载等） */
-    getStreamLogs: () => Promise<string[]>
+    getOperationLogs: () => Promise<ArrayBuffer[]>
     /** 检查后端健康状态 */
     checkBackendHealth: () => Promise<{
       success: boolean
@@ -64,7 +61,7 @@ export interface KernelApi {
       callback: (state: { running: boolean; pid: number; logs: string[] }) => void
     ) => () => void
     /** 监听后端服务原始数据流（用于 xterm 终端渲染） */
-    onServiceStream: (callback: (base64: string) => void) => () => void
+    onServiceStream: (callback: (data: ArrayBuffer) => void) => () => void
     /** 打开日志存储目录（文件管理器） */
     openLogDir: () => Promise<{ success: boolean; error?: string }>
     /** 检查API健康状态（用于API模式） */
