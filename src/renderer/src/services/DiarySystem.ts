@@ -28,7 +28,7 @@ interface DiaryApiResponse {
 }
 
 export class DiarySystem {
-  private static baseApiUrl = computed(() => {
+  private baseApiUrl = computed(() => {
     const configStore = useConfigStore()
     return configStore.config.baseUrl
   })
@@ -74,7 +74,7 @@ export class DiarySystem {
 
     // 使用静态方法获取共享的 API URL
     const response = await fetch(
-      `${DiarySystem.baseApiUrl}/api/chat/diary?${searchParams.toString()}`,
+      `${this.baseApiUrl.value}/api/chat/diary?${searchParams.toString()}`,
       {
         method: 'GET',
         headers: {

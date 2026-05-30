@@ -1154,6 +1154,7 @@ onUnmounted(() => {
 }
 
 .heart-path {
+  transform-origin: center;
   transition: all 0.5s ease;
   animation: heartBeat 2s ease-in-out infinite;
 }
@@ -2139,8 +2140,8 @@ onUnmounted(() => {
 
 .side-panel {
   position: absolute;
-  width: 300px;
-  height: 435px;
+  width: 27%;
+  height: 60%;
   z-index: 25;
   display: flex;
   flex-direction: column;

@@ -636,7 +636,7 @@ function change<K extends keyof typeof config.value>(
   border-radius: 20px;
   background: transparent;
   color: #888;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.3s ease;
