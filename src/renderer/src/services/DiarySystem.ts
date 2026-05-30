@@ -28,24 +28,10 @@ interface DiaryApiResponse {
 }
 
 export class DiarySystem {
-  // ═══════════════════════════════════════════════════
-  // 静态属性：需要全局共享的数据
-  // ═══════════════════════════════════════════════════
-  private static sharedApiUrl = computed(() => {
+  private static baseApiUrl = computed(() => {
     const configStore = useConfigStore()
-    return `http://${configStore.config.baseUrl}`
+    return configStore.config.baseUrl
   })
-
-  // ═══════════════════════════════════════════════════
-  // 静态方法：访问共享数据的接口
-  // ═══════════════════════════════════════════════════
-  static getApiUrl(): string {
-    return DiarySystem.sharedApiUrl.value
-  }
-
-  // ═══════════════════════════════════════════════════
-  // 实例方法：独立的业务逻辑
-  // ═══════════════════════════════════════════════════
 
   /**
    * 从后端拉取助手日记
@@ -87,13 +73,15 @@ export class DiarySystem {
     }
 
     // 使用静态方法获取共享的 API URL
-    const apiUrl = DiarySystem.getApiUrl()
-    const response = await fetch(`${apiUrl}/api/chat/diary?${searchParams.toString()}`, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json'
+    const response = await fetch(
+      `${DiarySystem.baseApiUrl}/api/chat/diary?${searchParams.toString()}`,
+      {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json'
+        }
       }
-    })
+    )
 
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`)

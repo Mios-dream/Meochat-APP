@@ -96,7 +96,7 @@ function setupUpdaterIPC(): void {
   ipcMain.handle('updater:check-cloud-version', async () => {
     const currentVersion = app.getVersion()
     try {
-      const url = `http://${getConfig('baseUrl')}/api/health`
+      const url = `${getConfig('baseUrl')}/api/health`
       // 调用云端健康检查API
       const response = await axios.get(url)
       const cloudVersion = response.data.version

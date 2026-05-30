@@ -465,24 +465,18 @@ function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-function normalizeApiAddress(address: string): string {
-  return address
-    .replace(/^https?:\/\//i, '')
-    .replace(/\/$/, '')
-    .trim()
-}
-
 function validateApiAddress(address: string): boolean {
-  return /^[\w.-]+:\d+$/.test(address)
+  const withoutProtocol = address.replace(/^https?:\/\//i, '')
+  return /^[\w.-]+:\d+$/.test(withoutProtocol)
 }
 
 async function checkApiHealth(address: string, attempts = 1): Promise<boolean> {
-  const normalizedAddress = normalizeApiAddress(address)
+  const normalizedAddress = address.trim().replace(/\/$/, '')
   for (let i = 0; i < attempts; i++) {
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), 5000)
     try {
-      const response = await fetch(`http://${normalizedAddress}/api/health`, {
+      const response = await fetch(`${normalizedAddress}/api/health`, {
         method: 'GET',
         signal: controller.signal
       })
@@ -749,7 +743,7 @@ async function switchMode(): Promise<void> {
     currentState.value = 'LOG_STREAM'
     backendError.value = ''
     backendStillStarting.value = false
-    apiAddress.value = configStore.config.baseUrl || '127.0.0.1:8001'
+    apiAddress.value = configStore.config.baseUrl || 'http://127.0.0.1:8001'
     logStatusTitle.value = 'API 模式'
     logStatusSub.value = `等待连接 ${apiAddress.value}...`
     await wait(600)
@@ -780,7 +774,7 @@ async function switchMode(): Promise<void> {
 
 async function connectApiMode(): Promise<boolean> {
   backendError.value = ''
-  const normalizedAddress = normalizeApiAddress(apiAddress.value)
+  const normalizedAddress = apiAddress.value.trim().replace(/\/$/, '')
   if (!normalizedAddress) {
     backendError.value = '请输入 API 地址。'
     return false
@@ -882,8 +876,8 @@ async function submitModelConfig(): Promise<void> {
       return
     }
 
-    const baseUrl = configStore.config.baseUrl || '127.0.0.1:8001'
-    const normalizedBase = baseUrl.startsWith('http') ? baseUrl : `http://${baseUrl}`
+    const baseUrl = configStore.config.baseUrl || 'http://127.0.0.1:8001'
+    const normalizedBase = baseUrl
 
     // 1. 保存配置
     const saveResponse = await fetch(`${normalizedBase}/api/update_config`, {
@@ -1132,7 +1126,7 @@ onMounted(async () => {
     return
   }
 
-  apiAddress.value = configStore.config.baseUrl || '127.0.0.1:8001'
+  apiAddress.value = configStore.config.baseUrl || 'http://127.0.0.1:8001'
 
   if (onboardingState.profile) {
     profile.birthday = onboardingState.profile.birthday || ''

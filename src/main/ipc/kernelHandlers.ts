@@ -3,6 +3,7 @@ import { KernelManager, KernelServiceManager } from '../services/kernelManager'
 import log from '../utils/logger'
 import pathLib from 'path'
 import { resolveLogDir } from '../utils/pathResolve'
+import { getConfig } from '../config/configManager'
 
 const kernelManager = KernelManager.getInstance()
 const kernelServiceManager = KernelServiceManager.getInstance()
@@ -232,6 +233,29 @@ function setupKernelIPC(): void {
     } catch (error) {
       const msg = (error as Error).message
       return { success: false, error: msg }
+    }
+  })
+
+  /** 检查API健康状态（用于API模式） */
+  ipcMain.handle('kernel:check-api-health', async () => {
+    try {
+      // TODO: 从配置中读取API地址，目前使用默认地址
+      const baseUrl = getConfig('baseUrl') || 'http://127.0.0.1:8001'
+      const apiUrl = `${baseUrl}/api/health`
+
+      console.log(`[IPC] 检查API健康状态，URL: ${apiUrl}`)
+
+      const healthy = await fetch(apiUrl, {
+        signal: AbortSignal.timeout(5000)
+      })
+        .then((res) => res.ok)
+        .catch(() => false)
+
+      return { success: true, healthy }
+    } catch (error) {
+      const msg = (error as Error).message
+      log.error('API健康检查失败:', msg)
+      return { success: false, healthy: false, error: msg }
     }
   })
 }

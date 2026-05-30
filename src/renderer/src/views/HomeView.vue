@@ -119,18 +119,20 @@
         <div class="whisper-line status" :class="statusClass">
           {{ statusText }}
         </div>
-        <div v-if="kernelState.currentVersion" class="whisper-line version">
+        <div
+          v-if="kernelMode === 'local' && kernelState.currentVersion"
+          class="whisper-line version"
+        >
           v{{ kernelState.currentVersion }}
         </div>
-        <div
-          v-if="(isServiceDown || isServiceStarting) && !isUpdating && !isOperating"
-          class="whisper-line service-hint"
-          :class="serviceStatusClass"
-        >
-          {{ serviceStatusText }}
+        <div v-if="kernelMode === 'api' && apiOnline !== null" class="whisper-line version">
+          {{ apiOnline ? '远程连接正常' : '远程连接失败' }}
         </div>
+
         <div
-          v-if="kernelState.updateAvailable && !isOperating && !isServiceDown"
+          v-if="
+            kernelMode === 'local' && kernelState.updateAvailable && !isOperating && !isServiceDown
+          "
           class="whisper-line hint"
         >
           新的内核更新可用...
@@ -141,6 +143,7 @@
     <!-- 悬浮操作按钮 -->
     <div class="floating-actions" :class="{ visible: showSidePanels }">
       <button
+        v-if="kernelMode === 'local'"
         class="float-btn orbit-btn"
         :disabled="isCheckingUpdate || isOperating"
         title="检查更新"
@@ -151,7 +154,18 @@
       </button>
 
       <button
-        v-if="kernelState.updateAvailable && !isOperating"
+        v-if="kernelMode === 'api'"
+        class="float-btn orbit-btn"
+        :disabled="isCheckingApi"
+        title="检查API状态"
+        @click="checkApiHealth"
+      >
+        <span class="orbit-ring"></span>
+        <font-awesome-icon icon="fa-solid fa-satellite" :class="{ 'fa-spin': isCheckingApi }" />
+      </button>
+
+      <button
+        v-if="kernelMode === 'local' && kernelState.updateAvailable && !isOperating"
         class="float-btn evolve-btn"
         :disabled="isUpdating"
         title="更新内核"
@@ -162,7 +176,11 @@
       </button>
 
       <button
-        v-if="kernelState.updateAvailable && kernelState.operationStatus === 'error'"
+        v-if="
+          kernelMode === 'local' &&
+          kernelState.updateAvailable &&
+          kernelState.operationStatus === 'error'
+        "
         class="float-btn retry-btn"
         :disabled="isUpdating"
         title="重试更新"
@@ -173,7 +191,7 @@
       </button>
 
       <button
-        v-if="isServiceDown && !isServiceStarting"
+        v-if="kernelMode === 'local' && isServiceDown && !isServiceStarting"
         class="float-btn start-btn"
         :disabled="isStartingBackend"
         title="启动核心"
@@ -184,7 +202,7 @@
       </button>
 
       <button
-        v-if="backendService.running && !isServiceStarting"
+        v-if="kernelMode === 'local' && backendService.running && !isServiceStarting"
         class="float-btn restart-btn"
         :disabled="isRestartingBackend"
         title="重启核心"
@@ -194,12 +212,17 @@
         <font-awesome-icon icon="fa-solid fa-rotate-right" />
       </button>
 
-      <button v-if="isServiceStarting" class="float-btn starting-btn" disabled title="进行中...">
+      <button
+        v-if="kernelMode === 'local' && isServiceStarting"
+        class="float-btn starting-btn"
+        disabled
+        title="进行中..."
+      >
         <font-awesome-icon icon="fa-solid fa-spinner" class="fa-spin" />
       </button>
 
       <button
-        v-if="isServiceDown && !isServiceStarting"
+        v-if="kernelMode === 'local' && isServiceDown && !isServiceStarting"
         class="float-btn sync-btn"
         :disabled="isSyncingDeps"
         title="同步共鸣依赖"
@@ -275,8 +298,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useUIStore } from '../stores/useUIStore'
+import { useConfigStore } from '../stores/useConfigStore'
 import type { KernelUpdateState, EnvironmentCheckResult } from '../types/KernelInfo'
 import KernelLogTerminal from '../components/KernelLogTerminal.vue'
 import sakuraImg from '../assets/images/sakura.webp'
@@ -285,6 +309,14 @@ import sakuraImg from '../assets/images/sakura.webp'
 const showSidePanels = ref(false)
 // 与用户相识的天数
 const onboardingDays = ref(0)
+
+// ─── 运行模式切换 ──────────────────────────────────────
+/** 从配置store读取运行模式 */
+const configStore = useConfigStore()
+const kernelMode = computed(() => configStore.config.kernelMode)
+const apiOnline = ref<boolean | null>(null)
+const isCheckingApi = ref(false)
+let apiHealthCheckTimer: ReturnType<typeof setInterval> | null = null
 
 // 打开日志目录
 async function openLogDir(): Promise<void> {
@@ -461,17 +493,16 @@ const isBackendLoading = computed(() => {
   return backendService.value.running && backendHealthy.value !== true
 })
 
-const serviceStatusClass = computed(() => {
-  if (isServiceStarting.value) return 'service-starting'
-  if (isServiceDown.value) return 'service-down'
-  if (backendHealthy.value === true) return 'service-healthy'
-  if (backendHealthy.value === false && backendService.value.running) return 'service-loading'
-  // 健康状态未知但进程已运行（如刚重启/启动后健康检查尚未完成）
-  if (backendHealthy.value === null && backendService.value.running) return 'service-loading'
-  return 'service-unknown'
-})
-
 const serviceStatusText = computed(() => {
+  // API模式下的状态文字
+  if (kernelMode.value === 'api') {
+    if (isCheckingApi.value) return '检查API中...'
+    if (apiOnline.value === true) return '成功链接远程核心'
+    if (apiOnline.value === false) return '链接远程核心失败'
+    return '未知状态'
+  }
+
+  // 本地模式下的状态文字
   if (isSyncingDeps.value) return '共鸣同步中...'
   if (isStartingBackend.value) return '苏醒中...'
   if (isRestartingBackend.value) return '重启中...'
@@ -508,6 +539,15 @@ const isOperating = computed(() => {
  * isBackendLoading 填补了 API 调用返回后到健康检查完成之间的状态空白
  */
 const coreStateClass = computed(() => {
+  // API模式下的核心状态
+  if (kernelMode.value === 'api') {
+    if (isCheckingApi.value) return 'core-evolving'
+    if (apiOnline.value === true) return 'core-peace'
+    if (apiOnline.value === false) return 'core-dormant'
+    return 'core-dormant'
+  }
+
+  // 本地模式下的核心状态
   const s = kernelState.value.operationStatus
   if (s === 'error') return 'core-error'
   if (isServiceStarting.value) return 'core-evolving'
@@ -532,6 +572,15 @@ const shouldWingsSpread = computed(() => {
 })
 
 const statusText = computed(() => {
+  // API模式下的状态文字
+  if (kernelMode.value === 'api') {
+    if (isCheckingApi.value) return '检查API中...'
+    if (apiOnline.value === true) return '远程模式'
+    if (apiOnline.value === false) return '链接失败'
+    return '未知'
+  }
+
+  // 本地模式下的状态文字
   if (isServiceStarting.value) return serviceStatusText.value
   // 后端进程已运行但健康检查尚未通过（数据加载中）
   if (isBackendLoading.value) return '苏醒中...'
@@ -559,6 +608,15 @@ const statusText = computed(() => {
 })
 
 const statusClass = computed(() => {
+  // API模式下的状态样式
+  if (kernelMode.value === 'api') {
+    if (isCheckingApi.value) return 'status-evolving'
+    if (apiOnline.value === true) return 'status-peace'
+    if (apiOnline.value === false) return 'status-dormant'
+    return 'status-dormant'
+  }
+
+  // 本地模式下的状态样式
   if (isServiceStarting.value) return 'status-evolving'
   if (isBackendLoading.value) return 'status-evolving'
   if (isOperating.value || isUpdating.value) {
@@ -575,6 +633,15 @@ const statusClass = computed(() => {
 })
 
 const heartColorPrimary = computed(() => {
+  // API模式下的颜色
+  if (kernelMode.value === 'api') {
+    if (isCheckingApi.value) return '#c8a0e0'
+    if (apiOnline.value === true) return '#fb7299'
+    if (apiOnline.value === false) return '#c8bdd8'
+    return '#c8bdd8'
+  }
+
+  // 本地模式下的颜色
   const s = kernelState.value.operationStatus
   if (s === 'error') return '#f0a0a8'
   if (isServiceStarting.value || isBackendLoading.value || isOperating.value || isUpdating.value)
@@ -586,6 +653,15 @@ const heartColorPrimary = computed(() => {
 })
 
 const heartColorSecondary = computed(() => {
+  // API模式下的颜色
+  if (kernelMode.value === 'api') {
+    if (isCheckingApi.value) return '#e0c8f5'
+    if (apiOnline.value === true) return '#fca5b9'
+    if (apiOnline.value === false) return '#e0d8f0'
+    return '#e0d8f0'
+  }
+
+  // 本地模式下的颜色
   const s = kernelState.value.operationStatus
   if (s === 'error') return '#fad0d5'
   if (isServiceStarting.value || isBackendLoading.value || isOperating.value || isUpdating.value)
@@ -674,6 +750,68 @@ async function handleCheckEnv(): Promise<void> {
     isCheckingEnv.value = false
   }
 }
+
+// ─── API模式检查 ──────────────────────────────────────
+
+/**
+ * 检查API是否在线
+ * 在API模式下定期调用，确认远程服务可用性
+ */
+async function checkApiHealth(): Promise<void> {
+  if (kernelMode.value !== 'api') return
+
+  isCheckingApi.value = true
+  try {
+    const result = await window.api.kernel.checkApiHealth()
+    apiOnline.value = result.healthy
+  } catch {
+    apiOnline.value = false
+  } finally {
+    isCheckingApi.value = false
+  }
+}
+
+/**
+ * 启动API健康检查定时器
+ * 每30秒检查一次API是否在线
+ */
+function startApiHealthPolling(): void {
+  stopApiHealthPolling()
+  apiHealthCheckTimer = setInterval(checkApiHealth, 30000)
+}
+
+/**
+ * 停止API健康检查定时器
+ */
+function stopApiHealthPolling(): void {
+  if (apiHealthCheckTimer) {
+    clearInterval(apiHealthCheckTimer)
+    apiHealthCheckTimer = null
+  }
+}
+
+/**
+ * 监听模式变化，自动切换服务
+ */
+watch(kernelMode, async (newMode) => {
+  if (newMode === 'api') {
+    // 切换到API模式：停止本地内核轮询，启动API检查
+    stopHealthPolling()
+    if (backendService.value.running) {
+      await window.api.kernel.stopBackend()
+    }
+    backendService.value = { running: false, pid: -1 }
+    backendHealthy.value = null
+    await checkApiHealth()
+    startApiHealthPolling()
+  } else {
+    // 切换到本地模式：停止API检查，启动本地内核
+    stopApiHealthPolling()
+    apiOnline.value = null
+    await checkBackendStatus()
+    startHealthPolling()
+  }
+})
 
 // ─── 后端服务管理 ──────────────────────────────────────
 
@@ -799,9 +937,16 @@ onMounted(async () => {
     })
   })
 
-  // 自动检查后端服务状态
-  await checkBackendStatus()
-  startHealthPolling()
+  // 根据模式初始化
+  if (kernelMode.value === 'local') {
+    // 本地模式：自动检查后端服务状态
+    await checkBackendStatus()
+    startHealthPolling()
+  } else {
+    // API模式：检查API健康状态
+    await checkApiHealth()
+    startApiHealthPolling()
+  }
 
   handleCheckEnv()
 
@@ -830,6 +975,7 @@ onUnmounted(() => {
   unsubServiceState?.()
   unsubNeedRestart?.()
   stopHealthPolling()
+  stopApiHealthPolling()
 })
 </script>
 

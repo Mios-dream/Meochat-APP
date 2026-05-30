@@ -8,7 +8,7 @@ interface Message {
 async function LLMRequest(messages: Message[]): Promise<string | null> {
   try {
     const configStore = useConfigStore()
-    const response = await fetch(`http://${configStore.config.baseUrl}/api/llm_chat`, {
+    const response = await fetch(`${configStore.config.baseUrl}/api/llm_chat`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'

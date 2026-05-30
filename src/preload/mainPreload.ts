@@ -80,7 +80,8 @@ contextBridge.exposeInMainWorld('api', {
       ipcRenderer.on('kernel:service-stream', handler)
       return () => ipcRenderer.removeListener('kernel:service-stream', handler)
     },
-    openLogDir: () => ipcRenderer.invoke('kernel:open-log-dir')
+    openLogDir: () => ipcRenderer.invoke('kernel:open-log-dir'),
+    checkApiHealth: () => ipcRenderer.invoke('kernel:check-api-health')
   },
 
   // 助手相关 API

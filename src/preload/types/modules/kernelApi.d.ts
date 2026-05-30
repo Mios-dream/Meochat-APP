@@ -67,5 +67,7 @@ export interface KernelApi {
     onServiceStream: (callback: (base64: string) => void) => () => void
     /** 打开日志存储目录（文件管理器） */
     openLogDir: () => Promise<{ success: boolean; error?: string }>
+    /** 检查API健康状态（用于API模式） */
+    checkApiHealth: () => Promise<{ success: boolean; healthy: boolean; error?: string }>
   }
 }

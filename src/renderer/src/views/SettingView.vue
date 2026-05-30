@@ -79,15 +79,42 @@
         <div class="setting-item">
           <form class="setting-form">
             <div class="title">
+              <label for="kernel-mode">核心运行模式</label>
+              <div class="description">选择本地模式启动内核，或API模式连接远程服务</div>
+            </div>
+            <div class="mode-switcher">
+              <button
+                type="button"
+                class="mode-btn"
+                :class="{ active: config.kernelMode === 'local' }"
+                @click="change('kernelMode', 'local')"
+              >
+                <font-awesome-icon icon="fa-solid fa-microchip" />
+                <span>本地</span>
+              </button>
+              <button
+                type="button"
+                class="mode-btn"
+                :class="{ active: config.kernelMode === 'api' }"
+                @click="change('kernelMode', 'api')"
+              >
+                <font-awesome-icon icon="fa-solid fa-cloud" />
+                <span>远程</span>
+              </button>
+            </div>
+          </form>
+          <div class="divider"></div>
+          <form class="setting-form">
+            <div class="title">
               <label for="lock-assistant">服务器地址</label>
-              <div class="description">连接到MeoChat的服务器地址</div>
+              <div class="description">连接到MoeChat的服务器地址</div>
             </div>
             <div style="width: 200px; height: 40px">
               <SimpleInput
                 :model-value="config.baseUrl"
                 :validator="validateServerAddress"
                 validation-error-message="无法连接到服务器"
-                placeholder="127.0.0.1:8001"
+                placeholder="http://127.0.0.1:8001"
                 @update:model-value="(v) => change('baseUrl', v as string)"
                 @validated="handleValidation"
               />
@@ -114,7 +141,7 @@
           <form class="setting-form">
             <div class="title">
               <label for="project-info">项目信息</label>
-              <div class="description">MeoChat桌面助手客户端</div>
+              <div class="description">MoeChat桌面助手客户端</div>
             </div>
             <div class="support-buttons">
               <button class="support-button" @click="openProjectHomepage">核心项目</button>
@@ -208,7 +235,7 @@ onMounted(async () => {
 })
 
 const buildApiUrl = (path: string): string => {
-  return `http://${config.value.baseUrl}${path}`
+  return `${config.value.baseUrl}${path}`
 }
 
 async function openServerConfigDialog(): Promise<void> {
@@ -355,9 +382,10 @@ const validateServerAddress = async (address: string): Promise<boolean> => {
   if (!address) return true // 空地址不校验
 
   try {
-    // 简单格式校验
+    // 简单格式校验 - 支持带协议和不带协议的格式
+    const withoutProtocol = address.replace(/^https?:\/\//i, '')
     const urlPattern = /^[\w.-]+:\d+$/
-    if (!urlPattern.test(address)) {
+    if (!urlPattern.test(withoutProtocol)) {
       return false
     }
 
@@ -365,7 +393,8 @@ const validateServerAddress = async (address: string): Promise<boolean> => {
     const controller = new AbortController()
     const timeoutId = setTimeout(() => controller.abort(), 5000) // 5秒超时
 
-    const response = await fetch(`http://${address}/api/health`, {
+    const normalizedUrl = address.startsWith('http') ? address : `http://${address}`
+    const response = await fetch(`${normalizedUrl}/api/health`, {
       method: 'GET',
       signal: controller.signal
     })
@@ -391,12 +420,34 @@ const handleValidation = (isValid: boolean): void => {
     // 可以在这里添加额外的错误处理逻辑
   }
 }
+
+/**
+ * 处理核心运行模式切换
+ * 切换到API模式时，自动停止本地后端服务
+ */
+async function handleKernelModeChange(mode: 'local' | 'api'): Promise<void> {
+  if (mode === 'api') {
+    // 切换到API模式时，停止本地后端服务
+    try {
+      await window.api.kernel.stopBackend()
+      console.log('已停止本地后端服务')
+    } catch (error) {
+      console.error('停止后端服务失败:', error)
+    }
+  }
+  configStore.updateConfig('kernelMode', mode)
+}
+
 function change<K extends keyof typeof config.value>(
   key: K,
   value: (typeof config.value)[K]
 ): void {
   if (key === 'autoStartOnBoot') {
     handleAutoStartChange(value as boolean)
+    return
+  }
+  if (key === 'kernelMode') {
+    handleKernelModeChange(value as 'local' | 'api')
     return
   }
   configStore.updateConfig(key, value)
@@ -466,8 +517,9 @@ function change<K extends keyof typeof config.value>(
 .support-button {
   padding: 8px 16px;
   background-color: var(--theme-color-light);
+  box-shadow: 0 4px 12px rgba(251, 114, 153, 0.3);
+  border: 2px solid transparent;
   color: white;
-  border: none;
   border-radius: 50px;
   cursor: pointer;
   font-size: 14px;
@@ -565,70 +617,41 @@ function change<K extends keyof typeof config.value>(
   color: var(--theme-color);
 }
 
-/* 下载进度悬浮窗样式 */
-/* .download-progress-float {
-  position: fixed;
-  top: 50px;
-  right: 40px;
-  width: 300px;
-  background: rgba(255, 255, 255, 0.9);
-  backdrop-filter: blur(10px);
-  border-radius: 10px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-  z-index: 2000;
-  overflow: hidden;
-}
+/* ─── 模式切换器 ────────────────────────────────────── */
 
-.progress-header {
+.mode-switcher {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px 15px;
-  background: #fca9c2;
-  color: white;
-  font-weight: 500;
+  gap: 0;
+  border-radius: 25px;
+  border: 2px solid transparent;
 }
 
-.close-btn {
-  background: none;
-  border: none;
-  color: white;
-  font-size: 20px;
-  cursor: pointer;
-  width: 24px;
-  height: 24px;
+.mode-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 50%;
+  gap: 6px;
+  padding: 8px 16px;
+  border: 2px solid transparent;
+  border-radius: 20px;
+  background: transparent;
+  color: #888;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  letter-spacing: 0.05em;
+  min-width: 80px;
 }
 
-.close-btn:hover {
-  background: rgba(255, 255, 255, 0.2);
+.mode-btn.active {
+  color: #fff;
+  background: var(--theme-color-light);
+  border: 2px solid var(--theme-color-light);
+  box-shadow: 0 4px 12px rgba(251, 114, 153, 0.3);
 }
 
-.progress-content {
-  padding: 15px;
+.mode-btn:not(.active):hover {
+  color: var(--theme-color-light);
 }
-
-.progress-bar-container {
-  height: 8px;
-  background: #e0e0e0;
-  border-radius: 4px;
-  overflow: hidden;
-  margin-bottom: 10px;
-}
-
-.progress-bar {
-  height: 100%;
-  background: linear-gradient(90deg, #fca9c2, #fb7299);
-  border-radius: 4px;
-  transition: width 0.3s ease;
-}
-
-.progress-text {
-  text-align: center;
-  font-weight: 600;
-  color: #fb7299;
-} */
 </style>

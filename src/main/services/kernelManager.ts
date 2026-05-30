@@ -1075,11 +1075,7 @@ class KernelServiceManager {
       log.info(`[loadPersistedLogs] 文件是否存在: ${fs.existsSync(logFile)}`)
 
       if (fs.existsSync(logFile)) {
-        const stats = fs.statSync(logFile)
-        log.info(`[loadPersistedLogs] 文件大小: ${stats.size} 字节`)
-
         const raw = fs.readFileSync(logFile, 'utf-8')
-        log.info(`[loadPersistedLogs] 读取到 ${raw.length} 个字符`)
 
         const lines = raw
           .split(/\r?\n/)
@@ -1087,11 +1083,6 @@ class KernelServiceManager {
           .filter((line) => line.length > 0)
 
         log.info(`[loadPersistedLogs] 文件包含 ${lines.length} 行日志`)
-        if (lines.length > 0) {
-          log.info(`[loadPersistedLogs] 第一行: ${lines[0].substring(0, 100)}...`)
-          log.info(`[loadPersistedLogs] 最后一行: ${lines[lines.length - 1].substring(0, 100)}...`)
-        }
-
         this.backendLogs = lines.slice(-this.maxBackendLogs)
         log.info(`[loadPersistedLogs] 加载了 ${this.backendLogs.length} 条历史日志`)
       } else {

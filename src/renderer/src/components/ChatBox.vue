@@ -64,7 +64,10 @@ micManager.setRecognitionCallback((data: string) => {
   handleSubmit()
 })
 
-const wsUrl = computed(() => `ws://${config.value.baseUrl}/api/asr_ws`)
+const wsUrl = computed(() => {
+  const base = config.value.baseUrl.replace(/^http/, 'ws')
+  return `${base}/api/asr_ws`
+})
 
 /**
  * 停止录音

@@ -4,7 +4,7 @@ import type { AppConfig } from '../types/appConfig'
 
 export const useConfigStore = defineStore('config', () => {
   const config = ref<AppConfig>({
-    baseUrl: '127.0.0.1:8001',
+    baseUrl: 'http://127.0.0.1:8001',
     volume: 0.8,
     generateMotion: false,
     autoStartOnBoot: false,
@@ -20,7 +20,8 @@ export const useConfigStore = defineStore('config', () => {
     currentAssistant: '',
     themeColor: '#fb7299',
     chatShortcut: 'Alt+A',
-    sleepMode: false
+    sleepMode: false,
+    kernelMode: 'local'
   })
 
   async function loadConfig(): Promise<void> {

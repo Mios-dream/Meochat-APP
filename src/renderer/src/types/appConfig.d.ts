@@ -35,4 +35,6 @@ export interface AppConfig {
   assistantWindowBounds?: Electron.Rectangle
   // 是否处于睡眠模式
   sleepMode: boolean
+  // 核心运行模式：'local' = 本地模式（启动内核），'api' = API模式（远程API）
+  kernelMode: 'local' | 'api'
 }

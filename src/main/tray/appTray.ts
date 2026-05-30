@@ -12,7 +12,7 @@ function createTray(): Tray {
       role: 'quit'
     }
   ])
-  tray.setToolTip('Meochat')
+  tray.setToolTip('MoeChat')
   tray.setContextMenu(contextMenu)
 
   tray.on('click', () => {

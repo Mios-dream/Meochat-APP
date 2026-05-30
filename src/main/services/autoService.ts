@@ -25,7 +25,9 @@ async function startAutoService(): Promise<void> {
     createAssistantWindow()
   }
   // 自动启动内核后端服务
-  await ensureKernelBackendStarted()
+  if (getConfig('kernelMode') === 'local') {
+    await ensureKernelBackendStarted()
+  }
 }
 
 /**

@@ -7,7 +7,9 @@ import { resolveAppDataDir } from '../utils/pathResolve'
 // 配置项的默认值
 const schema: Schema<AppConfig> = {
   // 基础配置
-  baseUrl: { type: 'string', default: '127.0.0.1:8001' },
+  baseUrl: { type: 'string', default: 'http://127.0.0.1:8001' },
+  // 核心运行模式：'local' = 本地模式，'api' = API模式
+  kernelMode: { type: 'string', default: 'local' },
   autoStartOnBoot: { type: 'boolean', default: false },
   autoUpdate: { type: 'boolean', default: true },
   debugMode: { type: 'boolean', default: false },

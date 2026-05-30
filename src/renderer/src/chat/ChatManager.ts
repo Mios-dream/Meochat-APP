@@ -57,7 +57,7 @@ class ChatManager {
   /** 后端 API 基础地址，随配置中的 baseUrl 响应式变化。 */
   private apiUrl = computed(() => {
     const configStore = useConfigStore()
-    return `http://${configStore.config.baseUrl}`
+    return configStore.config.baseUrl
   })
 
   /** 初始化各内部模块，并监听全局音量配置变化。 */

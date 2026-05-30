@@ -200,7 +200,7 @@ class AssistantService {
    */
   private async getCurrentAssistantFromCloud(): Promise<AssistantInfo | null> {
     try {
-      const url = `http://${getConfig('baseUrl')}/api/assistant/current`
+      const url = `${getConfig('baseUrl')}/api/assistant/current`
       const response = await axios.get(url)
       return response.data.data
     } catch (error) {
@@ -344,7 +344,7 @@ class AssistantService {
     assistantName: string
   ): Promise<{ success: boolean; data: AssistantInfo } | { success: false; error: string }> {
     try {
-      const url = `http://${getConfig('baseUrl')}/api/assistant/switch`
+      const url = `${getConfig('baseUrl')}/api/assistant/switch`
       const response = await axios.post(url, { name: assistantName })
       return {
         success: true,
@@ -391,7 +391,7 @@ class AssistantService {
         if (!fs.existsSync(downloadsDir)) {
           fs.mkdirSync(downloadsDir, { recursive: true })
         }
-        const url = `http://${getConfig('baseUrl')}/api/assistant/assets/download`
+        const url = `${getConfig('baseUrl')}/api/assistant/assets/download`
         // 使用axios发送POST请求并监控进度
         const writer = fs.createWriteStream(tempZipPath)
 
@@ -488,7 +488,7 @@ class AssistantService {
    * @returns 是否需要更新。网络错误时默认返回 false（保守策略，避免误触发下载）
    */
   public async isNeedsUpdate(assistant: AssistantInfo): Promise<boolean> {
-    const url = `http://${getConfig('baseUrl')}/api/assistant/assets/check`
+    const url = `${getConfig('baseUrl')}/api/assistant/assets/check`
     try {
       const response = await axios.post(url, {
         name: assistant.name,
@@ -535,7 +535,7 @@ class AssistantService {
       }
 
       // 上传到云端
-      const url = `http://${getConfig('baseUrl')}/api/assistant/info/update`
+      const url = `${getConfig('baseUrl')}/api/assistant/info/update`
       await axios.post(url, completeAssistant)
 
       // 保存在本地
@@ -636,7 +636,7 @@ class AssistantService {
       }
 
       // 上传到云端
-      const url = `http://${getConfig('baseUrl')}/api/assistant/info/add`
+      const url = `${getConfig('baseUrl')}/api/assistant/info/add`
       await axios.post(url, completeAssistant)
 
       // 保存在本地
@@ -710,7 +710,7 @@ class AssistantService {
 
     try {
       // 从云端加载助手数据
-      const url = `http://${getConfig('baseUrl')}/api/assistants`
+      const url = `${getConfig('baseUrl')}/api/assistants`
       const response = await axios.get(url)
       const apiData = response.data
       source = 'server'
@@ -743,7 +743,7 @@ class AssistantService {
               } else if (localTime > cloudTime) {
                 // 本地更新，推送到云端
                 try {
-                  const url = `http://${getConfig('baseUrl')}/api/assistant/info/update`
+                  const url = `${getConfig('baseUrl')}/api/assistant/info/update`
                   await axios.post(url, localAssistant)
                   log.info(`已将本地助手 ${assistantName} 的更新推送到云端`)
                 } catch (pushError) {
@@ -851,7 +851,7 @@ class AssistantService {
       )
 
       // 上传到云端
-      const url = `http://${getConfig('baseUrl')}/api/assistant/assets/upload`
+      const url = `${getConfig('baseUrl')}/api/assistant/assets/upload`
       const maxRetry = 1
 
       for (let attempt = 0; attempt <= maxRetry; attempt++) {
@@ -939,7 +939,7 @@ class AssistantService {
     try {
       const assistantDir = this.resolveAssistantDir(assistantName, false)
       // 先删除云端资产
-      const url = `http://${getConfig('baseUrl')}/api/assistant/info/delete`
+      const url = `${getConfig('baseUrl')}/api/assistant/info/delete`
       await axios.post(url, { name: assistantName })
 
       // 再删除本地资产
@@ -1369,7 +1369,7 @@ class AssistantService {
     zipPath: string
   ): Promise<{ success: true; data: AssistantInfo } | { success: false; error: string }> {
     try {
-      const url = `http://${getConfig('baseUrl')}/api/assistant/import-from-zip`
+      const url = `${getConfig('baseUrl')}/api/assistant/import-from-zip`
       const zipStat = fs.statSync(zipPath)
 
       log.info(`[AssistantZipImport] start zipSizeMB=${(zipStat.size / 1024 / 1024).toFixed(2)}`)
