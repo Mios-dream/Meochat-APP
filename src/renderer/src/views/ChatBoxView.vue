@@ -45,7 +45,6 @@ onMounted(() => {
   // 监听页面可见性变化
   document.addEventListener('visibilitychange', handleVisibilityChange)
 
-  // 👇 添加窗口失焦事件监听器
   window.addEventListener('blur', hideChatBox)
 
   // 初始显示动画
@@ -70,5 +69,6 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
+  background: transparent;
 }
 </style>

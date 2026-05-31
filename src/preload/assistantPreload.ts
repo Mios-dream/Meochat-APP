@@ -14,6 +14,8 @@ contextBridge.exposeInMainWorld('api', {
   getCurrentAssistant: () => ipcRenderer.invoke('assistant:get-current'),
   // 获取助手资产配置
   getAssistantAssets: (assistantName) => ipcRenderer.invoke('assistant:get-assets', assistantName),
+  // 扫描 Live2D 表情文件
+  scanLive2dExpressions: () => ipcRenderer.invoke('assistant:scan-live2d-expressions'),
 
   // Tips窗口相关API
   showTips: (message: string, avatarUrl?: string) =>
@@ -21,5 +23,8 @@ contextBridge.exposeInMainWorld('api', {
   updateTips: (message: string, avatarUrl?: string) =>
     ipcRenderer.send('tips:update-message', { message, avatarUrl }),
   hideTips: () => ipcRenderer.send('tips:hide-message'),
-  isAssistantVisible: () => ipcRenderer.invoke('assistant:check-visible')
+  // 检查助手窗口是否可见（用于决定是否显示Tips窗口）
+  isAssistantVisible: () => ipcRenderer.invoke('assistant:check-visible'),
+  // 从云端刷新当前助手数据（好感度等）
+  refreshCurrentAssistant: () => ipcRenderer.invoke('assistant:refresh-current')
 })

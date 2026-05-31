@@ -6,7 +6,14 @@
   --theme-text-color-dark: #4f4f4f;
 }
 
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
 * {
+  box-sizing: border-box;
   user-select: none;
 }
 
@@ -40,4 +47,45 @@
   padding: 30px 50px;
 
   scrollbar-width: none;
+}
+
+.titlebar {
+  position: fixed;
+  z-index: 100;
+  top: 0;
+  height: 40px;
+  user-select: none;
+  width: 100%;
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+
+.titlebar-icons {
+  display: flex;
+  gap: 8px;
+  position: absolute;
+  right: 0;
+  width: 100px;
+  height: 30px;
+  justify-content: space-between;
+  align-items: center;
+  flex-direction: row;
+  margin-right: 15px;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+  z-index: 99999;
+}
+
+.titlebar-item {
+  border-radius: 100%;
+  cursor: pointer;
+  width: 13px;
+  height: 13px;
+  cursor: pointer;
+  opacity: 0.85;
+  transition: opacity 0.18s ease;
+}
+
+.titlebar-item:hover {
+  opacity: 1;
 }

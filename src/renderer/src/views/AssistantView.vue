@@ -328,27 +328,25 @@ function restoreSleepState(): void {
 }
 
 /**
- * 处理唤醒词检测到的事件
- * @param keyword
+ * 启动唤醒词服务并注册回调。
+ * 只有在模型成功加载后才调用此函数，确保唤醒词事件触发时 Live2D 已准备就绪。
  */
-async function handleWakewordDetected(keyword: string): Promise<void> {
-  window.api.openChatBox()
-  window.api.ipcRenderer.send('chat-box:wakeword-detected', keyword)
-}
-
-onMounted(async () => {
+function registerWakewordService(): void {
   wakewordService.setCallbacks({
     onReady: () => {
       console.log('唤醒服务启动成功')
     },
     onDetected: ({ keyword }) => {
-      handleWakewordDetected(keyword)
+      window.api.openChatBox()
+      window.api.ipcRenderer.send('chat-box:wakeword-detected', keyword)
     },
     onError: (message) => {
       console.error('唤醒服务错误:', message)
     }
   })
+}
 
+function installChatBoxListener(): void {
   // 监听来自ChatBox的消息
   window.api.ipcRenderer.on('chat-box:send-message', async (_, data) => {
     try {
@@ -364,27 +362,14 @@ onMounted(async () => {
       })
     }
   })
+}
 
-  // 初始化模型，只有成功加载模型后才启用服务
-  const modelLoaded = await initAssistantModel()
-  if (modelLoaded) {
-    registerLive2DEffects()
-    registerLive2DInteractionBridge()
-    syncInteractionSystemState()
-
-    // 读取配置中的睡眠状态，自动应用睡眠模式
-    if (config.value.sleepMode) {
-      live2DManager.enterSleepMode()
-    }
-    try {
-      await syncWakewordState()
-    } catch (error) {
-      console.error('同步唤醒词状态失败:', error)
-    }
-  } else {
-    console.warn('Live2D模型加载失败，InteractionSystem 和 Wakeword 服务未启用')
-  }
-
+/**
+ * 注册语音播放事件监听器，控制 Tips 窗口的显示和内容更新。
+ * 当语音开始播放时，如果助手窗口不可见，则显示 Tips 窗口并定期更新内容以保持与语音输出同步。
+ * 当语音播放结束时，停止更新并在短延迟后隐藏 Tips 窗口。
+ */
+function installTipsListeners(): void {
   // 注册语音播放事件 — 用于控制Tips窗口
   chatService.onSpeechStart(async (message) => {
     const isVisible = await window.api.isAssistantVisible()
@@ -413,6 +398,32 @@ onMounted(async () => {
       window.api.hideTips()
     }, 2000)
   })
+}
+
+onMounted(async () => {
+  // 初始化模型，只有成功加载模型后才启用服务
+  initAssistantModel().then(async (modelLoaded) => {
+    if (modelLoaded) {
+      registerLive2DEffects()
+      registerLive2DInteractionBridge()
+
+      // 读取配置中的睡眠状态，自动应用睡眠模式
+      if (config.value.sleepMode) {
+        live2DManager.enterSleepMode()
+      }
+      syncInteractionSystemState()
+      try {
+        registerWakewordService()
+        installChatBoxListener()
+        installTipsListeners()
+        syncWakewordState()
+      } catch (error) {
+        console.error('同步唤醒词状态失败:', error)
+      }
+    } else {
+      console.warn('Live2D模型加载失败')
+    }
+  })
 
   // 监听助手切换事件
   window.api.onAssistantSwitched(async (assistant) => {
@@ -429,6 +440,19 @@ onMounted(async () => {
       console.warn('助手模型切换失败，唤醒词服务未重连')
     }
   })
+})
+
+onUnmounted(() => {
+  interactionSystem.stop()
+  wakewordService.stop()
+  window.api.ipcRenderer.removeAllListeners('chat-box:send-message')
+  live2DManager.destroy()
+  // 清除Tips更新定时器
+  if (tipsUpdateInterval) {
+    clearInterval(tipsUpdateInterval)
+    tipsUpdateInterval = null
+  }
+  window.api.hideTips()
 })
 
 watch(
@@ -462,19 +486,6 @@ watch(
     }
   }
 )
-
-onUnmounted(() => {
-  interactionSystem.stop()
-  wakewordService.stop()
-  window.api.ipcRenderer.removeAllListeners('chat-box:send-message')
-  live2DManager.destroy()
-  // 清除Tips更新定时器
-  if (tipsUpdateInterval) {
-    clearInterval(tipsUpdateInterval)
-    tipsUpdateInterval = null
-  }
-  window.api.hideTips()
-})
 </script>
 
 <style scoped>

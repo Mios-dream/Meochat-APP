@@ -12,25 +12,21 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted } from 'vue'
+// import { onMounted } from 'vue'
 import Notification from './components/Notification.vue'
-import { AssistantManager } from './services/assistantManager'
-import { logService } from './services/LogService'
+// import { AssistantManager } from './services/assistantManager'
 
-logService.info('应用启动')
+// // 助手管理器实例
+// const assistantManager = AssistantManager.getInstance()
 
-// 助手管理器实例
-const assistantManager = AssistantManager.getInstance()
+// onMounted(async () => {
+//   const onboardingState = await window.api.onboarding.getState()
+//   if (!onboardingState.completed) {
+//     return
+//   }
 
-onMounted(async () => {
-  const onboardingState = await window.api.onboarding.getState()
-  if (!onboardingState.completed) {
-    return
-  }
-
-  await assistantManager.initialize()
-})
-
+//   await assistantManager.initialize()
+// })
 </script>
 
 <style scoped>

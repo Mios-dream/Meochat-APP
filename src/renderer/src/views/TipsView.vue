@@ -16,37 +16,51 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 
 const isVisible = ref(false)
 const isLeaving = ref(false)
 const displayMessage = ref('')
 
+// 存储清理函数
+const cleanups: (() => void)[] = []
+
 onMounted(() => {
-  window.api.ipcRenderer.on(
-    'tips:show',
-    (_event, data?: { message?: string; avatarUrl?: string }) => {
-      isLeaving.value = false
-      isVisible.value = true
-      if (data?.message) {
-        displayMessage.value = data.message
-      }
-    }
-  )
+  // 使用 tipsApi 监听事件
+  if (window.tipsApi) {
+    cleanups.push(
+      window.tipsApi.onShow((data) => {
+        isLeaving.value = false
+        isVisible.value = true
+        if (data?.message) {
+          displayMessage.value = data.message
+        }
+      })
+    )
 
-  window.api.ipcRenderer.on('tips:hide', () => {
-    isLeaving.value = true
-    isVisible.value = false
-  })
+    cleanups.push(
+      window.tipsApi.onHide(() => {
+        isLeaving.value = true
+        isVisible.value = false
+      })
+    )
 
-  window.api.ipcRenderer.on(
-    'tips:message',
-    (_event, data: { message: string; avatarUrl?: string }) => {
-      if (data.message) {
-        displayMessage.value = data.message
-      }
-    }
-  )
+    cleanups.push(
+      window.tipsApi.onMessage((data) => {
+        if (data.message) {
+          displayMessage.value = data.message
+        }
+      })
+    )
+
+    // 通知主进程提示窗口已准备好
+    window.tipsApi.ready()
+  }
+})
+
+onUnmounted(() => {
+  // 清理所有事件监听器
+  cleanups.forEach((cleanup) => cleanup())
 })
 </script>
 

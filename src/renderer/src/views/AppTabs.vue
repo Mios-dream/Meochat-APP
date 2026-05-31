@@ -225,47 +225,6 @@ main {
     linear-gradient(rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0.3)),
     url('../assets/images/app_background.png') center / cover;
 }
-
-.titlebar {
-  position: fixed;
-  z-index: 100;
-  top: 0;
-  height: 40px;
-  user-select: none;
-  width: 100%;
-  -webkit-app-region: drag;
-  app-region: drag;
-}
-
-.titlebar-icons {
-  display: flex;
-  gap: 8px;
-  position: absolute;
-  right: 0;
-  width: 100px;
-  height: 30px;
-  justify-content: space-between;
-  align-items: center;
-  flex-direction: row;
-  margin-right: 15px;
-  -webkit-app-region: no-drag;
-  app-region: no-drag;
-  z-index: 99999;
-}
-
-.titlebar-item {
-  border-radius: 100%;
-  cursor: pointer;
-  width: 13px;
-  height: 13px;
-  cursor: pointer;
-  opacity: 0.85;
-  transition: opacity 0.18s ease;
-}
-
-.titlebar-item:hover {
-  opacity: 1;
-}
 </style>
 
 <style scoped>

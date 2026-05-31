@@ -6,7 +6,7 @@ import StreamZip from 'node-stream-zip'
 import path from 'path'
 import os from 'os'
 import YAML from 'yaml'
-import { globalShortcut, BrowserWindow } from 'electron'
+import { globalShortcut, BrowserWindow, screen } from 'electron'
 import { getConfig, setConfig } from '../config/configManager'
 import log from '../utils/logger'
 import {
@@ -143,7 +143,25 @@ class AssistantService {
     }
     // 注册聊天框快捷键
     const success = globalShortcut.register(shortcut, () => {
-      createWindow(chatBoxWindowConfig, { showImmediately: true })
+      const primaryDisplay = screen.getPrimaryDisplay()
+      const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize
+
+      // 计算窗口尺寸和位置
+      const windowWidth = Math.floor(screenWidth / 2)
+      const windowHeight = 200
+      const x = Math.floor((screenWidth - windowWidth) / 2)
+      // 距离底部抬升
+      const targetY = screenHeight - 200 // 目标位置
+
+      createWindow(chatBoxWindowConfig, {
+        overrides: {
+          x: x,
+          y: targetY,
+          width: windowWidth,
+          height: windowHeight
+        },
+        showImmediately: true
+      })
     })
     if (success) {
       setConfig('chatShortcut', shortcut)

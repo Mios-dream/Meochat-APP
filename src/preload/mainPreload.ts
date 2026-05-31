@@ -37,6 +37,13 @@ contextBridge.exposeInMainWorld('api', {
   },
   checkCloudVersion: () => ipcRenderer.invoke('updater:check-cloud-version'),
 
+  onboarding: {
+    getState: () => ipcRenderer.invoke('onboarding:get-state'),
+    setMode: (mode) => ipcRenderer.invoke('onboarding:set-mode', mode),
+    saveProfile: (profile) => ipcRenderer.invoke('onboarding:save-profile', profile),
+    markCompleted: () => ipcRenderer.invoke('onboarding:mark-completed'),
+    reset: () => ipcRenderer.invoke('onboarding:reset')
+  },
   // 内核管理 API
   kernel: {
     getState: () => ipcRenderer.invoke('kernel:get-state'),

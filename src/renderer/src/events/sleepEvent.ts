@@ -32,8 +32,6 @@ export class SleepEventModule extends EventModule {
    */
   start(): void {
     if (this.checkTimer) return
-
-    // 读取配置中的睡眠状态，如果已在睡眠模式则同步本地状态，不触发进入语音
     if (this.configStore.config.sleepMode) {
       this.sleeping = true
       this.startDreamTalkTimer()

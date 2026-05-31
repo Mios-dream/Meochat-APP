@@ -38,6 +38,7 @@ const collapsed = ref(true)
 
 <style scoped>
 #live2d-context-menu {
+  box-sizing: border-box;
   position: fixed;
   background-color: rgba(255, 255, 255, 0.914);
   border: 1px solid rgba(128, 128, 128, 0.4);
@@ -60,7 +61,7 @@ const collapsed = ref(true)
 }
 
 #live2d-context-menu:hover {
-  width: 150px;
+  width: 140px;
 }
 
 #live2d-context-menu .menu-item {

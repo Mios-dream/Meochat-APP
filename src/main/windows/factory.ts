@@ -125,6 +125,11 @@ export async function createWindow(
         window.show()
       }
 
+      // debug模式下自动打开开发者工具
+      if (getConfig('debugMode')) {
+        window.webContents.openDevTools({ mode: 'detach' })
+      }
+
       // 发送实例数据（如果有）
       if (instanceId || query) {
         window.webContents.send('window:instance-data', {

@@ -91,14 +91,6 @@ const globalAPI = {
     onChange: (callback) => ipcRenderer.on('config:changed', (_, config) => callback(config))
   },
 
-  onboarding: {
-    getState: () => ipcRenderer.invoke('onboarding:get-state'),
-    setMode: (mode) => ipcRenderer.invoke('onboarding:set-mode', mode),
-    saveProfile: (profile) => ipcRenderer.invoke('onboarding:save-profile', profile),
-    markCompleted: () => ipcRenderer.invoke('onboarding:mark-completed'),
-    reset: () => ipcRenderer.invoke('onboarding:reset')
-  },
-
   ipcRenderer: {
     send: (channel, data) => ipcRenderer.send(channel, data),
     invoke: (channel, data) => ipcRenderer.invoke(channel, data),

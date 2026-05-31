@@ -6,10 +6,9 @@ import type { WindowConfig } from '../types'
 
 export const assistantWindowConfig: WindowConfig = {
   type: 'assistant',
-  htmlFile: 'index.html',
+  htmlFile: 'assistant.html',
   preload: 'assistantPreload',
   singleton: true,
-  route: '/assistant',
   boundsKey: 'assistantWindowBounds',
   options: {
     width: 300,

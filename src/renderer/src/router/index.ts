@@ -3,11 +3,8 @@ import Tabs from '../views/AppTabs.vue'
 import HomeView from '../views/HomeView.vue'
 import PluginManager from '../views/PluginManagerView.vue'
 import AssistantManagerView from '../views/AssistantManagerView.vue'
-import ChatBoxView from '../views/ChatBoxView.vue'
-import AssistantView from '../views/AssistantView.vue'
 import TipsView from '../views/TipsView.vue'
 import OnboardingView from '../views/OnboardingView.vue'
-import WidgetView from '../views/WidgetView.vue'
 
 const router = createRouter({
   history: createWebHashHistory('/'),
@@ -37,29 +34,14 @@ const router = createRouter({
       component: PluginManager
     },
     {
-      path: '/chat-box',
-      name: 'chat-box',
-      component: ChatBoxView
-    },
-    {
       path: '/assistant-manager',
       name: 'assistant-manager',
       component: AssistantManagerView
     },
     {
-      path: '/assistant',
-      name: 'assistant',
-      component: AssistantView
-    },
-    {
       path: '/tips',
       name: 'tips',
       component: TipsView
-    },
-    {
-      path: '/widget',
-      name: 'widget',
-      component: WidgetView
     }
   ]
 })

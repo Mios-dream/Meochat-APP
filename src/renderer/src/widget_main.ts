@@ -14,6 +14,7 @@ import { fas } from '@fortawesome/free-solid-svg-icons'
 import { far } from '@fortawesome/free-regular-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome'
 import WidgetView from './views/WidgetView.vue'
+import { useConfigStore } from './stores/useConfigStore'
 
 // 添加图标
 library.add(fas)
@@ -42,5 +43,10 @@ const router = createRouter({
 const app = createApp(App)
 app.use(createPinia())
 app.use(router)
+// 加载配置并监听变化，确保小组件能实时响应配置更新
+const configStore = useConfigStore()
+await configStore.loadConfig()
+configStore.listenForChanges()
+
 app.component('FontAwesomeIcon', FontAwesomeIcon)
 app.mount('#app')

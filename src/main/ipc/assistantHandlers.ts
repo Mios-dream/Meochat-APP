@@ -13,6 +13,7 @@ import { uIOhook } from 'uiohook-napi'
 
 import log from '../utils/logger'
 import { AssistantService } from '../services/assistantService'
+import { getConfig } from '../config/configManager'
 
 let mouseTrackingInterval: NodeJS.Timeout | null = null
 let isMousePressed = false // 追踪鼠标按下状态
@@ -61,7 +62,25 @@ function initUiohook(): void {
 
 function setupChatBoxIPC(): void {
   ipcMain.on('chat-box:create', () => {
-    createWindow(chatBoxWindowConfig, { showImmediately: true })
+    const primaryDisplay = screen.getPrimaryDisplay()
+    const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize
+
+    // 计算窗口尺寸和位置
+    const windowWidth = Math.floor(screenWidth / 2)
+    const windowHeight = 200
+    const x = Math.floor((screenWidth - windowWidth) / 2)
+    // 距离底部抬升
+    const targetY = screenHeight - 200 // 目标位置
+
+    createWindow(chatBoxWindowConfig, {
+      overrides: {
+        x: x,
+        y: targetY,
+        width: windowWidth,
+        height: windowHeight
+      },
+      showImmediately: true
+    })
   })
 
   ipcMain.on('chat-box:close', () => {
@@ -103,7 +122,30 @@ function setupAssistantIPC(): void {
   initUiohook()
 
   ipcMain.on('assistant:create', () => {
-    createWindow(assistantWindowConfig, { showImmediately: true })
+    // 从存储中读取窗口配置，如果不存在则使用默认值
+    const savedBounds = getConfig('assistantWindowBounds') as Electron.Rectangle
+    const defaultBounds = {
+      width: 300,
+      height: 500
+    }
+
+    // 验证保存的位置是否在当前屏幕范围内
+    let windowBounds = defaultBounds
+    if (savedBounds) {
+      const primaryDisplay = screen.getPrimaryDisplay()
+      const displayBounds = primaryDisplay.bounds
+
+      // 检查保存的位置是否在屏幕范围内
+      if (
+        savedBounds.x >= displayBounds.x &&
+        savedBounds.y >= displayBounds.y &&
+        savedBounds.x + savedBounds.width <= displayBounds.x + displayBounds.width &&
+        savedBounds.y + savedBounds.height <= displayBounds.y + displayBounds.height
+      ) {
+        windowBounds = savedBounds
+      }
+    }
+    createWindow(assistantWindowConfig, { overrides: { ...windowBounds }, showImmediately: true })
   })
 
   ipcMain.on('assistant:close', () => {
@@ -251,7 +293,17 @@ function setupAssistantIPC(): void {
       tipsWin.show()
       tipsWin.webContents.send('tips:show', data)
     } else {
-      createWindow(tipsWindowConfig, { showImmediately: true }).then((win) => {
+      const primaryDisplay = screen.getPrimaryDisplay()
+      const { width: screenWidth } = primaryDisplay.workArea
+
+      const windowWidth = 380
+      const windowHeight = 130
+      const x = screenWidth - windowWidth - 20
+      const y = 20
+      createWindow(tipsWindowConfig, {
+        overrides: { x, y, width: windowWidth, height: windowHeight },
+        showImmediately: true
+      }).then((win) => {
         win.webContents.send('tips:show', data)
       })
     }
