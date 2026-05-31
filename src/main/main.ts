@@ -1,5 +1,5 @@
 import { app, globalShortcut, BrowserWindow } from 'electron'
-import { createMainWindow } from './windows/mainWindow'
+import { createWindow, mainWindowConfig } from './windows'
 import {
   setupMainIPC,
   setupUpdaterIPC,
@@ -11,12 +11,14 @@ import {
   setupOnboardingIPC,
   setupSystemEventIPC
 } from './ipc'
+import { setupWidgetIPC } from './ipc/widgetHandlers'
 import { setupConfigIPC } from './config/configManager'
 import { getPermission } from './permission/permission'
 import { createTray } from './tray/appTray'
 import { startAutoService } from './services/autoService'
 import { registerFileProtocol, handleFileProtocol } from './protocol/fileProtocol'
 import { KernelManager } from './services/kernelManager'
+import { WidgetService } from './services/widgetService'
 import log from './utils/logger'
 
 try {
@@ -40,6 +42,8 @@ try {
   setupOnboardingIPC()
   // 设置系统事件IPC
   setupSystemEventIPC()
+  // 设置小组件IPC
+  setupWidgetIPC()
   // 注册文件协议
   registerFileProtocol()
 } catch (error) {
@@ -50,13 +54,16 @@ app.whenReady().then(() => {
   try {
     // 获取权限
     getPermission()
-    createMainWindow()
+    createWindow(mainWindowConfig) // 工厂会自动处理主窗口显示逻辑
     // 创建系统托盘
     createTray()
     // 处理文件协议
     handleFileProtocol()
     // 启动自启服务
     startAutoService()
+
+    // 初始化小组件服务
+    WidgetService.getInstance()
 
     // 初始化时自动检测内核是否存在，推送初始状态给渲染进程
     const kernelMgr = KernelManager.getInstance()

@@ -13,7 +13,8 @@ export default defineConfig({
         input: {
           mainPreload: resolve(__dirname, 'src/preload/mainPreload.ts'),
           assistantPreload: resolve(__dirname, 'src/preload/assistantPreload.ts'),
-          sharePreload: resolve(__dirname, 'src/preload/sharePreload.ts')
+          sharePreload: resolve(__dirname, 'src/preload/sharePreload.ts'),
+          widgetPreload: resolve(__dirname, 'src/preload/widgetPreload.ts')
         }
       }
     }
@@ -26,6 +27,14 @@ export default defineConfig({
         '@preload': resolve('src/preload/src')
       }
     },
-    plugins: [vue()]
+    plugins: [vue()],
+    build: {
+      rollupOptions: {
+        input: {
+          main: resolve(__dirname, 'src/renderer/index.html'),
+          widget: resolve(__dirname, 'src/renderer/widget.html')
+        }
+      }
+    }
   }
 })

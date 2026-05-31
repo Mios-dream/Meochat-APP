@@ -7,6 +7,7 @@ import ChatBoxView from '../views/ChatBoxView.vue'
 import AssistantView from '../views/AssistantView.vue'
 import TipsView from '../views/TipsView.vue'
 import OnboardingView from '../views/OnboardingView.vue'
+import WidgetView from '../views/WidgetView.vue'
 
 const router = createRouter({
   history: createWebHashHistory('/'),
@@ -54,6 +55,11 @@ const router = createRouter({
       path: '/tips',
       name: 'tips',
       component: TipsView
+    },
+    {
+      path: '/widget',
+      name: 'widget',
+      component: WidgetView
     }
   ]
 })

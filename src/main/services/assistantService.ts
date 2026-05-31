@@ -14,7 +14,7 @@ import {
   AssistantBaseInfo,
   AssistantInfo
 } from '../../renderer/src/types/AssistantInfo'
-import { createChatBoxWindow } from '../windows/chatBoxWindow'
+import { createWindow, chatBoxWindowConfig } from '../windows'
 import ImageMetadataExtractor from '../utils/imageMetadataExtractor'
 import { resolveAppDataDir } from '../utils/pathResolve'
 
@@ -143,7 +143,7 @@ class AssistantService {
     }
     // 注册聊天框快捷键
     const success = globalShortcut.register(shortcut, () => {
-      createChatBoxWindow()
+      createWindow(chatBoxWindowConfig, { showImmediately: true })
     })
     if (success) {
       setConfig('chatShortcut', shortcut)

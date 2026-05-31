@@ -1,5 +1,5 @@
 import { Menu, Tray } from 'electron'
-import { createMainWindow } from '../windows/mainWindow'
+import { createWindow, mainWindowConfig } from '../windows'
 import appIcon from '/resources/icon/app.ico?asset'
 
 let tray: Tray
@@ -16,7 +16,7 @@ function createTray(): Tray {
   tray.setContextMenu(contextMenu)
 
   tray.on('click', () => {
-    createMainWindow()
+    createWindow(mainWindowConfig, { showImmediately: true })
   })
 
   tray.on('right-click', () => {

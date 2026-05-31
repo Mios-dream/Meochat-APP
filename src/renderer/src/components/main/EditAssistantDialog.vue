@@ -538,11 +538,11 @@
 
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import BlurModal from './BlurModal.vue'
-import type { AssistantAssets, AssistantInfo } from '../services/assistantManager'
-import { AssistantManager } from '../services/assistantManager'
-import ToggleSwitch from './ToggleSwitch.vue'
-import { NotificationService } from '../services/NotificationService'
+import BlurModal from '../BlurModal.vue'
+import ToggleSwitch from '../ToggleSwitch.vue'
+import type { AssistantAssets, AssistantInfo } from '@renderer/services/assistantManager'
+import { AssistantManager } from '@renderer/services/assistantManager'
+import { NotificationService } from '@renderer/services/NotificationService'
 
 interface Props {
   modelValue: boolean

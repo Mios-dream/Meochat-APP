@@ -229,12 +229,12 @@
 </template>
 
 <script setup lang="ts">
-import BlurModal from './BlurModal.vue'
-import SimpleInput from './SimpleInput.vue'
-import ToggleSwitch from './ToggleSwitch.vue'
+import BlurModal from '../BlurModal.vue'
+import SimpleInput from '../SimpleInput.vue'
+import ToggleSwitch from '../ToggleSwitch.vue'
 import { computed, ref, watch } from 'vue'
-import { normalizeServerConfig } from '../types/serverConfig'
-import type { ServerConfig } from '../types/serverConfig'
+import { normalizeServerConfig } from '@renderer/types/serverConfig'
+import type { ServerConfig } from '@renderer/types/serverConfig'
 
 interface Props {
   modelValue: boolean

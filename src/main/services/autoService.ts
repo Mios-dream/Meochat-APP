@@ -1,5 +1,5 @@
 import { getConfig } from '../config/configManager'
-import { createAssistantWindow } from '../windows/assistantWindow'
+import { createWindow, assistantWindowConfig } from '../windows'
 import log from '../utils/logger'
 import { AssistantService } from '../services/assistantService'
 import { KernelManager, KernelServiceManager } from '../services/kernelManager'
@@ -22,7 +22,7 @@ async function startAutoService(): Promise<void> {
   })
   // 检查是否启用桌宠
   if (getConfig('assistantEnabled')) {
-    createAssistantWindow()
+    createWindow(assistantWindowConfig, { showImmediately: true })
   }
   // 自动启动内核后端服务
   if (getConfig('kernelMode') === 'local') {

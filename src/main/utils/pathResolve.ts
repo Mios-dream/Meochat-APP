@@ -49,7 +49,7 @@ function resolveAppDataDir(): string {
     fs.accessSync(appDataDir, fs.constants.W_OK)
     return appDataDir
   } catch {
-    return app.getPath('userData')
+    return path.join(app.getPath('userData'), 'appData')
   }
 }
 

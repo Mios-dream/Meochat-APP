@@ -21,14 +21,14 @@ interface Props {
 const props = withDefaults(defineProps<Props>(), {
   type: 'button',
   disabled: false,
-  block: false,
+  block: false
 })
 
 const emit = defineEmits<{
   (e: 'click', event: MouseEvent): void
 }>()
 
-const handleClick = (event: MouseEvent) => {
+const handleClick = (event: MouseEvent): void => {
   if (!props.disabled) {
     emit('click', event)
   }

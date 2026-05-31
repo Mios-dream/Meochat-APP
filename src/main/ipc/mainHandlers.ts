@@ -1,27 +1,27 @@
 import { ipcMain, app } from 'electron'
-import { getMainWindow } from '../windows/mainWindow'
+import { windowRegistry } from '../windows'
 
 /**
  * 设置主窗口IPC
  */
 export function setupMainIPC(): void {
   ipcMain.on('app:show', () => {
-    const win = getMainWindow()
+    const win = windowRegistry.getWindowByType('main')
     if (win) win.show()
   })
 
   ipcMain.on('app:hide', () => {
-    const win = getMainWindow()
+    const win = windowRegistry.getWindowByType('main')
     if (win) win.hide()
   })
 
   ipcMain.on('app:minimize', () => {
-    const win = getMainWindow()
+    const win = windowRegistry.getWindowByType('main')
     if (win) win.minimize()
   })
 
   ipcMain.on('app:maximize', () => {
-    const win = getMainWindow()
+    const win = windowRegistry.getWindowByType('main')
     if (win) {
       if (win.isMaximized()) {
         win.setBounds({ width: 1200, height: 800 })

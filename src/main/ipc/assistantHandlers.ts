@@ -1,7 +1,11 @@
 import { ipcMain, screen, BrowserWindow, app } from 'electron'
-import { getAssistantWindow, createAssistantWindow } from '../windows/assistantWindow'
-import { getChatBoxWindow, createChatBoxWindow } from '../windows/chatBoxWindow'
-import { showTipsWindow, hideTipsWindow, sendMessageToTips } from '../windows/tipsWindow'
+import {
+  windowRegistry,
+  createWindow,
+  assistantWindowConfig,
+  chatBoxWindowConfig,
+  tipsWindowConfig
+} from '../windows'
 import { checkAssistantWindowVisibility } from '../utils/windowVisibility'
 import dragAddon from 'electron-click-drag-plugin'
 import robot from '@jitsi/robotjs'
@@ -57,21 +61,21 @@ function initUiohook(): void {
 
 function setupChatBoxIPC(): void {
   ipcMain.on('chat-box:create', () => {
-    createChatBoxWindow()
+    createWindow(chatBoxWindowConfig, { showImmediately: true })
   })
 
   ipcMain.on('chat-box:close', () => {
-    const chatBoxWin = getChatBoxWindow()
+    const chatBoxWin = windowRegistry.getWindowByType('chatBox')
     if (chatBoxWin) chatBoxWin.close()
   })
 
   ipcMain.on('chat-box:hide', () => {
-    const chatBoxWin = getChatBoxWindow()
+    const chatBoxWin = windowRegistry.getWindowByType('chatBox')
     if (chatBoxWin) chatBoxWin.hide()
   })
 
   ipcMain.on('chat-box:show', () => {
-    const chatBoxWin = getChatBoxWindow()
+    const chatBoxWin = windowRegistry.getWindowByType('chatBox')
     if (chatBoxWin) chatBoxWin.show()
   })
 
@@ -99,21 +103,21 @@ function setupAssistantIPC(): void {
   initUiohook()
 
   ipcMain.on('assistant:create', () => {
-    createAssistantWindow()
+    createWindow(assistantWindowConfig, { showImmediately: true })
   })
 
   ipcMain.on('assistant:close', () => {
-    const assistantWin = getAssistantWindow()
+    const assistantWin = windowRegistry.getWindowByType('assistant')
     if (assistantWin) assistantWin.close()
   })
 
   ipcMain.on('assistant:hide', () => {
-    const assistantWin = getAssistantWindow()
+    const assistantWin = windowRegistry.getWindowByType('assistant')
     if (assistantWin) assistantWin.hide()
   })
 
   ipcMain.on('assistant:show', () => {
-    const assistantWin = getAssistantWindow()
+    const assistantWin = windowRegistry.getWindowByType('assistant')
     if (assistantWin) assistantWin.show()
   })
 
@@ -127,13 +131,13 @@ function setupAssistantIPC(): void {
 
   // 获取助手当前状态
   ipcMain.handle('assistant:get-status', async () => {
-    const assistantWin = getAssistantWindow()
+    const assistantWin = windowRegistry.getWindowByType('assistant')
     return !!assistantWin
   })
 
   ipcMain.on('assistant:start-drag', () => {
     try {
-      const assistantWin = getAssistantWindow()
+      const assistantWin = windowRegistry.getWindowByType('assistant')
       if (!assistantWin) return
       const hwndBuffer = assistantWin.getNativeWindowHandle()
       // Linux: extract X11 Window ID from the buffer (first 4 bytes, little-endian)
@@ -147,7 +151,7 @@ function setupAssistantIPC(): void {
 
   // 开始鼠标轨迹监控 - 使用 uiohook 检测鼠标按下状态
   ipcMain.on('assistant:start-mouse-tracking', () => {
-    const assistantWin = getAssistantWindow()
+    const assistantWin = windowRegistry.getWindowByType('assistant')
     if (!assistantWin) return
 
     // 停止现有的监控(如果有的话)
@@ -225,7 +229,7 @@ function setupAssistantIPC(): void {
   })
 
   ipcMain.on('assistant:set-ignore-mouse', (_event, ignore) => {
-    const assistantWin = getAssistantWindow()
+    const assistantWin = windowRegistry.getWindowByType('assistant')
     assistantWin?.setIgnoreMouseEvents(ignore, { forward: true })
   })
 
@@ -242,19 +246,38 @@ function setupAssistantIPC(): void {
 
   // Tips窗口相关IPC
   ipcMain.on('tips:show-message', async (_event, data: { message: string; avatarUrl?: string }) => {
-    showTipsWindow(data.message, data.avatarUrl)
+    const tipsWin = windowRegistry.getWindowByType('tips')
+    if (tipsWin && !tipsWin.isDestroyed()) {
+      tipsWin.show()
+      tipsWin.webContents.send('tips:show', data)
+    } else {
+      createWindow(tipsWindowConfig, { showImmediately: true }).then((win) => {
+        win.webContents.send('tips:show', data)
+      })
+    }
   })
 
   ipcMain.on('tips:update-message', (_event, data: { message: string; avatarUrl?: string }) => {
-    sendMessageToTips(data.message, data.avatarUrl)
+    const tipsWin = windowRegistry.getWindowByType('tips')
+    if (tipsWin && !tipsWin.isDestroyed()) {
+      tipsWin.webContents.send('tips:message', data)
+    }
   })
 
   ipcMain.on('tips:hide-message', () => {
-    hideTipsWindow()
+    const tipsWin = windowRegistry.getWindowByType('tips')
+    if (tipsWin && !tipsWin.isDestroyed()) {
+      tipsWin.webContents.send('tips:hide')
+      setTimeout(() => {
+        if (tipsWin && !tipsWin.isDestroyed()) {
+          tipsWin.hide()
+        }
+      }, 400)
+    }
   })
 
   ipcMain.handle('assistant:check-visible', async () => {
-    const assistantWin = getAssistantWindow()
+    const assistantWin = windowRegistry.getWindowByType('assistant')
     const result = await checkAssistantWindowVisibility(assistantWin)
     console.log('检查助手窗口可见性:', result)
     return result.visible

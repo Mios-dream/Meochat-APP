@@ -193,7 +193,7 @@
 import ToggleSwitch from '../components/ToggleSwitch.vue'
 import SimpleInput from '../components/SimpleInput.vue'
 import UpdateModal from '../components/UpdateDialog.vue'
-import ServerConfigDialog from '../components/ServerConfigDialog.vue'
+import ServerConfigDialog from '../components/main/ServerConfigDialog.vue'
 import { useConfigStore } from '../stores/useConfigStore'
 import { NotificationService } from '../services/NotificationService'
 import { mergeServerConfig, normalizeServerConfig } from '../types/serverConfig'
