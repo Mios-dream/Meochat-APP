@@ -301,9 +301,15 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useUIStore } from '../stores/useUIStore'
 import { useConfigStore } from '../stores/useConfigStore'
+import { NotificationService } from '../services/NotificationService'
 import type { KernelUpdateState, EnvironmentCheckResult } from '../types/KernelInfo'
 import KernelLogTerminal from '../components/KernelLogTerminal.vue'
 import sakuraImg from '../assets/images/sakura.webp'
+
+/** 通知服务实例 */
+const notificationService = NotificationService.getInstance()
+/** 上一次内核操作状态，用于检测状态变化 */
+const lastOperationStatus = ref<string>('idle')
 
 // 是否展示侧面吧
 const showSidePanels = ref(false)
@@ -468,8 +474,7 @@ const isSyncingDeps = ref(false)
 
 // 监听后端服务状态变化的取消函数
 let unsubServiceState: (() => void) | null = null
-// 监听内核状态变化的取消函数
-let unsubNeedRestart: (() => void) | null = null
+
 let healthCheckTimer: ReturnType<typeof setInterval> | null = null
 
 // 服务是否正在运行
@@ -680,12 +685,40 @@ const isUpdating = ref(false)
 async function handleCheckUpdate(): Promise<void> {
   isCheckingUpdate.value = true
   try {
+    notificationService.info({
+      title: '内核更新',
+      message: '正在检查内核更新...',
+      key: 'kernel-check-update'
+    })
+
     const result = await window.api.kernel.checkUpdate()
     if (!result.success) {
       console.error('检查更新失败:', result.error)
+      notificationService.error({
+        title: '内核更新',
+        message: `检查更新失败: ${result.error || '未知错误'}`,
+        key: 'kernel-check-update'
+      })
+    } else if (result.data?.updateAvailable) {
+      notificationService.success({
+        title: '内核更新',
+        message: `发现新版本 v${result.data.latestVersion?.version}`,
+        key: 'kernel-check-update'
+      })
+    } else {
+      notificationService.info({
+        title: '内核更新',
+        message: '内核已是最新版本',
+        key: 'kernel-check-update'
+      })
     }
   } catch (e) {
     console.error('检查更新异常:', (e as Error).message)
+    notificationService.error({
+      title: '内核更新',
+      message: `检查更新异常: ${(e as Error).message}`,
+      key: 'kernel-check-update'
+    })
   } finally {
     isCheckingUpdate.value = false
   }
@@ -696,6 +729,11 @@ async function handleUpdateToLatest(): Promise<void> {
   try {
     // 1. 停止后端服务，避免文件锁定导致更新失败
     if (backendService.value.running) {
+      notificationService.info({
+        title: '内核更新',
+        message: '正在停止后端服务...',
+        key: 'kernel-update'
+      })
       const stopResult = await window.api.kernel.stopBackend()
       if (!stopResult.success) {
         console.warn('停止后端服务失败，继续更新')
@@ -703,20 +741,48 @@ async function handleUpdateToLatest(): Promise<void> {
     }
 
     // 2. 下载并安装内核更新（主进程执行完整流程：下载→解压→安装依赖）
+    notificationService.info({
+      title: '内核更新',
+      message: '开始下载并安装内核更新...',
+      key: 'kernel-update'
+    })
+
     const result = await window.api.kernel.updateToLatest()
     if (!result.success) {
       console.error('更新失败:', result.error)
+      notificationService.error({
+        title: '内核更新',
+        message: `更新失败: ${result.error || '未知错误'}`,
+        key: 'kernel-update'
+      })
       return
     }
 
     // 3. 重启后端服务，使用新内核
+    notificationService.info({
+      title: '内核更新',
+      message: '正在重启后端服务...',
+      key: 'kernel-update'
+    })
+
     const restartResult = await window.api.kernel.restartBackend()
     if (!restartResult.success) {
       console.error('重启后端服务失败:', restartResult.error)
+      notificationService.error({
+        title: '内核更新',
+        message: `重启服务失败: ${restartResult.error || '未知错误'}`,
+        key: 'kernel-update'
+      })
     }
 
     // 4. 重置内核状态到默认状态（idle）
     await window.api.kernel.resetState()
+
+    notificationService.success({
+      title: '内核更新',
+      message: '内核更新完成！',
+      key: 'kernel-update'
+    })
 
     // 等待后端服务稳定后检查状态
     setTimeout(() => {
@@ -724,6 +790,11 @@ async function handleUpdateToLatest(): Promise<void> {
     }, 3000)
   } catch (e) {
     console.error('更新异常:', (e as Error).message)
+    notificationService.error({
+      title: '内核更新',
+      message: `更新异常: ${(e as Error).message}`,
+      key: 'kernel-update'
+    })
   } finally {
     isUpdating.value = false
   }
@@ -914,6 +985,73 @@ onMounted(async () => {
 
   unsubKernelState = window.api.kernel.onStateUpdate((state) => {
     kernelState.value = state as KernelUpdateState
+
+    // 根据内核状态变化发送通知
+    const newStatus = state.operationStatus
+    const oldStatus = lastOperationStatus.value
+
+    if (newStatus !== oldStatus) {
+      lastOperationStatus.value = newStatus
+
+      // 检查更新开始
+      if (newStatus === 'checking') {
+        notificationService.info({
+          title: '内核更新',
+          message: '正在检查内核更新...',
+          key: 'kernel-update'
+        })
+      }
+      // 下载开始
+      else if (newStatus === 'downloading' && oldStatus !== 'downloading') {
+        notificationService.info({
+          title: '内核更新',
+          message: '开始下载内核更新...',
+          key: 'kernel-update'
+        })
+      }
+      // 安装中
+      else if (newStatus === 'installing' && oldStatus !== 'installing') {
+        notificationService.info({
+          title: '内核更新',
+          message: '正在安装内核...',
+          key: 'kernel-update'
+        })
+      }
+      // 环境配置中
+      else if (newStatus === 'settingUpEnv' && oldStatus !== 'settingUpEnv') {
+        notificationService.info({
+          title: '内核更新',
+          message: '正在配置运行环境...',
+          key: 'kernel-update'
+        })
+      }
+      // 更新完成
+      else if (newStatus === 'done' && oldStatus !== 'done' && oldStatus !== 'idle') {
+        notificationService.success({
+          title: '内核更新',
+          message: state.statusText || '内核更新完成！',
+          key: 'kernel-update'
+        })
+      }
+      // 更新出错
+      else if (newStatus === 'error' && oldStatus !== 'error') {
+        notificationService.error({
+          title: '内核更新',
+          message: state.error || state.statusText || '内核更新失败',
+          key: 'kernel-update'
+        })
+      }
+    }
+
+    // 下载进度通知（使用key避免频繁弹出新通知）
+    if (newStatus === 'downloading' && state.progress > 0) {
+      notificationService.info({
+        title: '内核下载中',
+        message: `下载进度: ${state.progress}%`,
+        key: 'kernel-download-progress',
+        duration: 2000
+      })
+    }
   })
 
   // 监听后端服务状态实时变化
@@ -922,19 +1060,6 @@ onMounted(async () => {
     if (!state.running) {
       backendHealthy.value = null
     }
-  })
-
-  // 监听内核更新完成后需要重启服务的通知
-  unsubNeedRestart = window.api.kernel.onNeedRestart(() => {
-    window.api.kernel.restartBackend().then((restartResult) => {
-      if (restartResult.success) {
-        window.api.kernel.resetState().then(() => {
-          setTimeout(() => {
-            void checkBackendStatus()
-          }, 3000)
-        })
-      }
-    })
   })
 
   // 根据模式初始化
@@ -973,9 +1098,10 @@ onUnmounted(() => {
   uiStore.isHomePanelOpen = false
   unsubKernelState?.()
   unsubServiceState?.()
-  unsubNeedRestart?.()
   stopHealthPolling()
   stopApiHealthPolling()
+  // 重置状态
+  lastOperationStatus.value = 'idle'
 })
 </script>
 

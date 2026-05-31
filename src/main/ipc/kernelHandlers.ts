@@ -156,9 +156,9 @@ function setupKernelIPC(): void {
   })
 
   /** 停止后端服务 */
-  ipcMain.handle('kernel:stop-backend', () => {
+  ipcMain.handle('kernel:stop-backend', async () => {
     try {
-      const result = kernelServiceManager.stopBackend()
+      const result = await kernelServiceManager.stopBackend()
       return result
     } catch (error) {
       const msg = (error as Error).message

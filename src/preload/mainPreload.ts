@@ -50,11 +50,6 @@ contextBridge.exposeInMainWorld('api', {
       ipcRenderer.on('kernel:state-update', handler)
       return () => ipcRenderer.removeListener('kernel:state-update', handler)
     },
-    onNeedRestart: (callback: (data: unknown) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, data: unknown): void => callback(data)
-      ipcRenderer.on('kernel:need-restart', handler)
-      return () => ipcRenderer.removeListener('kernel:need-restart', handler)
-    },
     resetState: () => ipcRenderer.invoke('kernel:reset-state'),
     checkEnvironment: () => ipcRenderer.invoke('kernel:check-environment'),
     setupEnvironment: () => ipcRenderer.invoke('kernel:setup-environment'),

@@ -544,13 +544,6 @@ class KernelManager {
       this.setOperation('done', `内核 v${targetVersion} 安装完成`)
       this.notifyState()
 
-      // 通知渲染进程需要重启后端服务
-      BrowserWindow.getAllWindows().forEach((win) => {
-        if (!win.isDestroyed()) {
-          win.webContents.send('kernel:need-restart', { version: targetVersion })
-        }
-      })
-
       return true
     } catch (error) {
       const msg = (error as Error).message
@@ -560,13 +553,9 @@ class KernelManager {
       return false
     } finally {
       // 清理临时文件
-      try {
-        await fs.promises.unlink(tempZip).catch(() => {
-          /* ignore */
-        })
-      } catch {
+      await fs.promises.unlink(tempZip).catch(() => {
         /* ignore */
-      }
+      })
     }
   }
 
