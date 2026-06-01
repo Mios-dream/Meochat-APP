@@ -29,7 +29,7 @@ interface WidgetInstance {
   size: WidgetSize
   enabled: boolean
   pinned?: boolean
-  config?: Record<string, any>
+  config?: Record<string, unknown>
 }
 
 /** 小组件全局设置 */

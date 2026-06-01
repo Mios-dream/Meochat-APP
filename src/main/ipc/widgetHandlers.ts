@@ -18,7 +18,7 @@ interface WidgetDataMessage {
   fromId: string
   toId?: string
   type: string
-  payload: any
+  payload: unknown
 }
 
 /**
@@ -120,14 +120,21 @@ export function setupWidgetIPC(): void {
         log.error(`小组件实例不存在: ${instanceId}`)
         return { success: false, error: '小组件实例不存在' }
       }
-      log.info(`创建小组件窗口: ${instance.widgetId}, 位置: ${JSON.stringify(instance.position)}`)
+      log.info(
+        `创建小组件窗口: ${instance.widgetId}, 位置: ${JSON.stringify(instance.position)}, 大小: ${JSON.stringify(instance.size)}`
+      )
       const options = createWidgetOptions(
         instance.id,
         instance.widgetId,
         instance.position,
         instance.size
       )
-      createMultiInstanceWindow(widgetWindowConfig, instance.id, options.query as Record<string, string>)
+      createMultiInstanceWindow(
+        widgetWindowConfig,
+        instance.id,
+        options.query as Record<string, string>,
+        options.overrides
+      )
       return { success: true }
     } catch (error) {
       log.error('创建小组件窗口失败:', error)

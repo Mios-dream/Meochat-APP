@@ -249,16 +249,19 @@ export async function createSingletonWindow(
  * @param config 窗口配置
  * @param instanceId 实例 ID
  * @param query 查询参数
+ * @param overrides 窗口选项覆盖（如 size、position）
  * @returns BrowserWindow 实例
  */
 export async function createMultiInstanceWindow(
   config: WindowConfig,
   instanceId: string,
-  query?: Record<string, string>
+  query?: Record<string, string>,
+  overrides?: Partial<Electron.BrowserWindowConstructorOptions>
 ): Promise<BrowserWindow> {
   return createWindow(config, {
     instanceId,
     query,
+    overrides,
     showImmediately: true
   })
 }
