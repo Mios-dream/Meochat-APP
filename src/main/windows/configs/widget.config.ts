@@ -12,6 +12,7 @@ export const widgetWindowConfig: WindowConfig = {
   htmlFile: 'widget.html',
   preload: 'widgetPreload',
   singleton: false, // 小组件支持多实例
+  boundsKey: 'widgetWindowBounds', // 小组件位置持久化
   // 不设置 route，小组件参数通过 URL 查询参数传递
   options: {
     frame: false,

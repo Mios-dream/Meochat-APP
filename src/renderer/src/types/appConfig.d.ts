@@ -31,8 +31,6 @@ export interface AppConfig {
   themeColor: string
   // 聊天快捷键
   chatShortcut: string
-  // 桌宠助手窗口位置
-  assistantWindowBounds?: Electron.Rectangle
   // 是否处于睡眠模式
   sleepMode: boolean
   // 核心运行模式：'local' = 本地模式（启动内核），'api' = API模式（远程API）

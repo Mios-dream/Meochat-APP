@@ -23,30 +23,7 @@ async function startAutoService(): Promise<void> {
   })
   // 检查是否启用桌宠
   if (getConfig('assistantEnabled')) {
-    // 从存储中读取窗口配置，如果不存在则使用默认值
-    const savedBounds = getConfig('assistantWindowBounds') as Electron.Rectangle
-    const defaultBounds = {
-      width: 300,
-      height: 500
-    }
-
-    // 验证保存的位置是否在当前屏幕范围内
-    let windowBounds = defaultBounds
-    if (savedBounds) {
-      const primaryDisplay = screen.getPrimaryDisplay()
-      const displayBounds = primaryDisplay.bounds
-
-      // 检查保存的位置是否在屏幕范围内
-      if (
-        savedBounds.x >= displayBounds.x &&
-        savedBounds.y >= displayBounds.y &&
-        savedBounds.x + savedBounds.width <= displayBounds.x + displayBounds.width &&
-        savedBounds.y + savedBounds.height <= displayBounds.y + displayBounds.height
-      ) {
-        windowBounds = savedBounds
-      }
-    }
-    createWindow(assistantWindowConfig, { overrides: { ...windowBounds }, showImmediately: true })
+    createWindow(assistantWindowConfig, { showImmediately: true })
   }
 
   // 注册快捷回复的快捷键

@@ -19,10 +19,10 @@
       <!-- 控制按钮 -->
       <Transition name="fade">
         <div v-show="showControlsFlag" class="widget-controls">
-          <button class="control-btn" @click="togglePin" :title="isPinned ? '取消置顶' : '置顶'">
+          <button class="control-btn" :title="isPinned ? '取消置顶' : '置顶'" @click="togglePin">
             <font-awesome-icon icon="fa-solid fa-thumbtack" :class="{ active: isPinned }" />
           </button>
-          <button class="control-btn close-btn" @click="closeWidget" title="关闭">
+          <button class="control-btn close-btn" title="关闭" @click="closeWidget">
             <font-awesome-icon icon="fa-solid fa-xmark" />
           </button>
         </div>
@@ -45,7 +45,7 @@ import NoteWidget from '../components/widgets/builtin/NoteWidget.vue'
 const widgetManager = WidgetManager.getInstance()
 
 // 小组件映射
-const widgetComponents: Record<string, any> = {
+const widgetComponents: Record<string, unknown> = {
   clock: markRaw(ClockWidget),
   'daily-quote': markRaw(DailyQuoteWidget),
   weather: markRaw(WeatherWidget),
@@ -56,7 +56,7 @@ const widgetComponents: Record<string, any> = {
 // 状态
 const instanceId = ref('')
 const widgetId = ref('')
-const instanceConfig = ref<Record<string, any>>({})
+const instanceConfig = ref<Record<string, unknown>>({})
 const isPinned = ref(false)
 const isTransparent = ref(true)
 const showControlsFlag = ref(false)
@@ -66,7 +66,11 @@ let hideControlsTimer: ReturnType<typeof setTimeout> | null = null
 // 计算属性
 const currentWidget = computed(() => {
   const widget = widgetComponents[widgetId.value] || null
-  console.log('Current widget:', { widgetId: widgetId.value, found: !!widget, components: Object.keys(widgetComponents) })
+  console.log('Current widget:', {
+    widgetId: widgetId.value,
+    found: !!widget,
+    components: Object.keys(widgetComponents)
+  })
   return widget
 })
 
@@ -101,10 +105,10 @@ async function closeWidget(): Promise<void> {
 let removeInstanceDataListener: (() => void) | null = null
 
 onMounted(() => {
-  // 从 window.__WIDGET_PARAMS__ 获取参数（由 widget-main.ts 设置）
-  const params = window.__WIDGET_PARAMS__ || {}
-  widgetId.value = params.widgetId || ''
-  instanceId.value = params.instanceId || ''
+  // 直接从 URL 查询参数获取，无需中间存储
+  const urlParams = new URLSearchParams(window.location.search)
+  widgetId.value = urlParams.get('widgetId') || ''
+  instanceId.value = urlParams.get('instanceId') || ''
 
   console.log('WidgetView mounted:', { widgetId: widgetId.value, instanceId: instanceId.value })
 

@@ -13,7 +13,6 @@ import { uIOhook } from 'uiohook-napi'
 
 import log from '../utils/logger'
 import { AssistantService } from '../services/assistantService'
-import { getConfig } from '../config/configManager'
 
 let mouseTrackingInterval: NodeJS.Timeout | null = null
 let isMousePressed = false // 追踪鼠标按下状态
@@ -122,30 +121,7 @@ function setupAssistantIPC(): void {
   initUiohook()
 
   ipcMain.on('assistant:create', () => {
-    // 从存储中读取窗口配置，如果不存在则使用默认值
-    const savedBounds = getConfig('assistantWindowBounds') as Electron.Rectangle
-    const defaultBounds = {
-      width: 300,
-      height: 500
-    }
-
-    // 验证保存的位置是否在当前屏幕范围内
-    let windowBounds = defaultBounds
-    if (savedBounds) {
-      const primaryDisplay = screen.getPrimaryDisplay()
-      const displayBounds = primaryDisplay.bounds
-
-      // 检查保存的位置是否在屏幕范围内
-      if (
-        savedBounds.x >= displayBounds.x &&
-        savedBounds.y >= displayBounds.y &&
-        savedBounds.x + savedBounds.width <= displayBounds.x + displayBounds.width &&
-        savedBounds.y + savedBounds.height <= displayBounds.y + displayBounds.height
-      ) {
-        windowBounds = savedBounds
-      }
-    }
-    createWindow(assistantWindowConfig, { overrides: { ...windowBounds }, showImmediately: true })
+    createWindow(assistantWindowConfig, { showImmediately: true })
   })
 
   ipcMain.on('assistant:close', () => {

@@ -15,13 +15,11 @@ import type { WindowConfig, CreateWindowOptions, WindowEventCallbacks } from './
 import { loadWindowContent, getPreloadPath } from './urlResolver'
 import { windowRegistry } from './registry'
 import { getConfig } from '../config/configManager'
+import { boundsStore } from '../services/boundsStore'
 import log from '../utils/logger'
 
 /** 检查是否是开机自启 */
 const isAutoStarted = process.argv.includes('--auto-start')
-
-/** 窗口边界持久化存储（简单实现，可替换为 electron-store） */
-const boundsStore: Map<string, Rectangle> = new Map()
 
 /**
  * 验证窗口位置是否在屏幕范围内
@@ -74,9 +72,16 @@ export async function createWindow(
   }
 
   // 恢复保存的窗口边界
+  // 多实例窗口使用 boundsKey:instanceId 作为唯一键
   let windowBounds: Partial<Rectangle> | undefined
-  if (config.boundsKey) {
-    const savedBounds = boundsStore.get(config.boundsKey)
+  const effectiveBoundsKey = config.boundsKey
+    ? instanceId
+      ? `${config.boundsKey}:${instanceId}`
+      : config.boundsKey
+    : undefined
+
+  if (effectiveBoundsKey) {
+    const savedBounds = boundsStore.get(effectiveBoundsKey)
     if (savedBounds) {
       windowBounds = validateBounds(savedBounds)
     }
@@ -109,11 +114,12 @@ export async function createWindow(
   })
 
   // 绑定生命周期事件
-  bindWindowEvents(window, key, config, callbacks)
+  bindWindowEvents(window, key, callbacks, effectiveBoundsKey)
 
-  // 先注册 dom-ready 事件，再加载内容（避免竞态条件）
+  // 先注册 ready-to-show 事件，再加载内容（避免竞态条件）
+  // 使用 ready-to-show 而非 dom-ready，确保首次绘制完成后才显示窗口，避免透明窗口闪烁黑边
   const domReadyPromise = new Promise<void>((resolve) => {
-    window.webContents.once('dom-ready', () => {
+    window.once('ready-to-show', () => {
       windowRegistry.updateState(key, 'ready')
       log.info(`窗口就绪: ${key}`)
 
@@ -169,8 +175,8 @@ export async function createWindow(
 function bindWindowEvents(
   window: BrowserWindow,
   key: string,
-  config: WindowConfig,
-  callbacks?: WindowEventCallbacks
+  callbacks?: WindowEventCallbacks,
+  effectiveBoundsKey?: string
 ): void {
   // 窗口移动事件
   window.on('move', () => {
@@ -179,8 +185,8 @@ function bindWindowEvents(
     callbacks?.onMoved?.(bounds)
 
     // 持久化窗口位置
-    if (config.boundsKey) {
-      boundsStore.set(config.boundsKey, bounds)
+    if (effectiveBoundsKey) {
+      boundsStore.set(effectiveBoundsKey, bounds)
     }
   })
 
@@ -191,8 +197,8 @@ function bindWindowEvents(
     callbacks?.onResized?.(bounds)
 
     // 持久化窗口大小
-    if (config.boundsKey) {
-      boundsStore.set(config.boundsKey, bounds)
+    if (effectiveBoundsKey) {
+      boundsStore.set(effectiveBoundsKey, bounds)
     }
   })
 

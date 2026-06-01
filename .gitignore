@@ -14,3 +14,4 @@ tsconfig.web.tsbuildinfo
 .vscode
 .sisyphus
 resources/python-runtime/uv.exe
+tsconfig.node.tsbuildinfo

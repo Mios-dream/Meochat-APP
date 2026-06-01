@@ -14,6 +14,8 @@ export const chatBoxWindowConfig: WindowConfig = {
     frame: false,
     alwaysOnTop: true,
     resizable: false,
-    autoHideMenuBar: true
+    skipTaskbar: true,
+    autoHideMenuBar: true,
+    hasShadow: false
   }
 }

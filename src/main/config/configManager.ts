@@ -36,10 +36,6 @@ const schema: Schema<AppConfig> = {
   themeColor: { type: 'string', default: '#fb7299' },
   // 聊天快捷键
   chatShortcut: { type: 'string', default: 'Alt+A' },
-  // 助手窗口位置和大小
-  assistantWindowBounds: {
-    type: 'object'
-  },
   // 是否处于睡眠模式
   sleepMode: { type: 'boolean', default: false }
 }

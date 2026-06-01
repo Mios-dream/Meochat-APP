@@ -5,7 +5,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import ChatBox from '../components/ChatBox.vue'
 
 const isVisible = ref(false)
@@ -47,13 +47,16 @@ onMounted(() => {
 
   window.addEventListener('blur', hideChatBox)
 
-  // 初始显示动画
-  setTimeout(() => {
-    isVisible.value = true
-    if (inputRef.value) {
-      inputRef.value.focus()
-    }
-  }, 100)
+  // 初始显示动画：使用 nextTick + requestAnimationFrame 确保组件首次渲染完成后
+  // 再触发 CSS 过渡动画，避免窗口 show() 后组件状态未就绪导致的闪烁
+  nextTick(() => {
+    requestAnimationFrame(() => {
+      isVisible.value = true
+      if (inputRef.value) {
+        inputRef.value.focus()
+      }
+    })
+  })
 })
 
 onUnmounted(() => {
