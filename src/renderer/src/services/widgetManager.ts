@@ -17,8 +17,6 @@ export class WidgetManager {
   /** 数据监听器 */
   private dataListeners: Map<string, Set<(data: any) => void>> = new Map()
 
-  private constructor() {}
-
   /**
    * 获取单例实例
    */
@@ -77,7 +75,7 @@ export class WidgetManager {
     }
 
     // 生成唯一 ID
-    const instanceId = `${widgetId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    const instanceId = `${widgetId}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
 
     const instance: WidgetInstance = {
       id: instanceId,

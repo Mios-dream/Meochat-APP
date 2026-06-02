@@ -1,10 +1,11 @@
 <template>
   <div class="daily-quote-widget">
+    <div class="quote-badge">Daily Spell</div>
     <!-- 引言内容 -->
     <div class="quote-content">
-      <div class="quote-mark">"</div>
+      <div class="quote-mark">“</div>
       <p class="quote-text" :class="{ 'fade-in': isAnimating }">{{ currentQuote.text }}</p>
-      <div class="quote-mark closing">"</div>
+      <div class="quote-mark closing">”</div>
     </div>
 
     <!-- 出处 -->
@@ -29,7 +30,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, onMounted } from 'vue'
 
 /** 引言接口 */
 interface Quote {
@@ -41,7 +42,11 @@ interface Quote {
 /** 内置经典语录 */
 const QUOTES: Quote[] = [
   { text: '人生如逆旅，我亦是行人。', author: '苏轼', source: '临江仙·送钱穆父' },
-  { text: '世界上最宽阔的是海洋，比海洋更宽阔的是天空，比天空更宽阔的是人的心灵。', author: '雨果', source: '悲惨世界' },
+  {
+    text: '世界上最宽阔的是海洋，比海洋更宽阔的是天空，比天空更宽阔的是人的心灵。',
+    author: '雨果',
+    source: '悲惨世界'
+  },
   { text: '生活不是等待风暴过去，而是学会在雨中翩翩起舞。', author: '未知' },
   { text: '人生天地之间，若白驹过隙，忽然而已。', author: '庄子', source: '知北游' },
   { text: '我们听过无数的道理，却仍旧过不好这一生。', author: '韩寒', source: '后会无期' },
@@ -52,14 +57,22 @@ const QUOTES: Quote[] = [
   { text: '世间安得双全法，不负如来不负卿。', author: '仓央嘉措' },
   { text: '黑夜给了我黑色的眼睛，我却用它寻找光明。', author: '顾城', source: '一代人' },
   { text: '你站在桥上看风景，看风景的人在楼上看你。', author: '卞之琳', source: '断章' },
-  { text: '宠辱不惊，看庭前花开花落；去留无意，望天上云卷云舒。', author: '洪应明', source: '菜根谭' },
+  {
+    text: '宠辱不惊，看庭前花开花落；去留无意，望天上云卷云舒。',
+    author: '洪应明',
+    source: '菜根谭'
+  },
   { text: '春水初生，春林初盛，春风十里，不如你。', author: '冯唐', source: '三十六大' },
   { text: '愿你出走半生，归来仍是少年。', author: '苏轼' },
   { text: '浮世三千，吾爱有三：日月与卿。日为朝，月为暮，卿为朝朝暮暮。', author: '佚名' },
   { text: '玲珑骰子安红豆，入骨相思知不知。', author: '温庭筠', source: '南歌子词二首' },
   { text: '人生若只如初见，何事秋风悲画扇。', author: '纳兰性德', source: '木兰花·拟古决绝词柬友' },
   { text: '我见青山多妩媚，料青山见我应如是。', author: '辛弃疾', source: '贺新郎' },
-  { text: '众里寻他千百度，蓦然回首，那人却在，灯火阑珊处。', author: '辛弃疾', source: '青玉案·元夕' }
+  {
+    text: '众里寻他千百度，蓦然回首，那人却在，灯火阑珊处。',
+    author: '辛弃疾',
+    source: '青玉案·元夕'
+  }
 ]
 
 interface Emits {
@@ -106,7 +119,7 @@ async function refreshQuote(): Promise<void> {
   isAnimating.value = true
 
   // 动画延迟
-  await new Promise(resolve => setTimeout(resolve, 300))
+  await new Promise((resolve) => setTimeout(resolve, 300))
 
   currentQuote.value = getRandomQuote()
   emit('refresh')
@@ -153,41 +166,107 @@ defineExpose({
 
 <style scoped>
 .daily-quote-widget {
+  position: relative;
+  width: 100%;
+  height: 100%;
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  padding: 20px;
-  background: rgba(255, 255, 255, 0.95);
-  border-radius: 16px;
-  backdrop-filter: blur(10px);
+  justify-content: center;
+  gap: 14px;
+  min-width: 260px;
+  min-height: 240px;
+  padding: 22px;
+  overflow: hidden;
+  background:
+    linear-gradient(160deg, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.78)),
+    url('../../../assets/images/char_background.png');
+  background-size: auto, 28px 28px;
+  border: 2px solid rgba(255, 255, 255, 0.82);
+  border-radius: 28px;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.72),
+    0 18px 38px rgba(139, 30, 63, 0.18);
+  backdrop-filter: blur(14px);
+}
+
+.daily-quote-widget::before {
+  content: '';
+  position: absolute;
+  right: -38px;
+  top: -26px;
+  width: 154px;
+  height: 154px;
+  background: url('../../../assets/images/star.png') center / contain no-repeat;
+  opacity: 0.2;
+  pointer-events: none;
+}
+
+.daily-quote-widget::after {
+  content: '';
+  position: absolute;
+  left: -18px;
+  bottom: -38px;
+  width: 136px;
+  height: 136px;
+  background: url('../../../assets/images/助手Q版.png') center / contain no-repeat;
+  opacity: 0.16;
+  pointer-events: none;
+}
+
+.quote-badge {
+  position: relative;
+  z-index: 1;
+  align-self: flex-start;
+  padding: 5px 12px;
+  border: 1px solid rgba(251, 114, 153, 0.22);
+  border-radius: 999px;
+  background: #fff5f9;
+  color: #8b1e3f;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
 }
 
 .quote-content {
   position: relative;
-  padding: 8px 16px;
+  z-index: 1;
+  padding: 12px 14px;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(251, 114, 153, 0.16);
 }
 
 .quote-mark {
-  font-size: 48px;
+  position: absolute;
+  left: 10px;
+  top: -16px;
+  font-size: 58px;
   line-height: 1;
-  color: var(--theme-color-light, #ffd1e8);
+  color: rgba(251, 114, 153, 0.28);
   font-family: Georgia, serif;
   user-select: none;
 }
 
 .quote-mark.closing {
-  text-align: right;
-  margin-top: -16px;
+  left: auto;
+  right: 10px;
+  top: auto;
+  bottom: -34px;
 }
 
 .quote-text {
-  font-size: 16px;
-  line-height: 1.8;
-  color: var(--theme-text-color-dark, #333);
+  position: relative;
+  z-index: 1;
+  font-size: 17px;
+  line-height: 1.9;
+  color: #6f2b43;
   margin: 0;
-  padding: 0 8px;
-  text-align: justify;
-  transition: opacity 0.3s ease, transform 0.3s ease;
+  padding: 8px 12px;
+  text-align: left;
+  font-weight: 700;
+  transition:
+    opacity 0.3s ease,
+    transform 0.3s ease;
 }
 
 .quote-text.fade-in {
@@ -206,22 +285,25 @@ defineExpose({
 }
 
 .quote-source {
+  position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
   justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 8px;
-  padding: 0 16px;
+  padding: 0 8px;
   font-size: 14px;
-  color: #888;
+  color: #9a6275;
 }
 
 .source-dash {
-  color: var(--theme-color-light, #ffd1e8);
+  color: var(--theme-color, #fb7299);
 }
 
 .source-author {
-  font-weight: 500;
-  color: #666;
+  font-weight: 900;
+  color: #8b1e3f;
 }
 
 .source-book {
@@ -229,32 +311,33 @@ defineExpose({
 }
 
 .quote-actions {
+  position: relative;
+  z-index: 1;
   display: flex;
   gap: 8px;
-  padding-top: 8px;
-  border-top: 1px solid rgba(0, 0, 0, 0.05);
 }
 
 .action-btn {
   flex: 1;
   height: 36px;
-  border: none;
-  border-radius: 10px;
-  background: rgba(0, 0, 0, 0.04);
-  color: #666;
+  border: 1px solid rgba(251, 114, 153, 0.18);
+  border-radius: 999px;
+  background: #fff7fa;
+  color: #8b1e3f;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 800;
   transition: all 0.2s ease;
 }
 
 .action-btn:hover {
-  background: rgba(251, 114, 153, 0.1);
+  background: #fff;
   color: var(--theme-color, #fb7299);
+  transform: translateY(-1px);
 }
 
 .action-btn:active {
@@ -266,8 +349,12 @@ defineExpose({
 }
 
 @keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .copy-btn:hover {

@@ -1,5 +1,6 @@
 <template>
   <div class="todo-widget">
+    <div class="todo-panel-title">Quest List</div>
     <!-- 添加待办 -->
     <div class="todo-input-container">
       <input
@@ -58,7 +59,7 @@
 
     <!-- 空状态 -->
     <div v-else class="todo-empty">
-      <div class="empty-icon">📝</div>
+      <div class="empty-icon">✦</div>
       <p class="empty-text">还没有待办事项</p>
       <p class="empty-hint">添加一个开始吧~</p>
     </div>
@@ -208,16 +209,57 @@ defineExpose({
 
 <style scoped>
 .todo-widget {
+  position: relative;
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  padding: 20px;
-  background: rgba(255, 255, 255, 0.95);
-  border-radius: 16px;
-  backdrop-filter: blur(10px);
+  gap: 14px;
+  width: 100%;
+  height: 100%;
+  min-width: 250px;
+  min-height: 320px;
+  padding: 18px;
+  overflow: hidden;
+  background:
+    linear-gradient(150deg, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.78)),
+    url('../../../assets/images/background_circle.png');
+  background-size: auto, 56px 38px;
+  border: 2px solid rgba(255, 255, 255, 0.84);
+  border-radius: 26px;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.72),
+    0 18px 34px rgba(139, 30, 63, 0.16);
+  backdrop-filter: blur(14px);
+}
+
+.todo-widget::after {
+  content: '';
+  position: absolute;
+  right: -34px;
+  bottom: -42px;
+  width: 148px;
+  height: 148px;
+  background: url('../../../assets/images/助手Q版.png') center / contain no-repeat;
+  opacity: 0.12;
+  pointer-events: none;
+}
+
+.todo-panel-title {
+  position: relative;
+  z-index: 1;
+  align-self: flex-start;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: #fff5f9;
+  border: 1px solid rgba(251, 114, 153, 0.2);
+  color: #8b1e3f;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
 }
 
 .todo-input-container {
+  position: relative;
+  z-index: 1;
   display: flex;
   gap: 8px;
 }
@@ -226,11 +268,11 @@ defineExpose({
   flex: 1;
   height: 40px;
   padding: 0 14px;
-  border: 2px solid rgba(0, 0, 0, 0.08);
-  border-radius: 12px;
+  border: 1px solid rgba(251, 114, 153, 0.18);
+  border-radius: 999px;
   font-size: 14px;
-  color: var(--theme-text-color-dark, #333);
-  background: rgba(255, 255, 255, 0.8);
+  color: #6f2b43;
+  background: rgba(255, 255, 255, 0.84);
   transition: all 0.2s ease;
   outline: none;
 }
@@ -248,7 +290,7 @@ defineExpose({
   width: 40px;
   height: 40px;
   border: none;
-  border-radius: 12px;
+  border-radius: 999px;
   background: linear-gradient(135deg, var(--theme-color-light, #ffd1e8), var(--theme-color, #fb7299));
   color: white;
   font-size: 16px;
@@ -274,13 +316,16 @@ defineExpose({
 }
 
 .todo-stats {
+  position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 16px;
   padding: 8px 12px;
-  background: rgba(0, 0, 0, 0.02);
-  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(251, 114, 153, 0.14);
+  border-radius: 18px;
 }
 
 .stats-item {
@@ -292,7 +337,7 @@ defineExpose({
 .stats-count {
   font-size: 18px;
   font-weight: 700;
-  color: var(--theme-text-color-dark, #333);
+  color: #8b1e3f;
 }
 
 .stats-count.completed {
@@ -305,7 +350,7 @@ defineExpose({
 
 .stats-label {
   font-size: 12px;
-  color: #999;
+  color: #9a6275;
 }
 
 .stats-divider {
@@ -314,6 +359,8 @@ defineExpose({
 }
 
 .todo-list {
+  position: relative;
+  z-index: 1;
   max-height: 300px;
   overflow-y: auto;
   padding-right: 4px;
@@ -337,11 +384,11 @@ defineExpose({
   align-items: center;
   gap: 10px;
   padding: 10px 12px;
-  background: rgba(255, 255, 255, 0.8);
-  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.82);
+  border-radius: 16px;
   margin-bottom: 8px;
   transition: all 0.2s ease;
-  border: 1px solid rgba(0, 0, 0, 0.04);
+  border: 1px solid rgba(251, 114, 153, 0.12);
 }
 
 .todo-item:hover {
@@ -351,7 +398,7 @@ defineExpose({
 
 .todo-item.completed {
   opacity: 0.7;
-  background: rgba(0, 0, 0, 0.02);
+  background: #f8f8f8;
 }
 
 .todo-checkbox {
@@ -380,7 +427,7 @@ defineExpose({
 .todo-text {
   flex: 1;
   font-size: 14px;
-  color: var(--theme-text-color-dark, #333);
+  color: #6f2b43;
   word-break: break-word;
   transition: all 0.2s ease;
 }
@@ -394,7 +441,7 @@ defineExpose({
   width: 28px;
   height: 28px;
   border: none;
-  border-radius: 8px;
+  border-radius: 999px;
   background: transparent;
   color: #ccc;
   cursor: pointer;
@@ -416,6 +463,8 @@ defineExpose({
 }
 
 .todo-empty {
+  position: relative;
+  z-index: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -424,8 +473,15 @@ defineExpose({
 }
 
 .empty-icon {
-  font-size: 48px;
-  opacity: 0.5;
+  width: 52px;
+  height: 52px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #fff5f9;
+  color: var(--theme-color, #fb7299);
+  font-size: 30px;
+  box-shadow: inset 0 0 0 1px rgba(251, 114, 153, 0.16);
 }
 
 .empty-text {
@@ -441,12 +497,14 @@ defineExpose({
 }
 
 .clear-completed-btn {
+  position: relative;
+  z-index: 1;
   width: 100%;
   height: 36px;
-  border: none;
-  border-radius: 10px;
-  background: rgba(0, 0, 0, 0.04);
-  color: #999;
+  border: 1px solid rgba(251, 114, 153, 0.16);
+  border-radius: 999px;
+  background: #fff7fa;
+  color: #9a6275;
   font-size: 13px;
   cursor: pointer;
   display: flex;

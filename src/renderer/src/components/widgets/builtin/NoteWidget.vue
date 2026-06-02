@@ -1,5 +1,6 @@
 <template>
   <div class="note-widget">
+    <div class="note-ribbon">Moe Memo</div>
     <!-- 便签头部 -->
     <div class="note-header">
       <input
@@ -218,32 +219,73 @@ defineExpose({
 
 <style scoped>
 .note-widget {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 0;
-  background: linear-gradient(135deg, #fff9c4 0%, #fff59d 100%);
-  border-radius: 16px;
+  width: 100%;
+  height: 100%;
+  min-height: 240px;
+  background:
+    linear-gradient(145deg, #fff8e6, #fff3f7),
+    url('../../../assets/images/char_background.png');
+  background-size: auto, 24px 24px;
+  border: 2px solid rgba(255, 255, 255, 0.84);
+  border-radius: 26px;
   overflow: hidden;
-  backdrop-filter: blur(10px);
-  min-height: 200px;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.7),
+    0 18px 34px rgba(139, 30, 63, 0.18);
+  backdrop-filter: blur(14px);
+}
+
+.note-widget::after {
+  content: '';
+  position: absolute;
+  right: -30px;
+  bottom: -42px;
+  width: 144px;
+  height: 144px;
+  background: url('../../../assets/images/sakura.webp') center / contain no-repeat;
+  opacity: 0.16;
+  pointer-events: none;
+}
+
+.note-ribbon {
+  position: absolute;
+  top: 10px;
+  left: -28px;
+  z-index: 2;
+  width: 118px;
+  padding: 5px 0;
+  background: linear-gradient(135deg, #ff9ec3, var(--theme-color, #fb7299));
+  color: white;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-align: center;
+  transform: rotate(-32deg);
+  box-shadow: 0 8px 18px rgba(251, 114, 153, 0.22);
 }
 
 .note-header {
+  position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 12px 16px;
-  background: rgba(255, 255, 255, 0.6);
-  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+  padding: 16px 16px 12px 42px;
+  background: rgba(255, 255, 255, 0.76);
+  border-bottom: 1px dashed rgba(251, 114, 153, 0.26);
 }
 
 .note-title-input {
   flex: 1;
   border: none;
   background: transparent;
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--theme-text-color-dark, #333);
+  font-size: 17px;
+  font-weight: 900;
+  color: #8b1e3f;
   outline: none;
 }
 
@@ -260,10 +302,10 @@ defineExpose({
 .action-btn {
   width: 32px;
   height: 32px;
-  border: none;
-  border-radius: 8px;
-  background: rgba(0, 0, 0, 0.05);
-  color: #666;
+  border: 1px solid rgba(251, 114, 153, 0.18);
+  border-radius: 999px;
+  background: #fff7fa;
+  color: #8b1e3f;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -273,8 +315,9 @@ defineExpose({
 }
 
 .action-btn:hover {
-  background: rgba(0, 0, 0, 0.1);
+  background: #fff;
   color: var(--theme-color, #fb7299);
+  transform: translateY(-1px);
 }
 
 .action-btn:active {
@@ -282,23 +325,41 @@ defineExpose({
 }
 
 .note-content {
+  position: relative;
+  z-index: 1;
   flex: 1;
   padding: 0;
+}
+
+.note-content::before {
+  content: '';
+  position: absolute;
+  inset: 14px 18px;
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent 29px,
+    rgba(251, 114, 153, 0.12) 30px
+  );
+  pointer-events: none;
 }
 
 .note-textarea {
   width: 100%;
   height: 100%;
   min-height: 150px;
-  padding: 16px;
+  position: relative;
+  z-index: 1;
+  padding: 18px 20px;
   border: none;
   background: transparent;
   font-size: 14px;
   line-height: 1.8;
-  color: #555;
+  color: #6f2b43;
   resize: none;
   outline: none;
-  font-family: 'Georgia', 'Times New Roman', serif;
+  font-family: inherit;
+  font-weight: 600;
 }
 
 .note-textarea::placeholder {
@@ -307,14 +368,16 @@ defineExpose({
 }
 
 .note-footer {
+  position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 8px 16px;
-  background: rgba(255, 255, 255, 0.6);
-  border-top: 1px solid rgba(0, 0, 0, 0.05);
+  background: rgba(255, 255, 255, 0.76);
+  border-top: 1px dashed rgba(251, 114, 153, 0.24);
   font-size: 11px;
-  color: #999;
+  color: #9a6275;
 }
 
 .note-info {

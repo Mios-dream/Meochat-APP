@@ -7,9 +7,13 @@
 
       <!-- 小组件内容 -->
       <div class="widget-content">
-        <div v-if="currentWidget" class="widget-inner">
-          <component :is="currentWidget" :instance-id="instanceId" :config="instanceConfig" />
-        </div>
+        <component
+          v-if="currentWidget"
+          :is="currentWidget"
+          :instance-id="instanceId"
+          :config="instanceConfig"
+        />
+
         <div v-else class="widget-not-found">
           <font-awesome-icon icon="fa-solid fa-exclamation-triangle" />
           <span>小组件未找到 ({{ widgetId }})</span>
@@ -130,7 +134,7 @@ onMounted(() => {
       description: '每日名言诗句',
       version: '1.0.0',
       component: DailyQuoteWidget,
-      defaultSize: { width: 350, height: 180 }
+      defaultSize: { width: 350, height: 350 }
     },
     {
       id: 'weather',
@@ -213,20 +217,17 @@ onUnmounted(() => {
 }
 
 .widget-content {
+  position: relative;
   flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(255, 255, 255, 0.95);
-  border-radius: 16px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
   overflow: hidden;
-  padding: 16px;
 }
 
 .widget-inner {
-  width: 100%;
-  height: 100%;
+  width: 100vw;
+  height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;

@@ -21,3 +21,11 @@
   font-style: normal;
   font-display: swap; /* 优化字体加载 */
 }
+
+@font-face {
+  font-family: 'SanJiFangYuanFont';
+  src: url('./三极圆体简.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap; /* 优化字体加载 */
+}

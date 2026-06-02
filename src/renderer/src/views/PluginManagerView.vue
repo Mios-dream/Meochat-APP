@@ -8,15 +8,28 @@
       </div>
 
       <!-- 桌面小组件区域 -->
-      <section class="section">
-        <div class="section-header">
-          <h2 class="section-title">
-            <font-awesome-icon icon="fa-solid fa-puzzle-piece" />
-            <span>桌面小组件</span>
-          </h2>
-          <p class="section-description">小组件可以在桌面独立显示，支持拖拽和调整大小</p>
+      <section v-if="activeTab === 'widgets'" class="section">
+        <div class="section-top">
+          <span class="section-hint">可用组件 ({{ registeredWidgets.length }})</span>
+          <div class="tab-bar">
+            <div
+              class="tab-item"
+              :class="{ active: activeTab === 'widgets' }"
+              @click="activeTab = 'widgets'"
+            >
+              <font-awesome-icon icon="fa-solid fa-puzzle-piece" />
+              <span>小组件</span>
+            </div>
+            <div
+              class="tab-item"
+              :class="{ active: activeTab === 'plugins' }"
+              @click="activeTab = 'plugins'"
+            >
+              <font-awesome-icon icon="fa-solid fa-plug" />
+              <span>插件</span>
+            </div>
+          </div>
         </div>
-
         <div class="widgets-grid">
           <WidgetPreview
             v-for="widget in registeredWidgets"
@@ -25,8 +38,6 @@
             :description="widget.description"
             :icon="widget.icon"
             :enabled="isWidgetEnabled(widget.id)"
-            @preview="previewWidget(widget)"
-            @toggle-desktop="toggleWidgetDesktop(widget.id)"
             @add="addWidgetInstance(widget.id)"
           >
             <!-- 预览插槽 -->
@@ -83,12 +94,45 @@
           </div>
         </div>
       </section>
+
+      <!-- 插件区域 -->
+      <section v-if="activeTab === 'plugins'" class="section plugin-section">
+        <div class="section-top">
+          <span class="section-hint">插件管理</span>
+          <div class="tab-bar">
+            <div
+              class="tab-item"
+              :class="{ active: activeTab === 'widgets' }"
+              @click="activeTab = 'widgets'"
+            >
+              <font-awesome-icon icon="fa-solid fa-puzzle-piece" />
+              <span>小组件</span>
+            </div>
+            <div
+              class="tab-item"
+              :class="{ active: activeTab === 'plugins' }"
+              @click="activeTab = 'plugins'"
+            >
+              <font-awesome-icon icon="fa-solid fa-plug" />
+              <span>插件</span>
+            </div>
+          </div>
+        </div>
+        <div class="empty-state">
+          <font-awesome-icon icon="fa-solid fa-plug" class="empty-icon" />
+          <p class="empty-text">暂无可用插件</p>
+          <p class="empty-hint">插件市场即将开放，敬请期待~</p>
+        </div>
+      </section>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, markRaw } from 'vue'
+
+// 当前选中的 tab
+const activeTab = ref<'widgets' | 'plugins'>('widgets')
 import { useWidgetStore } from '../stores/useWidgetStore'
 import { WidgetManager } from '../services/widgetManager'
 import WidgetPreview from '../components/widgets/WidgetPreview.vue'
@@ -122,7 +166,7 @@ const registeredWidgets = ref<WidgetManifest[]>([
     description: '每日名言诗句，激励每一天',
     version: '1.0.0',
     component: markRaw(DailyQuoteWidget),
-    defaultSize: { width: 350, height: 180 }
+    defaultSize: { width: 350, height: 280 }
   },
   {
     id: 'weather',
@@ -171,29 +215,6 @@ function getWidgetIcon(widgetId: string): string | string[] {
 function getWidgetName(widgetId: string): string {
   const widget = registeredWidgets.value.find((w) => w.id === widgetId)
   return widget?.name || '未知小组件'
-}
-
-// 预览小组件
-function previewWidget(widget: WidgetManifest): void {
-  // 可以打开一个预览窗口或显示预览模态框
-  console.log('预览小组件:', widget.name)
-}
-
-// 切换小组件桌面显示
-async function toggleWidgetDesktop(widgetId: string): Promise<void> {
-  const existingInstance = widgetStore.instances.find((i) => i.widgetId === widgetId)
-  if (existingInstance) {
-    const newEnabled = !existingInstance.enabled
-    await widgetStore.toggleEnabled(existingInstance.id, newEnabled)
-    // 如果启用，创建窗口；如果禁用，关闭窗口
-    if (newEnabled) {
-      await widgetStore.createWindow(existingInstance.id)
-    } else {
-      await widgetStore.closeWindow(existingInstance.id)
-    }
-  } else {
-    await addWidgetInstance(widgetId)
-  }
 }
 
 // 添加小组件实例
@@ -277,6 +298,26 @@ onMounted(async () => {
 
 .section {
   margin-bottom: 40px;
+  padding: 20px 40px;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(10px);
+  border-radius: 16px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.05);
+}
+
+.section-top {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.section-hint {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--theme-text-color-dark);
+  opacity: 0.7;
 }
 
 .section-header {
@@ -306,18 +347,25 @@ onMounted(async () => {
 /* 小组件网格 */
 .widgets-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 20px;
   margin-bottom: 24px;
 }
 
 .widget-mini-preview {
-  transform: scale(0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform: scale(0.62);
   transform-origin: center center;
-  pointer-events: none;
-  width: 150%;
-  height: 150%;
-  margin: -25%;
+  width: 160%;
+  height: 160%;
+  margin: -30%;
+}
+
+.widget-mini-preview > :deep(*) {
+  width: 100%;
+  max-width: 100%;
 }
 
 /* 已启用实例区域 */
@@ -429,5 +477,80 @@ onMounted(async () => {
 .instance-btn.delete-btn:hover {
   background: rgba(255, 0, 0, 0.2);
   color: #ff0000;
+}
+
+/* Tab 切换栏样式 */
+.tab-bar {
+  display: flex;
+  justify-content: flex-start;
+  gap: 6px;
+  padding: 4px;
+  background: rgba(255, 255, 255, 0.5);
+  backdrop-filter: blur(10px);
+  border-radius: 50px;
+  width: fit-content;
+}
+
+.tab-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 18px;
+  border-radius: 50px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  color: #666;
+  transition: all 0.25s ease;
+  user-select: none;
+}
+
+.tab-item:hover {
+  background: rgba(255, 255, 255, 0.6);
+  color: #444;
+}
+
+.tab-item.active {
+  background: var(--theme-color);
+  color: white;
+  box-shadow: 0 2px 8px var(--theme-color-shadow);
+}
+
+.tab-item svg {
+  font-size: 13px;
+}
+
+/* 插件区域空状态 */
+.plugin-section {
+  min-height: 300px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 40px;
+}
+
+.empty-icon {
+  font-size: 48px;
+  color: var(--theme-color-light);
+  opacity: 0.6;
+  margin-bottom: 16px;
+}
+
+.empty-text {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--theme-text-color-dark);
+  margin: 0 0 8px;
+}
+
+.empty-hint {
+  font-size: 14px;
+  color: #999;
+  margin: 0;
 }
 </style>
