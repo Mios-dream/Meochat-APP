@@ -16,7 +16,7 @@
     </div>
 
     <!-- 操作按钮 -->
-    <div class="quote-actions">
+    <!-- <div class="quote-actions">
       <button class="action-btn refresh-btn" @click="refreshQuote" title="换一句">
         <font-awesome-icon icon="fa-solid fa-rotate" :class="{ spinning: isRefreshing }" />
         <span>换一句</span>
@@ -25,7 +25,7 @@
         <font-awesome-icon :icon="copied ? 'fa-solid fa-check' : 'fa-solid fa-copy'" />
         <span>{{ copied ? '已复制' : '复制' }}</span>
       </button>
-    </div>
+    </div> -->
   </div>
 </template>
 
@@ -94,12 +94,6 @@ const isRefreshing = ref(false)
 /** 是否正在动画 */
 const isAnimating = ref(false)
 
-/** 是否已复制 */
-const copied = ref(false)
-
-/** 复制定时器 */
-let copyTimer: ReturnType<typeof setTimeout> | null = null
-
 /** 获取随机引言 */
 function getRandomQuote(): Quote {
   let index: number
@@ -131,27 +125,6 @@ async function refreshQuote(): Promise<void> {
   }, 500)
 }
 
-/** 复制引言 */
-async function copyQuote(): Promise<void> {
-  const text = `"${currentQuote.value.text}" —— ${currentQuote.value.author}${
-    currentQuote.value.source ? `《${currentQuote.value.source}》` : ''
-  }`
-
-  try {
-    await navigator.clipboard.writeText(text)
-    copied.value = true
-    emit('copy', text)
-
-    // 重置复制状态
-    if (copyTimer) clearTimeout(copyTimer)
-    copyTimer = setTimeout(() => {
-      copied.value = false
-    }, 2000)
-  } catch (err) {
-    console.error('复制失败:', err)
-  }
-}
-
 /** 组件挂载 */
 onMounted(() => {
   currentQuote.value = getRandomQuote()
@@ -177,15 +150,9 @@ defineExpose({
   min-height: 240px;
   padding: 22px;
   overflow: hidden;
-  background:
-    linear-gradient(160deg, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.78)),
-    url('../../../assets/images/char_background.png');
-  background-size: auto, 28px 28px;
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.78));
   border: 2px solid rgba(255, 255, 255, 0.82);
   border-radius: 28px;
-  box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.72),
-    0 18px 38px rgba(139, 30, 63, 0.18);
   backdrop-filter: blur(14px);
 }
 
@@ -257,11 +224,11 @@ defineExpose({
 .quote-text {
   position: relative;
   z-index: 1;
-  font-size: 17px;
-  line-height: 1.9;
+  font-size: 16px;
+  line-height: 1.5;
   color: #6f2b43;
   margin: 0;
-  padding: 8px 12px;
+  padding: 8px;
   text-align: left;
   font-weight: 700;
   transition:

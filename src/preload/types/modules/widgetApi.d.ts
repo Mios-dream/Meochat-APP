@@ -61,6 +61,9 @@ interface WidgetApi {
   /** 关闭当前小组件窗口 */
   closeWindow: (instanceId: string) => Promise<{ success: boolean; error?: string }>
 
+  /** 删除小组件实例（关闭窗口并清除持久化数据） */
+  deleteInstance: (instanceId: string) => Promise<{ success: boolean; error?: string }>
+
   /** 切换置顶状态 */
   togglePin: (
     instanceId: string,

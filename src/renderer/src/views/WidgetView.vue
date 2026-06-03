@@ -3,13 +3,13 @@
     <!-- 小组件内容区域 -->
     <div class="widget-wrapper" @mouseenter="showControls" @mouseleave="hideControls">
       <!-- 拖拽区域 -->
-      <div class="drag-region" />
+      <div class="drag-region" :class="{ 'drag-region--locked': isPinned }" />
 
       <!-- 小组件内容 -->
       <div class="widget-content">
         <component
-          v-if="currentWidget"
           :is="currentWidget"
+          v-if="currentWidget"
           :instance-id="instanceId"
           :config="instanceConfig"
         />
@@ -26,7 +26,7 @@
           <button class="control-btn" :title="isPinned ? '取消置顶' : '置顶'" @click="togglePin">
             <font-awesome-icon icon="fa-solid fa-thumbtack" :class="{ active: isPinned }" />
           </button>
-          <button class="control-btn close-btn" title="关闭" @click="closeWidget">
+          <button class="control-btn close-btn" title="关闭" @click="deleteWidget">
             <font-awesome-icon icon="fa-solid fa-xmark" />
           </button>
         </div>
@@ -100,9 +100,9 @@ async function togglePin(): Promise<void> {
   await window.widgetApi.togglePin(instanceId.value, isPinned.value)
 }
 
-// 关闭小组件
-async function closeWidget(): Promise<void> {
-  await window.widgetApi.closeWindow(instanceId.value)
+// 关闭小组件（删除实例并关闭窗口）
+async function deleteWidget(): Promise<void> {
+  await window.widgetApi.deleteInstance(instanceId.value)
 }
 
 // 监听实例数据
@@ -134,7 +134,7 @@ onMounted(() => {
       description: '每日名言诗句',
       version: '1.0.0',
       component: DailyQuoteWidget,
-      defaultSize: { width: 350, height: 350 }
+      defaultSize: { width: 350, height: 250 }
     },
     {
       id: 'weather',
@@ -214,6 +214,12 @@ onUnmounted(() => {
   -webkit-app-region: drag;
   app-region: drag;
   z-index: 10;
+}
+
+.drag-region--locked {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+  pointer-events: none;
 }
 
 .widget-content {

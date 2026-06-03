@@ -39,7 +39,7 @@ defineEmits<{
   aspect-ratio: 1.4 / 1;
   background-color: #ffd8e7;
   border-radius: 20px;
-  padding: 14px;
+  padding: 5px 14px 14px 14px;
   transition: all 0.3s ease;
   /* border: 2px solid rgba(255, 255, 255, 0.78); */
   overflow: hidden;
@@ -75,7 +75,8 @@ defineEmits<{
 
 /* 星星缩放动画 */
 @keyframes starTwinkle {
-  0%, 100% {
+  0%,
+  100% {
     transform: scale(1) rotate(0deg);
   }
   50% {
@@ -137,7 +138,6 @@ defineEmits<{
   z-index: 1;
   flex: 1;
   min-height: 0;
-  padding: 6px;
   background-color: white;
   background-image: url('../../assets/images/char_background.png');
   background-repeat: repeat;

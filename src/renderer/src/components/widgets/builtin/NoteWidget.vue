@@ -43,7 +43,9 @@
         </span>
       </div>
       <div class="note-status" :class="{ saved: isSaved }">
-        <font-awesome-icon :icon="isSaved ? 'fa-solid fa-cloud-check' : 'fa-solid fa-cloud-arrow-up'" />
+        <font-awesome-icon
+          :icon="isSaved ? 'fa-solid fa-cloud-check' : 'fa-solid fa-cloud-arrow-up'"
+        />
         <span>{{ isSaved ? '已保存' : '保存中...' }}</span>
       </div>
     </div>
@@ -54,7 +56,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 
 /** 本地存储键名 */
-const STORAGE_KEY = 'moeechat-note'
+const STORAGE_KEY = 'moechat-note'
 
 /** 保存延迟（毫秒） */
 const SAVE_DELAY = 1000
@@ -227,9 +229,10 @@ defineExpose({
   height: 100%;
   min-height: 240px;
   background:
-    linear-gradient(145deg, #fff8e6, #fff3f7),
-    url('../../../assets/images/char_background.png');
-  background-size: auto, 24px 24px;
+    linear-gradient(145deg, #fff8e6, #fff3f7), url('../../../assets/images/char_background.png');
+  background-size:
+    auto,
+    24px 24px;
   border: 2px solid rgba(255, 255, 255, 0.84);
   border-radius: 26px;
   overflow: hidden;

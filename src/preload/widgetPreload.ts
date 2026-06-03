@@ -17,6 +17,9 @@ const widgetApi = {
   // 关闭当前小组件窗口
   closeWindow: (instanceId: string) => ipcRenderer.invoke('widget:window:close', instanceId),
 
+  // 删除小组件实例（关闭窗口并清除持久化数据）
+  deleteInstance: (instanceId: string) => ipcRenderer.invoke('widget:instance:delete', instanceId),
+
   // 切换置顶状态
   togglePin: (instanceId: string, pinned: boolean) =>
     ipcRenderer.invoke('widget:window:toggle-pin', { instanceId, pinned }),
