@@ -39,11 +39,11 @@ defineProps<{
 
 #assistant-tips {
   animation: shake 50s ease-in-out 5s infinite;
-  background-color: rgba(255, 255, 255, 0.8);
+  background-color: rgba(255, 255, 255, 0.9);
   border: 1px solid #ff96b4;
   border-radius: 12px;
   font-size: v-bind("fontSize || '14px'");
-  line-height: 24px;
+  line-height: 30px;
   min-height: 70px;
   max-height: 40vh;
   opacity: 0;

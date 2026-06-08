@@ -26,6 +26,10 @@ export interface ChatPlaybackSegment {
   motionDurationMs?: number
   /** 是否追加到累积台词板文本。 */
   appendToDisplayText?: boolean
+  /** 事件图标配置，用于在台词板末尾显示对应图标。 */
+  icon?: {
+    path: string
+  }
 }
 
 /**
@@ -64,7 +68,8 @@ export class ChatPlaybackController {
       text: string,
       timeout?: number,
       priority?: number,
-      transitionDuration?: number
+      transitionDuration?: number,
+      icon?: { path: string }
     ) => void
   ) {}
 
@@ -134,6 +139,7 @@ export class ChatPlaybackController {
    * 串行消费播放队列。
    *
    * 每个 ChatPlaybackSegment 会先更新台词板，再根据是否有音频/动作选择播放路径。
+   * 图标与最后一段文字一起显示。
    */
   private async playAudioQueueWithLive2D(): Promise<void> {
     if (this.isPlaying || this.playbackQueue.length === 0) return
@@ -148,16 +154,15 @@ export class ChatPlaybackController {
         const segment = this.playbackQueue.shift()!
         const hasAudio = Boolean(segment.audioBlob)
         const hasMotion = Boolean(segment.motionSequence?.length)
+        const isLastSegment = this.playbackQueue.length === 0
 
         if (segment.appendToDisplayText !== false) {
           this.currentDisplayText += segment.message
           const baseDuration = segment.audioDurationMs || segment.motionDurationMs || 900
-          const fadeDuration = hasAudio
-            ? Math.max(180, Math.min(520, Math.floor(baseDuration * 0.18)))
-            : hasMotion
-              ? 260
-              : 220
-          this.showMessage(this.currentDisplayText, -1, 999, fadeDuration)
+          const fadeDuration = hasAudio ? Math.max(1000, Math.floor(baseDuration * 0.5)) : 1000
+          // 最后一个 segment 时传递图标，与文字一起显示
+          const iconToShow = isLastSegment ? segment.icon : undefined
+          this.showMessage(this.currentDisplayText, -1, 999, fadeDuration, iconToShow)
         }
 
         if (!speechStarted) {

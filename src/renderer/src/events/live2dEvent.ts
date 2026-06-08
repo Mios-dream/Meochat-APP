@@ -38,10 +38,11 @@ export class Live2dEventHandler implements IEventHandler {
     'live2d.hit.body': async (contextManager: ContextManager) => {
       const result = InteractionPayloadBuilder.buildEventPayload({
         event: 'live2d.hit.body',
-        scene: '用户点击了角色身体区域，属于轻互动',
+        scene: '用户点击了角色身体区域，包含多种区域，可能是胸部或腹部，或是外部衣服裙子等',
         context: contextManager.get(),
         maxLength: 50,
-        fallback: '哎呀，阁下在摸哪里呢~'
+        fallback: '哎呀，阁下在摸哪里呢~',
+        icon: { path: '/icon/icon_message.png' }
       })
       return result
     },
@@ -51,7 +52,8 @@ export class Live2dEventHandler implements IEventHandler {
         scene: '用户点击了角色头部，语气可亲昵但不要过激',
         context: contextManager.get(),
         maxLength: 50,
-        fallback: '阁下的手好温暖呢~'
+        fallback: '阁下的手好温暖呢~',
+        icon: { path: '/icon/icon_message.png' }
       })
       return result
     },
@@ -61,7 +63,8 @@ export class Live2dEventHandler implements IEventHandler {
         scene: '用户点击了角色脸部，表现轻微害羞或打趣',
         context: contextManager.get(),
         maxLength: 50,
-        fallback: '不要捏脸啦，会变形的~'
+        fallback: '不要捏脸啦，会变形的~',
+        icon: { path: '/icon/icon_message.png' }
       })
       return result
     },
@@ -71,17 +74,19 @@ export class Live2dEventHandler implements IEventHandler {
         scene: '用户点击了角色手部，可生成牵手或互动感回应',
         context: contextManager.get(),
         maxLength: 50,
-        fallback: '要牵手吗~'
+        fallback: '要牵手吗~',
+        icon: { path: '/icon/icon_message.png' }
       })
       return result
     },
     'live2d.hit.part.leg': async (contextManager: ContextManager) => {
       const result = InteractionPayloadBuilder.buildEventPayload({
         event: 'live2d.hit.part.leg',
-        scene: '用户点击了角色腿部，保持轻松互动',
+        scene: '用户点击了角色腿部',
         context: contextManager.get(),
         maxLength: 50,
-        fallback: '不要挠痒痒啦~'
+        fallback: '不要挠痒痒啦~',
+        icon: { path: '/icon/icon_message.png' }
       })
       return result
     },
@@ -91,7 +96,8 @@ export class Live2dEventHandler implements IEventHandler {
         scene: '用户轻柔抚摸角色头部，整体偏温柔治愈',
         context: contextManager.get(),
         maxLength: 50,
-        fallback: '好轻柔的摸头呀，心情都变好了~'
+        fallback: '好轻柔的摸头呀，心情都变好了~',
+        icon: { path: '/icon/icon_message.png' }
       })
       return result
     },
@@ -101,7 +107,8 @@ export class Live2dEventHandler implements IEventHandler {
         scene: '用户较重力度抚摸头部，表达撒娇提醒更温柔',
         context: contextManager.get(),
         maxLength: 50,
-        fallback: '摸头可以，但请温柔一点点嘛~'
+        fallback: '摸头可以，但请温柔一点点嘛~',
+        icon: { path: '/icon/icon_message.png' }
       })
       return result
     }

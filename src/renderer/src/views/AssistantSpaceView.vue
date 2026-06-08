@@ -1,11 +1,10 @@
 <template>
   <div id="background-container">
     <div id="live2d-container">
+      <canvas id="l2d-canvas" :class="{ 'canvas-fade-in': modelLoaded }"></canvas>
       <AssistantTips v-show="config.appSpeechBoard" :is-active="isTipsActive" font-size="20px">
         {{ currentTip }}
       </AssistantTips>
-
-      <canvas id="l2d-canvas" :class="{ 'canvas-fade-in': modelLoaded }"></canvas>
       <ModelErrorDisplay v-if="showError" :visible="showError" :message="modelErrorMessage" />
     </div>
     <div id="toolbar-right-top">

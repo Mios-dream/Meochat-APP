@@ -2,9 +2,9 @@ class MessageTips {
   // 显示消息的DOM元素的引用
   public tipsElement: HTMLElement | null = null
   // 定时器ID，用于自动隐藏消息
-  private messageTimer: NodeJS.Timeout | null = null
+  private messageTimer: ReturnType<typeof setTimeout> | null = null
   // 文本动画相关的状态
-  private textAnimationTimer: NodeJS.Timeout | null = null
+  private textAnimationTimer: ReturnType<typeof setTimeout> | null = null
   // 文本动画和分页循环的token，用于取消过期的定时器回调
   private textAnimationToken = 0
   // 用于测量文本高度的隐藏元素
@@ -13,6 +13,8 @@ class MessageTips {
   private fadeStyleInjected = false
   // 上一次渲染的页面文本，用于仅对新增后缀做淡入
   private lastRenderedText = ''
+  // 当前事件图标配置
+  private currentIcon?: { path: string }
   // 定义括号对和对应的dim状态
   private readonly bracketPairs: Record<string, string> = {
     '(': ')',
@@ -40,12 +42,14 @@ class MessageTips {
    * @param {number} timeout - 消息显示时间
    * @param {number} priority - 消息优先级
    * @param {number} transitionDuration - 文本过渡时间（毫秒）
+   * @param {object} icon - 事件图标配置，用于在台词板末尾显示对应图标
    */
   public showMessage(
     text: string,
     timeout: number = 5000,
     priority: number = 1,
-    transitionDuration: number = 0
+    transitionDuration: number = 0,
+    icon?: { path: string }
   ): void {
     // 2. Add check for tipsElement
     if (!this.tipsElement) {
@@ -65,7 +69,10 @@ class MessageTips {
     }
     sessionStorage.setItem('assistant-text-priority', priority.toString())
 
-    const fadeDuration = transitionDuration > 0 ? transitionDuration : 220
+    // 保存当前图标配置
+    this.currentIcon = icon
+
+    const fadeDuration = transitionDuration > 0 ? transitionDuration : 350
     this.renderFormattedText(text, fadeDuration)
     this.tipsElement.classList.add('active')
 
@@ -75,12 +82,13 @@ class MessageTips {
         sessionStorage.removeItem('assistant-text-priority')
         this.tipsElement!.classList.remove('active') // Use non-null assertion as it's checked above
         this.clearTextAnimationTimer()
+        this.currentIcon = undefined
         this.messageTimer = null // Reset timer
       }, timeout)
     }
   }
 
-  private renderFormattedText(text: string, fadeDuration: number = 220): void {
+  private renderFormattedText(text: string, fadeDuration: number = 350): void {
     if (!this.tipsElement) return
 
     this.ensureFadeAnimationStyle()
@@ -115,11 +123,55 @@ class MessageTips {
 
     this.appendSegmentsToContainer(contentSpan, staticSegments)
 
+    const animationDuration = Math.max(250, Math.floor(fadeDuration))
+
     if (appendedSegments.length > 0) {
       const appendedSpan = document.createElement('span')
-      appendedSpan.style.animation = `assistantTipsSoftFade ${Math.max(120, Math.floor(fadeDuration))}ms ease-out both`
-      this.appendSegmentsToContainer(appendedSpan, appendedSegments)
+      appendedSpan.style.display = 'inline'
+      this.appendCharSpansWithFade(appendedSpan, appendedSegments, animationDuration)
       contentSpan.appendChild(appendedSpan)
+    }
+
+    // 渲染事件图标（如果有）- 直接添加到 contentSpan 内部，紧跟文字末尾
+    if (this.currentIcon) {
+      // 创建一个不可分割的包装元素，确保图标不会与前面的文字分离到不同行
+      const iconWrapper = document.createElement('span')
+      iconWrapper.style.cssText = `
+        display: inline-flex;
+        white-space: nowrap;
+        align-items: center;
+        vertical-align: middle;
+      `
+
+      const iconSpan = document.createElement('span')
+      iconSpan.className = 'assistant-tips-icon'
+      iconSpan.style.cssText = `
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        margin-left: 4px;
+        vertical-align: middle;
+        font-size: 1.1em;
+        line-height: 1;
+        opacity: 0;
+        animation: assistantTipsCharFadeIn ${animationDuration}ms ease-out forwards;
+        animation-delay: ${animationDuration}ms;
+      `
+
+      // 优先使用本地图片路径
+      if (this.currentIcon.path) {
+        const img = document.createElement('img')
+        img.src = this.currentIcon.path
+        img.style.cssText = `
+          width: 1.1em;
+          height: 1.1em;
+          object-fit: contain;
+          vertical-align: middle;
+        `
+        iconSpan.appendChild(img)
+        iconWrapper.appendChild(iconSpan)
+        contentSpan.appendChild(iconWrapper)
+      }
     }
 
     this.lastRenderedText = pageText
@@ -127,6 +179,45 @@ class MessageTips {
     fragment.appendChild(contentSpan)
     this.tipsElement.textContent = ''
     this.tipsElement.appendChild(fragment)
+  }
+
+  /**
+   * 将文字拆分成单个字符并添加淡入动画。
+   * @param container 容器元素
+   * @param segments 文字段落
+   * @param animationDuration 动画总时长
+   */
+  private appendCharSpansWithFade(
+    container: HTMLElement,
+    segments: Array<{ text: string; dim: boolean }>,
+    animationDuration: number
+  ): void {
+    let charIndex = 0
+    // 计算总字符数，用于分配动画延迟
+    const totalChars = segments.reduce((sum, seg) => sum + seg.text.length, 0)
+    // 每个字符的延迟时间
+    const delayPerChar = totalChars > 0 ? animationDuration / totalChars : 0
+
+    for (const segment of segments) {
+      if (!segment.text) continue
+
+      for (const char of segment.text) {
+        const charSpan = document.createElement('span')
+        charSpan.style.display = 'inline'
+        charSpan.style.opacity = '0'
+        charSpan.style.animation = `assistantTipsCharFadeIn ${Math.max(150, animationDuration * 0.3)}ms ease-out forwards`
+        charSpan.style.animationDelay = `${Math.floor(charIndex * delayPerChar)}ms`
+
+        if (segment.dim) {
+          charSpan.className = 'assistant-tips-dim'
+          charSpan.style.opacity = '0'
+        }
+
+        charSpan.textContent = char
+        container.appendChild(charSpan)
+        charIndex++
+      }
+    }
   }
 
   private appendSegmentsToContainer(
@@ -417,9 +508,16 @@ class MessageTips {
     const style = document.createElement('style')
     style.id = styleId
     style.textContent = `
-      @keyframes assistantTipsSoftFade {
-        0% { opacity: 0; filter: blur(0.4px); }
-        100% { opacity: 1; filter: blur(0); }
+      @keyframes assistantTipsCharFadeIn {
+        0% {
+          opacity: 0;
+        }
+        100% {
+          opacity: 1;
+        }
+      }
+      .assistant-tips-dim {
+        opacity: 0.45 !important;
       }
     `
     document.head.appendChild(style)

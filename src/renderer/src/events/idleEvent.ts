@@ -129,7 +129,8 @@ export class IdleEventHandler implements IEventHandler {
       context,
       maxLength: 100,
       extraRules: ['如果包含动作或心理活动，请使用( )标记', '尽量避免与上一次对话主题重复'],
-      fallback: '在忙吗？也别忘了偶尔放松一下，我会一直陪着你的！'
+      fallback: '在忙吗？也别忘了偶尔放松一下，我会一直陪着你的！',
+      icon: { path: '/icon/icon_message.png' }
     })
   }
 }

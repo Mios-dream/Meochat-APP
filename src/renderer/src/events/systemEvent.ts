@@ -105,7 +105,8 @@ export class SystemEventHandler implements IEventHandler {
         scene: '设备已接入电源并开始充电',
         context: contextManager.get(),
         maxLength: 80,
-        fallback: '已经开始充电啦，安心继续使用吧！'
+        fallback: '已经开始充电啦，安心继续使用吧！',
+        icon: { path: '/icon/icon_gear.png' }
       })
       return result
     },
@@ -115,7 +116,8 @@ export class SystemEventHandler implements IEventHandler {
         scene: '设备已切换到电池供电模式',
         context: contextManager.get(),
         maxLength: 80,
-        fallback: '现在是电池模式，记得关注续航哦！'
+        fallback: '现在是电池模式，记得关注续航哦！',
+        icon: { path: '/icon/icon_gear.png' }
       })
       return result
     },
@@ -127,7 +129,8 @@ export class SystemEventHandler implements IEventHandler {
         scene: `设备电量偏低，当前电量约${percent}%`,
         context: contextManager.get(),
         maxLength: 80,
-        fallback: `当前电量只剩${percent}%，建议尽快充电。`
+        fallback: `当前电量只剩${percent}%，建议尽快充电。`,
+        icon: { path: '/icon/icon_gear.png' }
       })
       return result
     }

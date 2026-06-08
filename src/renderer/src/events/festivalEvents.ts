@@ -97,7 +97,8 @@ class FestivalEventHandler implements IEventHandler {
       scene: `当前节日为${festivalName}。节日描述：${festivalDescription}。请给出节日氛围感祝福。`,
       context: context || { lastInteraction: Date.now(), isBusy: false },
       maxLength: 100,
-      fallback: `${festivalName}快乐，愿你今天也有好心情。`
+      fallback: `${festivalName}快乐，愿你今天也有好心情。`,
+      icon: { path: '/icon/icon_star.png' }
     })
     return result
   }

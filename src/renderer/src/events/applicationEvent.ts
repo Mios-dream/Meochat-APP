@@ -145,7 +145,8 @@ export class ApplicationEventHandler implements IEventHandler {
       scene: `用户已连续使用${_appName}较长时间,应用标题${windowTitle || '未知'}；请以你扮演的角色的口吻自然地关心一下`,
       context,
       maxLength: 100,
-      fallback: `你已经连续使用${_appName}${continuousMinutes}分钟了，起来活动一下吧。`
+      fallback: `你已经连续使用${_appName}${continuousMinutes}分钟了，起来活动一下吧。`,
+      icon: { path: '/icon/icon_clock.png' }
     })
     return result
   }
@@ -161,7 +162,8 @@ export class ApplicationEventHandler implements IEventHandler {
       scene: `当前用户正在使用应用${appName},应用标题${windowTitle}，请以你扮演的角色的口吻自然地回应一句`,
       context,
       maxLength: 80,
-      fallback: `阁下,您刚刚打开${appName}，需要我帮你做点什么吗？`
+      fallback: `阁下,您刚刚打开${appName}，需要我帮你做点什么吗？`,
+      icon: { path: '/icon/icon_cherry_blossom.png' }
     })
     return result
   }

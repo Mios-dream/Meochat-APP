@@ -97,7 +97,8 @@ export class MouseEventHandler implements IEventHandler {
         scene: randomSelect(response)!,
         context,
         maxLength: 80,
-        fallback: `欢迎回来，已经有${minutes}分钟没看到你啦。`
+        fallback: `欢迎回来，已经有${minutes}分钟没看到你啦。`,
+        icon: { path: '/icon/icon_message.png' }
       })
       return result
     },

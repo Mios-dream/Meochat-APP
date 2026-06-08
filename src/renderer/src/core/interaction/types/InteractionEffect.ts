@@ -12,6 +12,10 @@ export type InteractionEffect = ChatEffect | Live2DEnterSleepEffect | Live2DExit
 export interface ChatEffect {
   type: 'chat'
   payload: InteractionEventPayload
+  /** 事件图标配置，用于在台词板末尾显示对应图标。 */
+  icon?: {
+    path: string
+  }
 }
 
 /**

@@ -164,7 +164,8 @@ export class SleepEventHandler implements IEventHandler {
         scene: `用户在深夜唤醒了正在睡觉的${assistant?.name}，${assistant?.name}被惊醒但很困，表现出困倦但还是回应用户`,
         context: contextManager.get(),
         maxLength: 30,
-        fallback: '（迷迷糊糊）嗯...怎么了...'
+        fallback: '（迷迷糊糊）嗯...怎么了...',
+        icon: { path: '/icon/icon_clock.png' }
       })
     },
 
@@ -176,7 +177,8 @@ export class SleepEventHandler implements IEventHandler {
         context: contextManager.get(),
         maxLength: 20,
         fallback: '（梦呓）嗯...不要...',
-        keepSleepEyes: true
+        keepSleepEyes: true,
+        icon: { path: '/icon/icon_heart.png' }
       })
     }
   }
@@ -193,7 +195,8 @@ export class SleepEventHandler implements IEventHandler {
         scene: `${assistant?.name}看到夜深了，准备进入睡眠模式，用困倦和温柔的晚安语气,给${assistant?.user || '阁下'}说个晚安吧~`,
         context: contextManager.get(),
         maxLength: 30,
-        fallback: '（打了个哈欠）阁下，夜深了，晚安...'
+        fallback: '（打了个哈欠）阁下，夜深了，晚安...',
+        icon: { path: '/icon/icon_star.png' }
       })
       return [{ type: 'chat', payload: chatPayload }, { type: 'live2d.enterSleep' }]
     }
@@ -205,7 +208,8 @@ export class SleepEventHandler implements IEventHandler {
         scene: `${assistant?.name}从睡眠中醒来，表现出刚睡醒的慵懒和元气`,
         context: contextManager.get(),
         maxLength: 30,
-        fallback: '（伸懒腰）早上好呀阁下...'
+        fallback: '（伸懒腰）早上好呀阁下...',
+        icon: { path: '/icon/icon_star.png' }
       })
       return [{ type: 'chat', payload: chatPayload }, { type: 'live2d.exitSleep' }]
     }

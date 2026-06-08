@@ -10,6 +10,10 @@ export interface EventReplyRequest {
   fallback?: string
   /** 是否保持睡眠闭眼状态，梦呓等场景下为 true，不触发眼皮微张。 */
   keepSleepEyes?: boolean
+  /** 事件图标配置，用于在台词板末尾显示对应图标。 */
+  icon?: {
+    path: string
+  }
 }
 
 /**
@@ -29,7 +33,8 @@ export class InteractionPayloadBuilder {
       generation_motion: false,
       include_history: true,
       history_limit: 5,
-      keepSleepEyes: request.keepSleepEyes
+      keepSleepEyes: request.keepSleepEyes,
+      icon: request.icon
     }
   }
 }

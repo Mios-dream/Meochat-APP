@@ -46,7 +46,8 @@ export class TimeEventHandler implements IEventHandler {
         scene: '现在是上午了，和用户说声早安',
         context: contextManager.get(),
         maxLength: 50,
-        fallback: '早安，今天也要元气满满哦！'
+        fallback: '早安，今天也要元气满满哦！',
+        icon: { path: '/icon/icon_star.png' }
       })
       return result
     },
@@ -56,7 +57,8 @@ export class TimeEventHandler implements IEventHandler {
         scene: '现在是中午了，提醒用户休息一下',
         context: contextManager.get(),
         maxLength: 50,
-        fallback: '中午好，记得补充能量！'
+        fallback: '中午好，记得补充能量！',
+        icon: { path: '/icon/icon_cloud.png' }
       })
       return result
     },
@@ -66,7 +68,8 @@ export class TimeEventHandler implements IEventHandler {
         scene: '现在是下午了，和用户说声下午好',
         context: contextManager.get(),
         maxLength: 50,
-        fallback: '下午好，继续加油哦！'
+        fallback: '下午好，继续加油哦！',
+        icon: { path: '/icon/icon_clock.png' }
       })
       return result
     },
@@ -76,7 +79,8 @@ export class TimeEventHandler implements IEventHandler {
         scene: '现在是晚上了，如果很晚了可以关心一下用户的休息',
         context: contextManager.get(),
         maxLength: 50,
-        fallback: '夜深啦，别太辛苦，记得早点休息！'
+        fallback: '夜深啦，别太辛苦，记得早点休息！',
+        icon: { path: '/icon/icon_star.png' }
       })
       return result
     }

@@ -28,6 +28,11 @@ export interface InteractionEventPayload {
   history_limit?: number
   /** 是否保持睡眠闭眼状态，梦呓等场景下为 true，不触发眼皮微张。 */
   keepSleepEyes?: boolean
+  /** 事件图标配置，用于在台词板末尾显示对应图标。 */
+  icon?: {
+    /** 本地图片路径，如 'icon_bell.png'。 */
+    path: string
+  }
 }
 
 /**
@@ -53,6 +58,8 @@ class ChatManager {
   private abortController: AbortController | null = null
   /** 对话中标志，防止自动交互事件在对话进行中重复触发。 */
   public isChatting: boolean = false
+  /** 当前交互事件的图标配置，用于在台词板末尾显示对应图标。 */
+  private currentInteractionIcon?: { path: string }
 
   /** 后端 API 基础地址，随配置中的 baseUrl 响应式变化。 */
   private apiUrl = computed(() => {
@@ -70,7 +77,13 @@ class ChatManager {
       this.showTempMessage(...args)
     })
     this.streamProcessor = new ChatStreamProcessor(
-      (segment) => this.playbackController.enqueue(segment),
+      (segment) => {
+        // 将当前交互事件的图标配置附加到播放片段
+        if (this.currentInteractionIcon) {
+          segment.icon = this.currentInteractionIcon
+        }
+        this.playbackController.enqueue(segment)
+      },
       (finalText) => this.handleStreamComplete(finalText)
     )
 
@@ -222,6 +235,9 @@ class ChatManager {
     this.isChatting = true
     this.interruptCurrentPlayback()
 
+    // 保存当前交互事件的图标配置
+    this.currentInteractionIcon = payload.icon
+
     try {
       const configStore = useConfigStore()
       const useMotionGenerate = configStore.config.generateMotion
@@ -259,6 +275,7 @@ class ChatManager {
       return null
     } finally {
       this.isChatting = false
+      this.currentInteractionIcon = undefined
     }
   }
 
@@ -313,6 +330,7 @@ class ChatManager {
     this.stopAudio()
     this.hideMessage()
     this.playbackController.resetDisplayText()
+    this.currentInteractionIcon = undefined
 
     if (this.abortController) {
       this.abortController.abort()
@@ -325,9 +343,10 @@ class ChatManager {
     text: string,
     timeout: number = 5000,
     priority: number = 1,
-    transitionDuration: number = 0
+    transitionDuration: number = 0,
+    icon?: { path: string }
   ): void {
-    this.messageTips.showMessage(text, timeout, priority, transitionDuration)
+    this.messageTips.showMessage(text, timeout, priority, transitionDuration, icon)
   }
 
   /** 隐藏当前台词/提示消息。 */
