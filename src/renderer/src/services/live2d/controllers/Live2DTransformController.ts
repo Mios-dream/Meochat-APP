@@ -14,21 +14,37 @@ export class Live2DTransformController {
 
   /**
    * 重置模型到初始位置和缩放。
+   *
+   * 使用 getLocalBounds 计算模型实际内容区域，再设置 pivot 使内容视觉中心对齐画布中心。
+   *
    * @param model 当前 Live2D 模型。
-   * @param app Pixi 应用实例，用于读取舞台尺寸。
+   * @param app   Pixi 应用实例，用于读取舞台尺寸。
    */
   resetModelTransform(model: Live2DModel | null, app: Application | null): void {
     if (!model || !app) return
 
     const displayWidth = app.renderer.width
     const displayHeight = app.renderer.height
-    const scaleX = displayWidth / model.width
-    const scaleY = displayHeight / model.height
+
+    // 先重置缩放到 1，获取准确的原始尺寸
+    model.scale.set(1)
+
+    // ---------- 获取模型尺寸 ----------
+    const localBounds = model.getLocalBounds()
+    const modelWidth = localBounds.width
+    const modelHeight = localBounds.height
+
+    // ---------- 计算适配缩放 ----------
+    const scaleX = displayWidth / modelWidth
+    const scaleY = displayHeight / modelHeight
     const optimalScale = Math.min(scaleX, scaleY) * 0.9
 
     this.currentScale = optimalScale
     model.scale.set(optimalScale)
-    model.anchor.set(0.5)
+
+    // ---------- 精确居中：基于 localBounds 计算 pivot ----------
+    model.pivot.set(localBounds.x + localBounds.width / 2, localBounds.y + localBounds.height / 2)
+
     model.position.set(app.screen.width / 2, app.screen.height / 2)
   }
 

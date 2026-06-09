@@ -143,16 +143,14 @@ export class Live2DManager {
       autoUpdate: true
     })
 
-    this.fixEyeBlinkParameters()
-
     this.setFPS(this.fps)
 
     this.installMotionManagerHook()
 
-    this.resetModelTransform()
-
-    // 添加模型到舞台
+    // 先添加模型到舞台，再重置变换，确保 getLocalBounds 等测量值准确
     this.app.stage.addChild(this.model)
+
+    this.resetModelTransform()
     // 初始化 AudioContext
     this.audioContext = new AudioContext()
 
@@ -281,8 +279,6 @@ export class Live2DManager {
 
     // 重置模型变换
     this.resetModelTransform()
-
-    this.fixEyeBlinkParameters()
 
     void this.initExpressionMap()
   }
@@ -718,50 +714,6 @@ export class Live2DManager {
   private setMotionIdleEnabled(enabled: boolean): void {
     if (!this.model?.internalModel) return
     this.model.internalModel.motionManager.state.shouldRequestIdleMotion = () => enabled
-  }
-
-  /**
-   * 修复 eyeBlink 参数为空的问题
-   * 引擎有时无法正确解析模型配置中的 EyeBlink 参数，导致 _parameterIds 为空
-   * 此方法手动补全参数，确保眨眼功能正常工作
-   */
-  private fixEyeBlinkParameters(): void {
-    if (!this.model?.internalModel) return
-
-    const internalModel = this.model.internalModel as unknown as Record<string, unknown>
-    const eyeBlink = internalModel.eyeBlink as
-      | { _parameterIds?: { getSize?: () => number; pushBack?: (id: unknown) => void } }
-      | undefined
-
-    if (!eyeBlink) {
-      console.warn('[Live2D] fixEyeBlinkParameters: eyeBlink 不存在')
-      return
-    }
-
-    const size = eyeBlink._parameterIds?.getSize?.() ?? 0
-    if (size > 0) {
-      console.log('[Live2D] eyeBlink._parameterIds 已有参数，无需修复')
-      return
-    }
-
-    // 手动添加眨眼参数
-    console.log('[Live2D] 修复 eyeBlink._parameterIds，添加 ParamEyeLOpen 和 ParamEyeROpen')
-
-    // 获取 idManager 来获取参数 ID
-    const idManager = (
-      this.model.internalModel as unknown as { idManager?: { getId?: (id: string) => unknown } }
-    ).idManager
-
-    if (idManager?.getId && eyeBlink._parameterIds?.pushBack) {
-      eyeBlink._parameterIds.pushBack(idManager.getId('ParamEyeLOpen'))
-      eyeBlink._parameterIds.pushBack(idManager.getId('ParamEyeROpen'))
-      console.log(
-        '[Live2D] eyeBlink._parameterIds 修复完成，当前大小:',
-        eyeBlink._parameterIds.getSize?.()
-      )
-    } else {
-      console.warn('[Live2D] 无法修复 eyeBlink._parameterIds：idManager 或 pushBack 不可用')
-    }
   }
 
   /**

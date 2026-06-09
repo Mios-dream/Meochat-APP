@@ -7,7 +7,7 @@ import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import './assets/base.css'
 import './assets/fonts/font.css'
-import App from './App.vue'
+import WidgetApp from './WidgetApp.vue'
 import { createRouter, createWebHashHistory } from 'vue-router'
 import { library } from '@fortawesome/fontawesome-svg-core'
 import { fas } from '@fortawesome/free-solid-svg-icons'
@@ -32,7 +32,7 @@ const router = createRouter({
   ]
 })
 
-const app = createApp(App)
+const app = createApp(WidgetApp)
 app.use(createPinia())
 app.use(router)
 // 加载配置并监听变化，确保小组件能实时响应配置更新
