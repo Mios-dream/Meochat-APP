@@ -427,6 +427,17 @@ onMounted(async () => {
 
   // 监听助手切换事件
   window.api.onAssistantSwitched(async (assistant) => {
+    // 如果助手被清空（资源下载中且无可用助手），停止当前服务
+    if (!assistant) {
+      console.warn('当前助手已清空（可能正在下载资源）')
+      currentAssistantName = ''
+      // 停止交互系统和唤醒词服务
+      interactionSystem.stop()
+      wakewordService.stop()
+      window.api.hideTips()
+      return
+    }
+
     // 助手未变化时跳过模型重载，防止睡眠模式等运行状态被重置
     if (assistant.name === currentAssistantName) return
 

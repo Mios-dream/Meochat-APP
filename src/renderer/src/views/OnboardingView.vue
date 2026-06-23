@@ -286,7 +286,6 @@ import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 import { useConfigStore } from '../stores/useConfigStore'
-import { AssistantManager } from '../services/assistantManager'
 import { OnboardingMode, OnboardingProfile } from '../types/onboarding'
 import type { KernelUpdateState, EnvironmentCheckResult } from '../types/KernelInfo'
 import KernelLogTerminal from '../components/KernelLogTerminal.vue'
@@ -310,7 +309,6 @@ type OnboardingState =
 
 const router = useRouter()
 const configStore = useConfigStore()
-const assistantManager = AssistantManager.getInstance()
 
 // ─── state machine ──────────────────────────────────────────────────────────
 
@@ -393,6 +391,7 @@ const modelDownloadStage = ref<'idle' | 'embedding' | 'asr' | 'tts' | 'complete'
 let logDotTimer: ReturnType<typeof setInterval> | null = null
 let kernelStateUnlisten: (() => void) | null = null
 let serviceStateUnlisten: (() => void) | null = null
+let assistantDownloadResolve: (() => void) | null = null
 
 // ─── profile ────────────────────────────────────────────────────────────────
 
@@ -806,14 +805,26 @@ async function loadAssistant(): Promise<void> {
   assistantLoadError.value = ''
   assistantProgress.value = 5
 
-  const result = await window.api.initAssistant()
+  const result = await window.api.loadAssistantData()
   if (!result.success) {
     assistantLoadError.value = `助手数据加载失败：${result.error || '未知错误'}`
     return
   }
 
-  assistantProgress.value = Math.max(assistantProgress.value, 90)
-  await assistantManager.initialize()
+  assistantProgress.value = Math.max(assistantProgress.value, 30)
+
+  // 等待后台资源下载完成
+  await new Promise<void>((resolve) => {
+    assistantDownloadResolve = resolve
+    // 设置超时，避免永久等待
+    setTimeout(() => {
+      if (assistantDownloadResolve) {
+        assistantDownloadResolve()
+        assistantDownloadResolve = null
+      }
+    }, 60000)
+  })
+
   assistantProgress.value = 100
   await wait(400)
 }
@@ -1034,9 +1045,17 @@ async function acceptContract(): Promise<void> {
 
 function onAssistantDownloadProgress(
   _event: unknown,
-  payload: { assistantName: string; progress: number }
+  payload: { status: string; assistantName?: string; progress?: number }
 ): void {
-  assistantProgress.value = Math.max(0, Math.min(100, payload.progress))
+  if (payload.status === 'completed' || payload.status === 'idle') {
+    assistantProgress.value = 100
+    if (assistantDownloadResolve) {
+      assistantDownloadResolve()
+      assistantDownloadResolve = null
+    }
+  } else if (payload.progress !== undefined) {
+    assistantProgress.value = Math.max(0, Math.min(100, payload.progress))
+  }
 }
 
 function onKernelStateUpdate(state: KernelUpdateState): void {

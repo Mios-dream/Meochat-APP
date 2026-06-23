@@ -441,7 +441,7 @@ function registerLive2DInteractionBridge(): void {
 }
 
 onMounted(async () => {
-  currentAssistant.value = assistantManager.getCurrentAssistant()
+  currentAssistant.value = await assistantManager.getCurrentAssistant()
   // 从配置加载快捷键设置
   chatShortcut.value = config.value.chatShortcut
 

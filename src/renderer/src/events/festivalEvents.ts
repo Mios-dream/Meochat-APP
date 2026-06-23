@@ -64,7 +64,7 @@ class FestivalEventHandler implements IEventHandler {
         '2020年的3月5日，第一个助手诞生了，是澪之梦工作室（这个助手软件的开发团队），梦开始的地方'
       ),
     'festival.assistantbirthday': async () => {
-      const assistant = AssistantManager.getInstance().getCurrentAssistant()
+      const assistant = await AssistantManager.getInstance().getCurrentAssistant()
       const assistantName = assistant?.name || '助手'
       return this.generateFestivalMessage(
         `${assistantName}的生日`,
@@ -119,14 +119,14 @@ class FestivalEventModule extends EventModule {
     }
   }
 
-  private checkFestival = (): void => {
+  private checkFestival = async (): Promise<void> => {
     const now = new Date()
     const year = now.getFullYear()
     const month = now.getMonth() + 1
     const day = now.getDate()
     const dateStr = `${month}-${day}`
 
-    if (this.isCurrentAssistantBirthday(month, day)) {
+    if (await this.isCurrentAssistantBirthday(month, day)) {
       this.eventCenter.emit('festival.assistantbirthday')
     }
 
@@ -192,8 +192,9 @@ class FestivalEventModule extends EventModule {
     this.festivalCheckTimer = setTimeout(this.checkFestival, 12 * 60 * 60 * 1000)
   }
 
-  private isCurrentAssistantBirthday(todayMonth: number, todayDay: number): boolean {
-    const birthday = this.assistantManager.getCurrentAssistant()?.birthday
+  private async isCurrentAssistantBirthday(todayMonth: number, todayDay: number): Promise<boolean> {
+    const assistant = await this.assistantManager.getCurrentAssistant()
+    const birthday = assistant?.birthday
     if (!birthday) {
       return false
     }

@@ -76,6 +76,15 @@ interface AssistantSettings {
   contextLength: number
 }
 
+// 各类资产的最后修改时间戳
+interface AssetTypeTimestamps {
+  audio: number
+  images: number
+  live2d: number
+  models: number
+  other: number
+}
+
 // 用户私有状态信息（存储在 user_state.yaml 中）
 interface UserStateInfo {
   // 初次相遇时间，存储为时间戳
@@ -86,6 +95,8 @@ interface UserStateInfo {
   updatedAt: number
   // 资产最后修改时间，存储为时间戳
   assetsLastModified: number
+  // 各类资产的最后修改时间
+  assetTypesLastModified?: AssetTypeTimestamps
 }
 
 interface AssistantInfo extends AssistantBaseInfo {
@@ -142,4 +153,4 @@ interface AssistantAssets {
   }
 }
 
-export { AssistantInfo, AssistantAssets, AssistantBaseInfo }
+export { AssistantInfo, AssistantAssets, AssistantBaseInfo, AssetTypeTimestamps, UpdateCheckResult }

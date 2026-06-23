@@ -133,7 +133,10 @@
             v-for="assistant in assistantList"
             :key="assistant.name"
             class="assistant-item"
-            :class="{ active: assistant.name === assistantInfo?.name }"
+            :class="{
+              active: assistant.name === assistantInfo?.name,
+              syncing: isAssistantSyncing(assistant.name)
+            }"
             @click="selectAssistant(assistant)"
             @contextmenu.prevent="showContextMenu($event, assistant)"
           >
@@ -150,8 +153,17 @@
             ></div>
             <div class="assistant-content">
               <div class="assistant-name">{{ assistant.name }}</div>
-              <div class="assistant-status">
-                {{ assistant.name === assistantInfo?.name ? '任职中' : '休息中' }}
+              <div
+                class="assistant-status"
+                :class="{ syncing: isAssistantSyncing(assistant.name) }"
+              >
+                {{
+                  isAssistantSyncing(assistant.name)
+                    ? '同步中'
+                    : assistant.name === assistantInfo?.name
+                      ? '任职中'
+                      : '休息中'
+                }}
               </div>
               <div class="love-progress-container">
                 <div class="love-level">好感度</div>
@@ -174,6 +186,34 @@
               class="avatar-loading-overlay"
             >
               <div class="spinner"></div>
+            </div>
+            <!-- 助手资源同步进度覆盖层 -->
+            <div v-if="isAssistantSyncing(assistant.name)" class="sync-progress-overlay">
+              <div class="sync-progress-content">
+                <div class="sync-progress-icon">
+                  <font-awesome-icon
+                    :icon="
+                      getAssistantSyncProgress(assistant.name) >= 100
+                        ? 'fa-solid fa-check'
+                        : 'fa-solid fa-arrow-down'
+                    "
+                  />
+                </div>
+                <div class="sync-progress-text">
+                  {{
+                    getAssistantSyncProgress(assistant.name) >= 100
+                      ? '同步完成'
+                      : `同步中 ${getAssistantSyncProgress(assistant.name)}%`
+                  }}
+                </div>
+                <div class="sync-progress-bar-container">
+                  <div
+                    class="sync-progress-bar-fill"
+                    :style="{ width: `${getAssistantSyncProgress(assistant.name)}%` }"
+                    :class="{ complete: getAssistantSyncProgress(assistant.name) >= 100 }"
+                  ></div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -274,12 +314,12 @@ const isAssistantOpen = ref(false)
 // 助手管理器实例
 const assistantManager = AssistantManager.getInstance()
 // 当前助手信息
-const assistantInfo = ref<AssistantInfo | null>(assistantManager.getCurrentAssistant())
+const assistantInfo = ref<AssistantInfo | null>(null)
 const nextAssistantInfo = ref<AssistantInfo | null>()
 // 当前助手的好感度
 const currentLove = computed(() => assistantInfo.value?.userState.love || 0) // 当前好感度值
 // 助手列表
-const assistantList = ref(assistantManager.getAssistants())
+const assistantList = ref<AssistantInfo[]>([])
 // 是否可见添加助手对话框
 const isVisibleAddAssistantDialog = ref(false)
 // 是否显示选择添加方式对话框
@@ -290,6 +330,19 @@ const assistantListLoading = ref(true)
 const isImportFromCard = ref(false)
 // 是否正在切换助手
 const isSwitchingAssistant = ref(false)
+
+// 每个助手的资源同步进度（key: 助手名称, value: 0-100 进度百分比，-1 表示已完成）
+const assistantSyncProgress = ref<Map<string, number>>(new Map())
+
+// 检查助手是否正在同步
+function isAssistantSyncing(assistantName: string): boolean {
+  return assistantSyncProgress.value.has(assistantName)
+}
+
+// 获取助手同步进度
+function getAssistantSyncProgress(assistantName: string): number {
+  return assistantSyncProgress.value.get(assistantName) || 0
+}
 
 // 计算进度百分比
 const lovePercentage = computed(() => {
@@ -312,13 +365,21 @@ const assistantToDelete = ref('')
 
 // 选择助手
 async function selectAssistant(assistant: AssistantInfo): Promise<void> {
+  // 如果助手正在同步资源，禁止选择
+  if (isAssistantSyncing(assistant.name)) {
+    notificationService.warning({
+      message: `「${assistant.name}」正在同步资源中，请稍候...`
+    })
+    return
+  }
+
   // 先设置下一个助手信息，触发加载动画
   nextAssistantInfo.value = assistant
   // 设置加载状态为true
   isSwitchingAssistant.value = true
   try {
     await assistantManager.setCurrentAssistant(assistant.name)
-    assistantInfo.value = assistantManager.getCurrentAssistant()
+    assistantInfo.value = await assistantManager.getCurrentAssistant()
   } finally {
     // 切换完成后，设置加载状态为false
     isSwitchingAssistant.value = false
@@ -327,6 +388,17 @@ async function selectAssistant(assistant: AssistantInfo): Promise<void> {
 
 // 计算属性
 const contextMenuItems = computed(() => {
+  // 如果助手正在同步中，禁用右键菜单
+  if (contextMenuAssistant.value && isAssistantSyncing(contextMenuAssistant.value.name)) {
+    return [
+      {
+        icon: 'fa-solid fa-spinner',
+        text: '同步中...',
+        action: () => {} // 空操作
+      }
+    ]
+  }
+
   const items = [
     {
       icon: 'fa-solid fa-pen',
@@ -376,26 +448,17 @@ function handleEditCancel(): void {
 
 // 处理助手更新成功
 function handleAssistantUpdated(): void {
-  refreshAssistants()
+  getAssistants()
 
   // 重置编辑状态
   editingAssistant.value = null
 }
 
-// 刷新助手列表和当前助手信息
-async function refreshAssistants(): Promise<void> {
+async function getAssistants(): Promise<void> {
   assistantListLoading.value = true
-
-  try {
-    await assistantManager.loadAssistants()
-    assistantList.value = assistantManager.getAssistants()
-    assistantInfo.value = assistantManager.getCurrentAssistant()
-  } catch {
-    assistantList.value = assistantManager.getAssistants()
-    assistantInfo.value = assistantManager.getCurrentAssistant()
-  } finally {
-    assistantListLoading.value = false
-  }
+  assistantList.value = await assistantManager.getAssistants()
+  assistantInfo.value = await assistantManager.getCurrentAssistant()
+  assistantListLoading.value = false
 }
 
 // 处理删除助手
@@ -420,10 +483,10 @@ async function handleConfirmDelete(): Promise<void> {
 
   const status = await assistantManager.deleteAssistant(assistantToDelete.value)
   if (status.success) {
-    assistantList.value = assistantManager.getAssistants()
+    assistantList.value = await assistantManager.getAssistants()
     // 更新当前助手信息
     if (assistantInfo.value?.name === assistantToDelete.value) {
-      assistantInfo.value = assistantManager.getCurrentAssistant()
+      assistantInfo.value = await assistantManager.getCurrentAssistant()
     }
   } else {
     console.error('删除助手失败', status.message)
@@ -527,7 +590,7 @@ async function handleImportZipPackage(): Promise<void> {
       return
     }
 
-    await refreshAssistants()
+    await getAssistants()
   } catch (error) {
     notificationService.error({
       message: error instanceof Error ? error.message : 'zip角色包导入失败'
@@ -537,26 +600,73 @@ async function handleImportZipPackage(): Promise<void> {
   }
 }
 
+// 处理助手资源下载进度事件
+function handleDownloadProgress(
+  _event: unknown,
+  payload: { assistantName: string; progress: number }
+): void {
+  // console.log('助手资源下载进度', payload)
+  const { assistantName, progress } = payload
+  const newMap = new Map(assistantSyncProgress.value)
+  if (progress >= 100) {
+    // 下载完成后标记为-1，延迟移除进度条（给用户一点时间看到完成状态）
+    newMap.set(assistantName, 100)
+    assistantSyncProgress.value = newMap
+    setTimeout(() => {
+      const removeMap = new Map(assistantSyncProgress.value)
+      removeMap.delete(assistantName)
+      assistantSyncProgress.value = removeMap
+    }, 1500)
+  } else {
+    newMap.set(assistantName, progress)
+    assistantSyncProgress.value = newMap
+  }
+}
+
+// 处理助手数据更新事件（后台云端同步完成后触发）
+function handleAssistantDataUpdated(
+  _event: unknown,
+  payload: { assistants: AssistantInfo[]; currentAssistant: AssistantInfo | null }
+): void {
+  // console.log('助手数据已更新', payload)
+  if (payload.assistants) {
+    assistantList.value = payload.assistants
+  }
+  if (payload.currentAssistant) {
+    assistantInfo.value = payload.currentAssistant
+  }
+}
+
 // 当组件挂载时，获取助手状态
 onMounted(() => {
   window.api.getAssistantStatus().then((status: boolean) => {
     isAssistantOpen.value = status
   })
 
-  refreshAssistants()
+  getAssistants()
+
+  // 监听助手资源下载进度事件
+  window.api.ipcRenderer.on('assistant:download-progress', handleDownloadProgress)
+
+  // 监听助手数据更新事件
+  window.api.ipcRenderer.on('assistant:data-updated', handleAssistantDataUpdated)
 
   // 添加事件监听
   document.addEventListener('click', handleClickOutside)
 })
 
 onActivated(() => {
-  refreshAssistants()
+  getAssistants()
 })
 
 onUnmounted(() => {
   assistantListLoading.value = true
   // 移除事件监听
   document.removeEventListener('click', handleClickOutside)
+  // 移除助手资源下载进度监听
+  window.api.ipcRenderer.removeAllListeners('assistant:download-progress')
+  // 移除助手数据更新监听
+  window.api.ipcRenderer.removeAllListeners('assistant:data-updated')
 })
 </script>
 
@@ -974,6 +1084,24 @@ onUnmounted(() => {
   transition: all 0.4s ease-in-out;
 }
 
+.assistant-item.syncing {
+  border: 2px solid #ffb3cd;
+  animation: card-sync-pulse 2s ease-in-out infinite;
+  cursor: not-allowed;
+  opacity: 0.85;
+  pointer-events: auto;
+}
+
+@keyframes card-sync-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 10px rgba(251, 114, 153, 0.2);
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(251, 114, 153, 0.4);
+  }
+}
+
 .assistant-item.active::after {
   content: '任职中';
   position: absolute;
@@ -1031,6 +1159,21 @@ onUnmounted(() => {
   font-size: 14px;
   color: var(--theme-color);
   margin-top: 5px;
+}
+
+.assistant-status.syncing {
+  color: #fb7299;
+  animation: status-blink 1.5s ease-in-out infinite;
+}
+
+@keyframes status-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
 }
 
 .love-progress-container {
@@ -1192,5 +1335,80 @@ onUnmounted(() => {
   100% {
     transform: rotate(360deg);
   }
+}
+
+/* 助手资源同步进度覆盖层 */
+.sync-progress-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(255, 255, 255, 0.92);
+  border-radius: 15px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 11;
+  backdrop-filter: blur(2px);
+}
+
+.sync-progress-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 80%;
+}
+
+.sync-progress-icon {
+  width: 28px;
+  height: 28px;
+  background: linear-gradient(135deg, #fb7299, #ff97b3);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 12px;
+  animation: sync-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes sync-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.1);
+    opacity: 0.8;
+  }
+}
+
+.sync-progress-text {
+  font-size: 11px;
+  color: #fb7299;
+  font-weight: bold;
+  text-align: center;
+}
+
+.sync-progress-bar-container {
+  width: 100%;
+  height: 4px;
+  background-color: #ffe6f0;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.sync-progress-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #fb7299, #ff97b3);
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.sync-progress-bar-fill.complete {
+  background: linear-gradient(90deg, #52c41a, #73d13d);
 }
 </style>

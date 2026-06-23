@@ -65,10 +65,7 @@ interface WidgetApi {
   deleteInstance: (instanceId: string) => Promise<{ success: boolean; error?: string }>
 
   /** 切换置顶状态 */
-  togglePin: (
-    instanceId: string,
-    pinned: boolean
-  ) => Promise<{ success: boolean; error?: string }>
+  togglePin: (instanceId: string, pinned: boolean) => Promise<{ success: boolean; error?: string }>
 
   /** 发送数据到其他小组件 */
   sendData: (data: WidgetDataMessage) => Promise<{ success: boolean; error?: string }>

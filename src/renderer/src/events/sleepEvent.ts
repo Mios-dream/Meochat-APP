@@ -158,7 +158,7 @@ export class SleepEventHandler implements IEventHandler {
     (contextManager: ContextManager) => Promise<InteractionEventPayload | null>
   > = {
     'sleep.wakeup': async (contextManager) => {
-      const assistant = AssistantManager.getInstance().getCurrentAssistant()
+      const assistant = await AssistantManager.getInstance().getCurrentAssistant()
       return InteractionPayloadBuilder.buildEventPayload({
         event: 'sleep.wakeup',
         scene: `用户在深夜唤醒了正在睡觉的${assistant?.name}，${assistant?.name}被惊醒但很困，表现出困倦但还是回应用户`,
@@ -170,7 +170,7 @@ export class SleepEventHandler implements IEventHandler {
     },
 
     'sleep.talk': async (contextManager) => {
-      const assistant = AssistantManager.getInstance().getCurrentAssistant()
+      const assistant = await AssistantManager.getInstance().getCurrentAssistant()
       return InteractionPayloadBuilder.buildEventPayload({
         event: 'sleep.talk',
         scene: `${assistant?.name}正在睡觉，无意中说了一些梦话，语句可以不完整、逻辑跳跃`,
@@ -189,7 +189,7 @@ export class SleepEventHandler implements IEventHandler {
    */
   async handle(event: string, contextManager: ContextManager): Promise<InteractionEffect[]> {
     if (event === 'sleep.enter') {
-      const assistant = AssistantManager.getInstance().getCurrentAssistant()
+      const assistant = await AssistantManager.getInstance().getCurrentAssistant()
       const chatPayload = InteractionPayloadBuilder.buildEventPayload({
         event: 'sleep.enter',
         scene: `${assistant?.name}看到夜深了，准备进入睡眠模式，用困倦和温柔的晚安语气,给${assistant?.user || '阁下'}说个晚安吧~`,
@@ -202,7 +202,7 @@ export class SleepEventHandler implements IEventHandler {
     }
 
     if (event === 'sleep.exit') {
-      const assistant = AssistantManager.getInstance().getCurrentAssistant()
+      const assistant = await AssistantManager.getInstance().getCurrentAssistant()
       const chatPayload = InteractionPayloadBuilder.buildEventPayload({
         event: 'sleep.exit',
         scene: `${assistant?.name}从睡眠中醒来，表现出刚睡醒的慵懒和元气`,

@@ -231,7 +231,7 @@ function setupKernelIPC(): void {
       const baseUrl = getConfig('baseUrl') || 'http://127.0.0.1:8001'
       const apiUrl = `${baseUrl}/api/health`
 
-      console.log(`[IPC] 检查API健康状态，URL: ${apiUrl}`)
+      // console.log(`[IPC] 检查API健康状态，URL: ${apiUrl}`)
 
       const healthy = await fetch(apiUrl, {
         signal: AbortSignal.timeout(5000)

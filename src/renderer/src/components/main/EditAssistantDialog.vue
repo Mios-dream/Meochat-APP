@@ -614,6 +614,7 @@ const originalVoicePaths = ref({
   refAudioPath: ''
 })
 const assetsDirty = ref(false)
+const dirtyAssetTypes = ref<Set<string>>(new Set())
 
 // 表单数据
 const formData = ref<AssistantInfo>(createNullAssistant())
@@ -710,6 +711,7 @@ function resetForm(): void {
     refAudioPath: ''
   }
   assetsDirty.value = false
+  dirtyAssetTypes.value.clear()
   live2dModelInfo.value = {
     name: '',
     path: '',
@@ -795,6 +797,7 @@ watch(
           }
         }
         assetsDirty.value = false
+        dirtyAssetTypes.value.clear()
       } else {
         // 设置默认值
         assistantAssets.value = {
@@ -812,6 +815,7 @@ watch(
           progress: 0
         }
         assetsDirty.value = false
+        dirtyAssetTypes.value.clear()
       }
     } else {
       resetForm()
@@ -879,6 +883,11 @@ function readFileAsBuffer(file: File): Promise<ArrayBuffer> {
   })
 }
 
+/**
+ * 从文件路径中提取显示用的文件名
+ * @param filePath 文件路径
+ * @returns 显示用的文件名
+ */
 const extractDisplayFileName = (filePath: string): string => {
   if (!filePath) {
     return ''
@@ -888,14 +897,13 @@ const extractDisplayFileName = (filePath: string): string => {
   return parts[parts.length - 1] || ''
 }
 
-const getFileExtension = (fileName: string): string => {
-  const dotIndex = fileName.lastIndexOf('.')
-  if (dotIndex < 0) {
-    return ''
-  }
-  return fileName.slice(dotIndex)
-}
-
+/**
+ * 将存储的资源路径规范化为显示用的路径
+ * @param assistantName 助手名称
+ * @param subDir 资源子目录（如 'models' 或 'voice'）
+ * @param storedPath 存储的资源路径
+ * @returns 显示用的资源路径
+ */
 const normalizeStoredResourcePath = (
   assistantName: string,
   subDir: string,
@@ -1052,6 +1060,8 @@ const handleGptModelSelect = (event: Event): void => {
     selectedGptModelFile.value = input.files[0]
     formData.value.gsvSetting.gptModelPath = input.files[0].name
     assetsDirty.value = true
+    dirtyAssetTypes.value.add('models')
+    dirtyAssetTypes.value.add('audio')
   }
 }
 
@@ -1061,6 +1071,8 @@ const handleSovitsModelSelect = (event: Event): void => {
     selectedSovitsModelFile.value = input.files[0]
     formData.value.gsvSetting.sovitsModelPath = input.files[0].name
     assetsDirty.value = true
+    dirtyAssetTypes.value.add('models')
+    dirtyAssetTypes.value.add('audio')
   }
 }
 
@@ -1072,6 +1084,7 @@ const handleRefAudioSelect = (event: Event): void => {
     const extension = getFileExtension(file.name)
     formData.value.gsvSetting.refAudioPath = `audio${extension}`
     assetsDirty.value = true
+    dirtyAssetTypes.value.add('audio')
   }
 }
 
@@ -1083,40 +1096,15 @@ const uploadVoiceResources = async (): Promise<boolean> => {
   try {
     const assistantName = formData.value.name
 
-    const saveResourceFile = async (
-      buffer: ArrayBuffer,
-      subDir: string,
-      fileName: string,
-      oldRelativePath?: string
-    ): Promise<{ success: true; path: string } | { success: false; error: string }> => {
-      if (typeof window.api.saveAssistantResourceFile === 'function') {
-        return await window.api.saveAssistantResourceFile(
-          buffer,
-          assistantName,
-          subDir,
-          fileName,
-          oldRelativePath
-        )
-      }
-
-      // 兼容旧 preload：通过 ipcRenderer 直接调用对象参数版本
-      return await window.api.ipcRenderer.invoke('assistant:save-resource-file', {
-        fileData: buffer,
-        assistantName,
-        subDir,
-        fileName,
-        oldRelativePath
-      })
-    }
-
     if (selectedGptModelFile.value) {
       const buffer = await readFileAsBuffer(selectedGptModelFile.value)
-      const saveResult = await saveResourceFile(
-        buffer,
-        'models',
-        selectedGptModelFile.value.name,
-        originalVoicePaths.value.gptModelPath
-      )
+      const saveResult = await window.api.saveAssistantResourceFile({
+        fileData: buffer,
+        assistantName,
+        subDir: 'models',
+        fileName: selectedGptModelFile.value.name,
+        oldRelativePath: originalVoicePaths.value.gptModelPath
+      })
       if (!saveResult.success) {
         console.error('GPT模型上传失败:', saveResult.error)
         return false
@@ -1127,12 +1115,13 @@ const uploadVoiceResources = async (): Promise<boolean> => {
 
     if (selectedSovitsModelFile.value) {
       const buffer = await readFileAsBuffer(selectedSovitsModelFile.value)
-      const saveResult = await saveResourceFile(
-        buffer,
-        'models',
-        selectedSovitsModelFile.value.name,
-        originalVoicePaths.value.sovitsModelPath
-      )
+      const saveResult = await window.api.saveAssistantResourceFile({
+        fileData: buffer,
+        assistantName,
+        subDir: 'models',
+        fileName: selectedSovitsModelFile.value.name,
+        oldRelativePath: originalVoicePaths.value.sovitsModelPath
+      })
       if (!saveResult.success) {
         console.error('SOVITS模型上传失败:', saveResult.error)
         return false
@@ -1145,12 +1134,18 @@ const uploadVoiceResources = async (): Promise<boolean> => {
       const buffer = await readFileAsBuffer(selectedRefAudioFile.value)
       const extension = getFileExtension(selectedRefAudioFile.value.name)
       const targetAudioFileName = `audio${extension}`
-      const saveResult = await saveResourceFile(
-        buffer,
-        'voice',
+      const saveResult = await window.api.saveAssistantResourceFile({
+        fileData: buffer,
+        assistantName,
+        subDir: 'audio',
+        fileName: targetAudioFileName,
+        oldRelativePath: originalVoicePaths.value.refAudioPath
+      })
+      console.log('参考音频上传结果:', saveResult, '上传参数', {
+        assistantName,
         targetAudioFileName,
-        originalVoicePaths.value.refAudioPath
-      )
+        originalPath: originalVoicePaths.value.refAudioPath
+      })
       if (!saveResult.success) {
         console.error('参考音频上传失败:', saveResult.error)
         return false
@@ -1190,6 +1185,7 @@ async function handleAvatarFileSelect(event: Event): Promise<void> {
     // 仅保存文件信息，不立即上传
     selectedFile.value = file
     assetsDirty.value = true
+    dirtyAssetTypes.value.add('images')
   }
 }
 
@@ -1202,6 +1198,7 @@ const removeAvatar = (): void => {
     fileInput.value.value = ''
   }
   assetsDirty.value = true
+  dirtyAssetTypes.value.add('images')
 }
 
 // 触发角色立绘上传
@@ -1218,6 +1215,7 @@ const handleCharacterImageSelect = async (event: Event): Promise<void> => {
     const files = Array.from(input.files)
     selectedCharacterImages.value = [...files]
     assetsDirty.value = true
+    dirtyAssetTypes.value.add('images')
 
     // 只创建预览，不立即上传
     if (files.length > 0) {
@@ -1235,6 +1233,7 @@ const handleCharacterImageSelect = async (event: Event): Promise<void> => {
 const removeCharacterImage = (): void => {
   assistantAssets.value.characterImages = ''
   assetsDirty.value = true
+  dirtyAssetTypes.value.add('images')
 }
 
 // 触发Live2D模型上传
@@ -1251,6 +1250,7 @@ const handleLive2dModelSelect = async (event: Event): Promise<void> => {
     const file = input.files[0]
     selectedLive2dModel.value = file
     assetsDirty.value = true
+    dirtyAssetTypes.value.add('live2d')
 
     // 更新模型信息，但不立即上传
     live2dModelInfo.value = {
@@ -1278,6 +1278,17 @@ const removeLive2dModel = (): void => {
 
   selectedLive2dModel.value = null
   assetsDirty.value = true
+  dirtyAssetTypes.value.add('live2d')
+}
+
+/**
+ * 从文件名中提取文件扩展名
+ * @param fileName
+ * @returns 包含点的文件扩展名（如 .mp3），如果没有扩展名则返回空字符串
+ */
+function getFileExtension(fileName: string): string {
+  const match = fileName.match(/\.([^.]+)$/)
+  return match ? `.${match[1]}` : ''
 }
 
 // 上传头像
@@ -1293,7 +1304,7 @@ const uploadAvatar = async (): Promise<boolean> => {
     const saveResult = await window.api.saveAssistantImageFile(
       fileBuffer,
       formData.value.name,
-      'avatar'
+      'avatar.png'
     )
 
     if (saveResult.success) {
@@ -1594,8 +1605,13 @@ const handleSubmit = async (): Promise<void> => {
       }
 
       const shouldUploadAssets = assetsDirty.value
+      const assetTypes =
+        shouldUploadAssets && dirtyAssetTypes.value.size > 0
+          ? Array.from(dirtyAssetTypes.value)
+          : undefined
       const updateResult = await assistantManager.updateAssistant(updatedAssistant, {
-        uploadAssets: shouldUploadAssets
+        uploadAssets: shouldUploadAssets,
+        assetTypes
       })
 
       if (stopUploadProgressListener) {
@@ -1644,7 +1660,9 @@ const handleSubmit = async (): Promise<void> => {
       }
 
       // 添加新助手
-      const addStatus = await assistantManager.addAssistant(assistantInfo)
+      const assetTypes =
+        dirtyAssetTypes.value.size > 0 ? Array.from(dirtyAssetTypes.value) : undefined
+      const addStatus = await assistantManager.addAssistant(assistantInfo, { assetTypes })
 
       if (stopUploadProgressListener) {
         stopUploadProgressListener()

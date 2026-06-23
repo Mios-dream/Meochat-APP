@@ -4,19 +4,17 @@ import type { AssistantInfo, AssistantAssets } from '../renderer/src/types/Assis
 
 // 文件选择工具API
 const fileSelectAPI = {
-  // 选择单个文件
   selectFile: (options?: Electron.OpenDialogOptions) =>
     ipcRenderer.invoke('tool:select-file', options),
-  // 选择文件夹
   selectFolder: (options?: Electron.OpenDialogOptions) =>
     ipcRenderer.invoke('tool:select-folder', options),
-  // 检查本地路径是否存在
   pathExists: (targetPath: string) => ipcRenderer.invoke('tool:path-exists', targetPath)
 }
 
 contextBridge.exposeInMainWorld('api', {
   ...globalAPI,
   fileSelectAPI,
+
   // 主窗口专用 API
   getAssistantStatus: () => ipcRenderer.invoke('assistant:get-status'),
   setAutoStartOnBoot: (enable: boolean) => ipcRenderer.invoke('set-auto-start-on-boot', enable),
@@ -44,6 +42,7 @@ contextBridge.exposeInMainWorld('api', {
     markCompleted: () => ipcRenderer.invoke('onboarding:mark-completed'),
     reset: () => ipcRenderer.invoke('onboarding:reset')
   },
+
   // 内核管理 API
   kernel: {
     getState: () => ipcRenderer.invoke('kernel:get-state'),
@@ -85,18 +84,69 @@ contextBridge.exposeInMainWorld('api', {
   },
 
   // 助手相关 API
-  initAssistant: () => ipcRenderer.invoke('assistant:init'),
-  // 下载助手资产
+
+  /** 加载助手数据（初始化） */
+  loadAssistantData: () => ipcRenderer.invoke('assistant:load-data'),
+
+  /** 注册聊天框快捷键 */
+  registerChatShortcut: (shortcut: string) =>
+    ipcRenderer.invoke('assistant:register-chat-shortcut', shortcut),
+
+  /** 添加助手 */
+  addAssistant: (assistant: AssistantInfo, options?: { assetTypes?: string[] }) =>
+    ipcRenderer.invoke('assistant:add-assistant', assistant, options),
+
+  /** 更新助手信息 */
+  updateAssistant: (
+    assistant: AssistantInfo,
+    options?: { uploadAssets?: boolean; assetTypes?: string[] }
+  ) => ipcRenderer.invoke('assistant:update-assistant', assistant, options),
+
+  /** 删除助手 */
+  deleteAssistant: (name: string) => ipcRenderer.invoke('assistant:delete-assistant', name),
+
+  /** 保存助手图片文件（头像、立绘等） */
+  saveAssistantImageFile: (fileData: ArrayBuffer, assistantName: string, fileName: string) =>
+    ipcRenderer.invoke('assistant:save-resource-file', {
+      fileData,
+      assistantName,
+      subDir: 'images',
+      fileName
+    }),
+
+  /** 保存助手资源文件（通用方法，支持图片、音频等） */
+  saveAssistantResourceFile: (payload: {
+    fileData: Buffer | ArrayBuffer
+    assistantName: string
+    subDir: 'images' | 'audio' | 'live2d' | 'models' | 'other'
+    fileName: string
+    oldRelativePath?: string
+  }) => ipcRenderer.invoke('assistant:save-resource-file', payload),
+
+  /** 获取助手资产配置 */
+  getAssistantAssets: (assistantName: string) =>
+    ipcRenderer.invoke('assistant:get-assets', assistantName),
+
+  /** 保存助手资产配置 */
+  saveAssistantAssets: (assets: AssistantAssets) =>
+    ipcRenderer.invoke('assistant:save-assets', assets),
+
+  /** 上传并解压Live2D模型 */
+  saveAndExtractLive2DModel: (fileData: Buffer | ArrayBuffer, assistantName: string) =>
+    ipcRenderer.invoke('assistant:save-extract-live2d', fileData, assistantName),
+
+  /** 下载助手资产（支持按类型选择性下载） */
   downloadAssistantAsset: async ({
     assistantName,
+    assetTypes,
     onProgress
   }: {
     assistantName: string
+    assetTypes?: string[]
     onProgress?: (progress: number) => void
   }) => {
-    // 监听进度事件
     const progressListener = (
-      _event,
+      _event: Electron.IpcRendererEvent,
       { assistantName: name, progress }: { assistantName: string; progress: number }
     ): void => {
       if (name === assistantName && onProgress) {
@@ -105,90 +155,58 @@ contextBridge.exposeInMainWorld('api', {
     }
 
     ipcRenderer.on('assistant:download-progress', progressListener)
-
     try {
-      // 调用主进程方法
-      const result = await ipcRenderer.invoke('assistant:download-assistant-asset', {
-        assistantName
-      })
-      return result
+      return await ipcRenderer.invoke('assistant:download-asset', { assistantName, assetTypes })
     } finally {
-      // 清理事件监听器
       ipcRenderer.removeListener('assistant:download-progress', progressListener)
     }
   },
-  // 注册聊天框快捷键
-  registerChatShortcut: (shortcut: string) =>
-    ipcRenderer.invoke('assistant:register-chat-shortcut', shortcut),
-  // 加载助手数据
-  loadAssistantData: () => ipcRenderer.invoke('assistant:load-assistant-data'),
-  // 添加助手
-  addAssistant: (assistant: AssistantInfo) =>
-    ipcRenderer.invoke('assistant:add-assistant', assistant),
-  // 更新助手信息
-  updateAssistant: (assistant: AssistantInfo, options?: { uploadAssets?: boolean }) =>
-    ipcRenderer.invoke('assistant:update-assistant', assistant, options),
-  // 删除助手
-  deleteAssistant: (name: string) => ipcRenderer.invoke('assistant:delete-assistant', name),
-  // 上传助手资产进度
+
+  /** 获取当前正在下载资源的助手列表 */
+  getDownloadingAssets: () => ipcRenderer.invoke('assistant:get-downloading'),
+
+  /** 获取当前助手信息 */
+  getCurrentAssistant: () => ipcRenderer.invoke('assistant:get-current'),
+
+  /** 切换当前助手 */
+  switchAssistant: (name: string) => ipcRenderer.invoke('assistant:switch', name),
+
+  /** 从云端刷新当前助手数据（好感度等） */
+  refreshCurrentAssistant: () => ipcRenderer.invoke('assistant:refresh-current'),
+
+  /** 从角色卡片导入助手信息 */
+  importAssistantFromCard: (imageData: ArrayBuffer) =>
+    ipcRenderer.invoke('assistant:import-from-card', imageData),
+
+  /** 从 zip 角色压缩包导入助手 */
+  importAssistantFromZip: (zipPath: string) =>
+    ipcRenderer.invoke('assistant:import-from-zip', zipPath),
+
+  /** 扫描 Live2D 表情文件 */
+  scanLive2dExpressions: () => ipcRenderer.invoke('assistant:scan-live2d-expressions'),
+
+  /** 监听上传进度 */
   onUploadProgress: (callback: (data: { assistantName: string; progress: number }) => void) => {
     const listener = (
-      _,
-      data: {
-        assistantName: string
-        progress: number
-      }
+      _: Electron.IpcRendererEvent,
+      data: { assistantName: string; progress: number }
     ): void => callback(data)
     ipcRenderer.on('assistant:upload-progress', listener)
     return () => ipcRenderer.removeListener('assistant:upload-progress', listener)
   },
-  // 检查助手资产是否需要更新
-  isNeedsUpdate: (assistant: AssistantInfo) =>
-    ipcRenderer.invoke('assistant:need-update', assistant),
-  // 获取当前助手信息
-  getCurrentAssistant: () => ipcRenderer.invoke('assistant:get-current-assistant'),
-  // 从云端刷新当前助手数据（好感度等）
-  refreshCurrentAssistant: () => ipcRenderer.invoke('assistant:refresh-current'),
-  // 切换当前助手
-  switchAssistant: (name: string) => ipcRenderer.invoke('assistant:switch-assistant', name),
-  // 资产管理相关API
-  // 获取助手资产配置文件
-  getAssistantAssets: (assistantName: string) =>
-    ipcRenderer.invoke('assistant:get-assets', assistantName),
-  // 保存助手资产配置文件
-  saveAssistantAssets: (assets: AssistantAssets) =>
-    ipcRenderer.invoke('assistant:save-assets', assets),
-  // 上传并提取Live2D模型资产
-  saveAndExtractLive2DModel: (fileData: Buffer | ArrayBuffer, assistantName: string) =>
-    ipcRenderer.invoke('assistant:save-extract-live2d', fileData, assistantName),
-  // 助手图片上传API
-  saveAssistantImageFile: (
-    fileData: Buffer | ArrayBuffer,
-    assistantName: string,
-    fileName: string
-  ) => ipcRenderer.invoke('assistant:save-image-file', fileData, assistantName, fileName),
-  // 助手通用资源文件上传API
-  saveAssistantResourceFile: (
-    fileData: Buffer | ArrayBuffer,
-    assistantName: string,
-    subDir: string,
-    fileName: string,
-    oldRelativePath?: string
-  ) =>
-    ipcRenderer.invoke(
-      'assistant:save-resource-file',
-      fileData,
-      assistantName,
-      subDir,
-      fileName,
-      oldRelativePath
-    ),
-  // 从角色卡片导入助手信息
-  importAssistantFromCard: (imagePath: ArrayBuffer) =>
-    ipcRenderer.invoke('assistant:import-from-card', imagePath),
-  // 从 zip 角色压缩包导入助手目录与资源
-  importAssistantFromZip: (zipPath: string) =>
-    ipcRenderer.invoke('assistant:import-from-zip', zipPath),
-  // 扫描 Live2D 表情文件
-  scanLive2dExpressions: () => ipcRenderer.invoke('assistant:scan-live2d-expressions')
+
+  /** 监听助手列表数据更新事件（后台云端同步完成后触发） */
+  onAssistantDataUpdated: (
+    callback: (data: {
+      assistants: AssistantInfo[]
+      currentAssistant: AssistantInfo | null
+    }) => void
+  ) => {
+    const listener = (
+      _: Electron.IpcRendererEvent,
+      data: { assistants: AssistantInfo[]; currentAssistant: AssistantInfo | null }
+    ): void => callback(data)
+    ipcRenderer.on('assistant:data-updated', listener)
+    return () => ipcRenderer.removeListener('assistant:data-updated', listener)
+  }
 })

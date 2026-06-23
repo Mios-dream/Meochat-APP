@@ -12,7 +12,6 @@ import robot from '@jitsi/robotjs'
 import { uIOhook } from 'uiohook-napi'
 
 import log from '../utils/logger'
-import { AssistantService } from '../services/assistantService'
 
 let mouseTrackingInterval: NodeJS.Timeout | null = null
 let isMousePressed = false // 追踪鼠标按下状态
@@ -249,17 +248,6 @@ function setupAssistantIPC(): void {
   ipcMain.on('assistant:set-ignore-mouse', (_event, ignore) => {
     const assistantWin = windowRegistry.getWindowByType('assistant')
     assistantWin?.setIgnoreMouseEvents(ignore, { forward: true })
-  })
-
-  // 获取当前助手信息
-  ipcMain.handle('assistant:get-current', async () => {
-    try {
-      const assistantService = AssistantService.getInstance()
-      const assistant = assistantService.getCurrentAssistant()
-      return { success: true, data: assistant }
-    } catch (error) {
-      return { success: false, error: (error as Error).message }
-    }
   })
 
   // Tips窗口相关IPC

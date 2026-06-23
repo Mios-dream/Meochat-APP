@@ -1,4 +1,8 @@
-import { AssistantInfo, AssistantBaseInfo } from '../../../renderer/src/types/AssistantInfo'
+import {
+  AssistantInfo,
+  AssistantBaseInfo,
+  UpdateCheckResult
+} from '../../../renderer/src/types/AssistantInfo'
 import { PythonServiceStatus } from '../../../renderer/src/types/PythonService'
 import { PythonTask } from '../../../renderer/src/types/PythonService'
 import {
@@ -143,16 +147,11 @@ export interface MainWindowApi {
   registerChatShortcut: (shortcut: string) => Promise<boolean>
 
   /**
-   * 初始化助手服务
-   */
-  initAssistant: () => Promise<{ success: boolean; error?: string }>
-  /**
    * 从服务器加载所有助手数据
    * @returns 助手信息、来源和当前助手
    */
   loadAssistantData: () => Promise<{
     success: boolean
-    source: 'server' | 'local-cache'
     error?: string
     data: AssistantInfo[]
     currentAssistant: AssistantInfo | null
@@ -160,19 +159,20 @@ export interface MainWindowApi {
   /**
    * 添加助手，并上传助手资产到服务器
    * @param assistant 助手信息
-   * @param onProgress 进度回调函数
+   * @param options 可选配置，assetTypes 指定需要上传的资源类型（子目录名），为空则全量上传
    */
   addAssistant: (
     assistant: AssistantInfo,
-    onProgress?: (progress: number) => void
+    options?: { assetTypes?: string[] }
   ) => Promise<{ success: boolean; error?: string }>
   /**
    * 更新助手信息，并上传助手资产到服务器
    * @param assistant 助手信息
+   * @param options 可选配置，uploadAssets 是否上传资产，assetTypes 指定需要上传的资源类型（子目录名），为空则全量上传
    */
   updateAssistant: (
     assistant: AssistantInfo,
-    options?: { uploadAssets?: boolean }
+    options?: { uploadAssets?: boolean; assetTypes?: string[] }
   ) => Promise<{ success: boolean; error?: string }>
   /**
    * 从服务器删除助手
@@ -190,8 +190,9 @@ export interface MainWindowApi {
   /**
    * 检查助手资产是否需要更新
    * @param assistant 助手信息
+   * @returns 精细化的更新检查结果，包含各类资源的更新状态
    */
-  isNeedUpdate: (assistant: AssistantInfo) => Promise<boolean>
+  isNeedUpdate: (assistant: AssistantInfo) => Promise<UpdateCheckResult>
 
   /**
    * 从服务器获取当前助手信息
@@ -219,9 +220,13 @@ export interface MainWindowApi {
   // 助手资产管理相关API
   /**
    * 下载助手资产
+   * @param assistantName 助手名称
+   * @param assetTypes 需要下载的资源类型列表（子目录名），为空则下载全部
+   * @param onProgress 下载进度回调
    */
   downloadAssistantAsset: (params: {
     assistantName: string
+    assetTypes?: string[]
     onProgress?: (progress: number) => void
   }) => Promise<string>
   /**
@@ -244,13 +249,13 @@ export interface MainWindowApi {
    * @param fileName 文件名（含后缀）
    * @param oldRelativePath 旧资源相对路径，用于替换后删除旧文件
    */
-  saveAssistantResourceFile: (
-    fileData: ArrayBuffer,
-    assistantName: string,
-    subDir: string,
-    fileName: string,
+  saveAssistantResourceFile: (payload: {
+    fileData: ArrayBuffer
+    assistantName: string
+    subDir: 'images' | 'audio' | 'live2d' | 'models' | 'other'
+    fileName: string
     oldRelativePath?: string
-  ) => Promise<{ success: true; path: string } | { success: false; error: string }>
+  }) => Promise<{ success: true; path: string } | { success: false; error: string }>
 
   /**
    * 获取助手资产

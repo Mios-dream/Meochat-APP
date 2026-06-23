@@ -6,17 +6,22 @@ import StreamZip from 'node-stream-zip'
 import path from 'path'
 import os from 'os'
 import YAML from 'yaml'
+import { Worker } from 'worker_threads'
+import workerPath from '../workers/extractWorker?modulePath'
 import { globalShortcut, BrowserWindow, screen } from 'electron'
 import { getConfig, setConfig } from '../config/configManager'
 import log from '../utils/logger'
 import {
   AssistantAssets,
   AssistantBaseInfo,
-  AssistantInfo
+  AssistantInfo,
+  AssetTypeTimestamps,
+  UpdateCheckResult
 } from '../../renderer/src/types/AssistantInfo'
 import { createWindow, chatBoxWindowConfig } from '../windows'
 import ImageMetadataExtractor from '../utils/imageMetadataExtractor'
 import { resolveAppDataDir } from '../utils/pathResolve'
+import { detectZipNameEncoding } from '../utils/zipUtils'
 
 /**
  * 助手服务 - 管理助手的生命周期、资产和云端同步
@@ -24,15 +29,30 @@ import { resolveAppDataDir } from '../utils/pathResolve'
  * 职责：
  * - 助手的增删改查（CRUD）操作
  * - 助手资产（图片、Live2D模型、音频等）的上传下载
- * - 云端与本地数据的双向同步
+ * - 云端与本地数据的单向同步（始终以云端数据为准）
  * - 快捷键注册与管理
  * - 角色包（zip/角色卡）的导入
  */
 class AssistantService {
   /** 单例实例 */
   private static instance: AssistantService
-  /** 应用数据根目录路径 */
-  private readonly preferredStorageRoot: string
+
+  /**
+   * 前端需要下载的资源类型列表。
+   *
+   * 只下载前端渲染所需的资源，服务端专用资源（如 models）不下载：
+   * - audio: 音频文件（TTS语音等）
+   * - images: 图片文件（立绘、表情等）
+   * - live2d: Live2D 模型文件
+   * - other: 其他通用资源
+   *
+   * models 类型由服务端（kernel）独立管理，前端不下载。
+   */
+  private static readonly CLIENT_ASSET_TYPES: Array<keyof AssetTypeTimestamps> = [
+    'images',
+    'live2d',
+    'other'
+  ]
 
   /** 内存中的助手列表缓存 */
   private assistants: AssistantInfo[] = []
@@ -40,75 +60,11 @@ class AssistantService {
   private currentAssistant: AssistantInfo | null = null
   /** 助手资产配置缓存（key: 助手名称） */
   private assistantAssetsMap: Map<string, AssistantAssets> = new Map()
+  /** 正在下载资源的助手名称集合（防止重复下载） */
+  private downloadingAssets: Set<string> = new Set()
 
   private constructor() {
     this.assistants = []
-    this.preferredStorageRoot = resolveAppDataDir()
-  }
-
-  /**
-   * 获取助手数据的根目录路径。
-   *
-   * 该目录位于应用数据目录下的 `assistants/` 子目录中，
-   * 每个助手对应一个以助手名称命名的子目录。
-   * 如果目录不存在会自动创建。
-   *
-   * @returns 助手根目录的绝对路径
-   */
-  private getAssistantsRootDir(): string {
-    const assistantsRoot = path.join(this.preferredStorageRoot, 'assistants')
-    if (!fs.existsSync(assistantsRoot)) {
-      fs.mkdirSync(assistantsRoot, { recursive: true })
-    }
-    return assistantsRoot
-  }
-
-  /**
-   * 校验路径组件（目录名或文件名），阻止路径穿越与 Windows 保留字符。
-   *
-   * 安全检查项：
-   * - 非空校验
-   * - 禁止 `..` 路径穿越
-   * - 禁止 `/` 和 `\` 路径分隔符
-   * - 禁止绝对路径
-   * - 禁止 Windows 保留字符 `<>:"|?*`
-   * - 必须是单层名称（不能包含路径分隔符）
-   *
-   * @param name - 待校验的名称字符串
-   * @param label - 错误提示中的标签（如"助手名称"、"文件名"），用于生成可读的错误信息
-   * @returns 去除首尾空格后的安全名称
-   * @throws 当名称不合法时抛出 Error，包含具体的校验失败原因
-   */
-  private sanitizePathComponent(name: string, label = '名称'): string {
-    // 简化：只做空字符串校验并返回修剪后的名称
-    const normalized = name.trim()
-    if (!normalized) {
-      throw new Error(`${label}不能为空`)
-    }
-    return normalized
-  }
-
-  /**
-   * 获取经过边界校验的助手目录路径，可选确保目录存在。
-   *
-   * 该方法是助手目录操作的核心入口，集成了：
-   * 1. 名称合法性校验（通过 sanitizePathComponent）
-   * 2. 路径越界防护（通过 path.relative 二次确认）
-   * 3. 可选的目录自动创建
-   *
-   * @param assistantName - 助手名称，将经过安全校验
-   * @param ensureExists - 是否确保目录存在（默认 true），设为 false 时仅返回路径不创建目录
-   * @returns 校验后的助手目录绝对路径
-   * @throws 当名称非法或路径越界时抛出 Error
-   */
-  private resolveAssistantDir(assistantName: string, ensureExists = true): string {
-    const safeName = this.sanitizePathComponent(assistantName, '助手名称')
-    const assistantsRoot = this.getAssistantsRootDir()
-    const assistantDir = path.join(assistantsRoot, safeName)
-    if (ensureExists && !fs.existsSync(assistantDir)) {
-      fs.mkdirSync(assistantDir, { recursive: true })
-    }
-    return assistantDir
   }
 
   /**
@@ -124,6 +80,45 @@ class AssistantService {
       AssistantService.instance = new AssistantService()
     }
     return AssistantService.instance
+  }
+
+  /**
+   * 获取助手数据的根目录路径。
+   *
+   * 该目录位于应用数据目录下的 `assistants/` 子目录中，
+   * 每个助手对应一个以助手名称命名的子目录。
+   * 如果目录不存在会自动创建。
+   *
+   * @returns 助手根目录的绝对路径
+   */
+  private getAssistantsRootDir(): string {
+    const assistantsRoot = path.join(resolveAppDataDir(), 'assistants')
+    if (!fs.existsSync(assistantsRoot)) {
+      fs.mkdirSync(assistantsRoot, { recursive: true })
+    }
+    return assistantsRoot
+  }
+
+  /**
+   * 获取助手目录路径，可选确保目录存在。
+   *
+   * 该方法是助手目录操作的核心入口，集成了：
+   * 1. 名称合法性校验（通过 sanitizePathComponent）
+   * 2. 路径越界防护（通过 path.relative 二次确认）
+   * 3. 可选的目录自动创建
+   *
+   * @param assistantName - 助手名称，将经过安全校验
+   * @param ensureExists - 是否确保目录存在（默认 true），设为 false 时仅返回路径不创建目录
+   * @returns 校验后的助手目录绝对路径
+   * @throws 当名称非法或路径越界时抛出 Error
+   */
+  private resolveAssistantDir(assistantName: string, ensureExists = true): string {
+    const assistantsRoot = this.getAssistantsRootDir()
+    const assistantDir = path.join(assistantsRoot, assistantName)
+    if (ensureExists && !fs.existsSync(assistantDir)) {
+      fs.mkdirSync(assistantDir, { recursive: true })
+    }
+    return assistantDir
   }
 
   /**
@@ -173,39 +168,359 @@ class AssistantService {
    * 从云端和本地加载助手数据，完成初始化同步。
    *
    * 加载流程：
-   * 1. 从云端获取当前选中的助手信息
-   * 2. 调用 loadAssistantsData 执行云端与本地的双向同步
-   * 3. 设置当前助手（优先级：云端 > 本地配置 > 第一个助手）
+   * 1. 优先读取本地数据快速返回（不阻塞前端）
+   * 2. 后台异步执行云端同步
+   * 3. 同步完成后设置当前助手
+   * 4. 异步检查并下载缺失的资源
    *
    * @param onProgress - 可选的进度回调，用于向渲染进程报告资产下载进度
    *   回调参数：(assistantName: 当前处理的助手名, progress: 0-100 的进度百分比)
-   * @returns 包含 success（是否成功）、source（数据来源：'server' | 'local-cache'）和 error（失败原因）的结果对象
+   * @returns 包含 success（是否成功）
    */
   public async loadAssistants(
     onProgress?: (assistantName: string, progress: number) => void
-  ): Promise<{ success: boolean; source: 'server' | 'local-cache'; error?: string }> {
+  ): Promise<{ success: boolean; error?: string }> {
     try {
-      // 1. 首先尝试从服务器获取当前助手
-      const serverCurrentAssistant = await this.getCurrentAssistantFromCloud()
+      // 1. 快速读取本地数据，立即返回给前端
+      const localAssistants = this.readLocalAssistants()
+      this.assistants = Array.from(localAssistants.values())
 
-      // 2. 加载所有助手数据
-      const loadResult = await this.loadAssistantsData(onProgress)
-      this.assistants = loadResult.assistants
-
-      // 3. 设置当前助手：优先使用服务器返回的当前助手，如果没有则使用配置中的，最后使用第一个助手
+      // 2. 设置当前助手（从配置读取，不等待云端）
       const savedAssistantName = getConfig('currentAssistant')
-      if (serverCurrentAssistant && this.getAssistantInfo(serverCurrentAssistant.name)) {
-        await this.setCurrentAssistant(serverCurrentAssistant.name)
-      } else if (savedAssistantName && this.getAssistantInfo(savedAssistantName)) {
-        await this.setCurrentAssistant(savedAssistantName)
+      if (savedAssistantName && this.getAssistantInfo(savedAssistantName)) {
+        this.currentAssistant = this.getAssistantInfo(savedAssistantName)
       } else if (this.assistants.length > 0) {
-        await this.setCurrentAssistant(this.assistants[0].name)
+        this.currentAssistant = this.assistants[0]
       }
-      return { success: true, source: loadResult.source }
+
+      // 3. 后台异步执行云端同步（不阻塞返回）
+      this.syncFromCloudInBackground(onProgress)
+
+      return { success: true }
     } catch (error) {
       log.error('加载助手数据失败:', error)
-      return { success: false, source: 'local-cache', error: (error as Error).message }
+      return { success: false, error: (error as Error).message }
     }
+  }
+
+  /**
+   * 后台异步执行云端同步。
+   *
+   * 该方法不阻塞调用方，完成后会：
+   * 1. 更新内存中的助手列表
+   * 2. 设置正确的当前助手
+   * 3. 通知前端数据已更新
+   * 4. 检查并下载资源
+   *
+   * @param onProgress - 资源下载进度回调
+   */
+  private syncFromCloudInBackground(
+    onProgress?: (assistantName: string, progress: number) => void
+  ): void {
+    const doSync = async (): Promise<void> => {
+      try {
+        log.info('[BackgroundSync] 开始后台云端同步')
+
+        // 1. 从云端获取当前助手信息
+        const serverCurrentAssistant = await this.getCurrentAssistantFromCloud()
+
+        // 2. 从云端同步助手数据
+        this.assistants = await this.loadAssistantsData()
+
+        // 3. 设置当前助手：优先使用服务器返回的当前助手
+        const savedAssistantName = getConfig('currentAssistant')
+
+        if (serverCurrentAssistant && this.getAssistantInfo(serverCurrentAssistant.name)) {
+          await this.setCurrentAssistant(serverCurrentAssistant.name)
+        } else if (savedAssistantName && this.getAssistantInfo(savedAssistantName)) {
+          await this.setCurrentAssistant(savedAssistantName)
+        } else if (this.assistants.length > 0) {
+          await this.setCurrentAssistant(this.assistants[0].name)
+        }
+
+        // 4. 通知前端数据已更新
+        BrowserWindow.getAllWindows().forEach((win) => {
+          win.webContents.send('assistant:data-updated', {
+            assistants: this.getAssistants(),
+            currentAssistant: this.getCurrentAssistant()
+          })
+        })
+
+        log.info('[BackgroundSync] 云端同步完成')
+
+        // 5. 异步检查并下载缺失的资源
+        this.checkAndDownloadAllAssistantsAssets(onProgress)
+      } catch (error) {
+        log.error('[BackgroundSync] 后台同步失败:', error)
+      }
+    }
+
+    // 异步执行，不阻塞
+    doSync()
+  }
+
+  /**
+   * 异步检查所有助手的资源完整性，对缺失资源在后台下载。
+   *
+   * 该方法不阻塞调用方，下载过程中通过IPC通知前端下载状态。
+   * 使用 downloadingAssets 集合防止重复触发下载。
+   *
+   * 特殊逻辑：如果当前选中的助手需要下载资源，会自动切换到其他资源完整的助手。
+   * 如果没有可用的助手，则将当前助手设置为空。
+   *
+   * @param onProgress - 可选的进度回调，参数为 (助手名称, 0-100 进度百分比)
+   */
+  private checkAndDownloadAllAssistantsAssets(
+    onProgress?: (assistantName: string, progress: number) => void
+  ): void {
+    log.info('[AssetSync] 开始检查所有助手资源完整性')
+
+    // 通知前端开始检查资源
+    this.notifyDownloadStatus('checking')
+
+    const assistantsToCheck = [...this.assistants]
+    let hasDownload = false
+
+    // 串行检查每个助手，避免并发下载导致资源竞争
+    const checkNext = async (index: number): Promise<void> => {
+      if (index >= assistantsToCheck.length) {
+        // 所有助手检查完毕
+        log.info(`[AssetSync] 检查完毕，hasDownload=${hasDownload}`)
+        if (!hasDownload) {
+          this.notifyDownloadStatus('idle')
+        }
+        return
+      }
+
+      const assistant = assistantsToCheck[index]
+      const assistantDir = this.resolveAssistantDir(assistant.name, false)
+
+      // 跳过正在下载的助手
+      if (this.downloadingAssets.has(assistant.name)) {
+        log.info(`[AssetSync] 跳过正在下载的助手: ${assistant.name}`)
+        await checkNext(index + 1)
+        return
+      }
+
+      try {
+        const checkResult = await this.isNeedsUpdate(assistant)
+        const assetsDir = path.join(assistantDir, 'assets')
+        const assetsExist = fs.existsSync(assetsDir) && fs.readdirSync(assetsDir).length > 0
+
+        log.info(
+          `[AssetSync] 检查助手 ${assistant.name}: needsUpdate=${checkResult.needsUpdate}, assetsExist=${assetsExist}`
+        )
+
+        // 计算需要更新的资源类型列表（只包含前端需要的类型）
+        const typesToDownload: string[] = []
+        if (checkResult.needsUpdate) {
+          const localTimestamps = assistant.userState.assetTypesLastModified
+          if (!localTimestamps || !assetsExist) {
+            // 本地无记录或资源目录不存在，只下载前端需要的类型
+            typesToDownload.push(...AssistantService.CLIENT_ASSET_TYPES)
+          } else {
+            // 逐类型对比时间戳，仅下载有更新且前端需要的类型
+            for (const type of AssistantService.CLIENT_ASSET_TYPES) {
+              const cloudTimestamp = checkResult.assetTypes[type] ?? 0
+              const localTimestamp = localTimestamps[type] ?? 0
+              if (cloudTimestamp > localTimestamp) {
+                typesToDownload.push(type)
+              }
+            }
+          }
+        }
+
+        if (typesToDownload.length > 0) {
+          hasDownload = true
+          log.info(`[AssetSync] 助手 ${assistant.name} 需要下载资源: ${typesToDownload.join(', ')}`)
+
+          // 如果是当前助手需要下载，先切换到其他可用助手
+          if (this.currentAssistant?.name === assistant.name) {
+            await this.switchToAvailableAssistant(assistant.name)
+          }
+
+          this.downloadingAssets.add(assistant.name)
+          this.notifyDownloadStatus('downloading', assistant.name, 0)
+
+          try {
+            await this.downloadAssistantAssets(
+              assistant.name,
+              (progress) => {
+                this.notifyDownloadStatus('downloading', assistant.name, progress)
+                if (onProgress) {
+                  onProgress(assistant.name, progress)
+                }
+              },
+              typesToDownload
+            )
+            // 下载完成后更新本地各类资产时间戳
+            this.updateAssistantAssetsLastModified(assistant.name, checkResult.assetTypes)
+            log.info(`[AssetSync] 助手 ${assistant.name} 资源下载完成`)
+          } finally {
+            this.downloadingAssets.delete(assistant.name)
+          }
+        }
+      } catch (err) {
+        log.error(`[AssetSync] 后台检查助手 ${assistant.name} 资源失败:`, err)
+      }
+
+      // 继续检查下一个助手
+      await checkNext(index + 1)
+    }
+
+    // 异步执行，不阻塞调用方
+    checkNext(0)
+      .then(() => {
+        if (hasDownload) {
+          log.info('[AssetSync] 所有资源下载完成，发送 completed 状态')
+          this.notifyDownloadStatus('completed')
+        }
+      })
+      .catch((err) => {
+        log.error('[AssetSync] 后台检查资源失败:', err)
+        this.notifyDownloadStatus('idle')
+      })
+  }
+
+  /**
+   * 当当前助手需要下载资源时，切换到其他资源完整的可用助手。
+   *
+   * 切换优先级：
+   * 1. 优先切换到默认助手（如果资源完整且不是当前助手）
+   * 2. 否则切换到列表中第一个资源完整的助手
+   * 3. 如果没有可用助手，将当前助手设置为空
+   *
+   * @param excludeAssistantName - 需要排除的助手名称（即正在下载的助手）
+   */
+  private async switchToAvailableAssistant(excludeAssistantName: string): Promise<void> {
+    const DEFAULT_ASSISTANT_NAME = '澪'
+
+    // 查找资源完整的助手
+    const findAvailableAssistant = async (): Promise<AssistantInfo | null> => {
+      // 先检查默认助手
+      const defaultAssistant = this.assistants.find((a) => a.name === DEFAULT_ASSISTANT_NAME)
+      if (defaultAssistant && defaultAssistant.name !== excludeAssistantName) {
+        const isAvailable = await this.isAssistantAssetsComplete(defaultAssistant)
+        if (isAvailable) {
+          return defaultAssistant
+        }
+      }
+
+      // 再检查其他助手
+      for (const assistant of this.assistants) {
+        if (assistant.name === excludeAssistantName) {
+          continue
+        }
+        const isAvailable = await this.isAssistantAssetsComplete(assistant)
+        if (isAvailable) {
+          return assistant
+        }
+      }
+
+      return null
+    }
+
+    const availableAssistant = await findAvailableAssistant()
+
+    if (availableAssistant) {
+      log.info(
+        `当前助手「${excludeAssistantName}」资源需要下载，自动切换到「${availableAssistant.name}」`
+      )
+      // 使用 setCurrentAssistant 会更新内存、配置并通知前端
+      await this.setCurrentAssistant(availableAssistant.name)
+    } else {
+      log.warn(`没有可用的资源完整助手，将当前助手设置为空`)
+      this.currentAssistant = null
+      setConfig('currentAssistant', '')
+
+      // 通知前端当前助手已清空
+      BrowserWindow.getAllWindows().forEach((win) => {
+        win.webContents.send('assistant:switched', null)
+      })
+    }
+  }
+
+  /**
+   * 检查助手的前端资源是否完整（无需下载）。
+   *
+   * 只检查前端需要的资源类型（audio, images, live2d, other），
+   * 不检查服务端专用资源（models）。
+   *
+   * @param assistant - 要检查的助手信息
+   * @returns 资源是否完整
+   */
+  private async isAssistantAssetsComplete(assistant: AssistantInfo): Promise<boolean> {
+    try {
+      const assistantDir = this.resolveAssistantDir(assistant.name, false)
+      const assetsDir = path.join(assistantDir, 'assets')
+      const assetsExist = fs.existsSync(assetsDir) && fs.readdirSync(assetsDir).length > 0
+
+      // 如果本地资源目录不存在或为空，说明资源不完整
+      if (!assetsExist) {
+        return false
+      }
+
+      // 检查是否需要更新
+      const checkResult = await this.isNeedsUpdate(assistant)
+      if (checkResult.needsUpdate) {
+        const localTimestamps = assistant.userState.assetTypesLastModified
+        if (!localTimestamps) {
+          return false
+        }
+
+        // 只检查前端需要的资源类型
+        for (const type of AssistantService.CLIENT_ASSET_TYPES) {
+          const cloudTimestamp = checkResult.assetTypes[type] ?? 0
+          const localTimestamp = localTimestamps[type] ?? 0
+          if (cloudTimestamp > localTimestamp) {
+            return false
+          }
+        }
+      }
+
+      return true
+    } catch (err) {
+      log.error(`检查助手 ${assistant.name} 资源完整性失败:`, err)
+      return false
+    }
+  }
+
+  /**
+   * 通知前端资源下载状态。
+   *
+   * 通过 IPC 向所有窗口广播下载进度事件。
+   * 前端可监听 'assistant:download-progress' 事件获取下载状态。
+   *
+   * @param status - 下载状态：'checking' | 'downloading' | 'completed' | 'idle'
+   * @param assistantName - 当前正在下载的助手名称
+   * @param progress - 下载进度 0-100
+   */
+  private notifyDownloadStatus(
+    status: 'checking' | 'downloading' | 'completed' | 'idle',
+    assistantName?: string,
+    progress?: number
+  ): void {
+    const windows = BrowserWindow.getAllWindows()
+    log.info(
+      `[AssetSync] 发送下载状态: status=${status}, assistantName=${assistantName}, progress=${progress}, windowCount=${windows.length}`
+    )
+
+    windows.forEach((win) => {
+      win.webContents.send('assistant:download-progress', {
+        status,
+        assistantName,
+        progress
+      })
+    })
+  }
+
+  /**
+   * 获取当前是否正在下载资源。
+   *
+   * @returns 正在下载的助手名称数组，空数组表示没有下载任务
+   */
+  public getDownloadingAssets(): string[] {
+    return Array.from(this.downloadingAssets)
   }
 
   /**
@@ -380,30 +695,33 @@ class AssistantService {
   /**
    * 从云端下载助手的资产包并解压到本地。
    *
+   * 支持按资源类型选择性下载：传入 assetTypes 数组时仅下载指定类型的资源，
+   * 不传或传空数组则下载全部资源。
+   *
    * 下载流程：
    * 1. 校验助手名称并准备临时下载路径
-   * 2. 通过 POST 流式下载 zip 压缩包到临时目录
+   * 2. 通过 POST 流式下载 zip 压缩包到临时目录（携带 assetTypes 参数）
    * 3. 自动探测 zip 条目名编码（UTF-8/GBK）
-   * 4. 清空旧的 assets 目录并解压新内容
+   * 4. 解压新内容（全量下载时清空旧目录，部分下载时覆盖更新）
    * 5. 清理临时文件并更新资产修改时间戳
    *
    * @param assistantName - 要下载资产的助手名称
    * @param onProgress - 下载进度回调，参数为 0-100 的百分比
+   * @param assetTypes - 需要下载的资源类型列表（子目录名），为空则下载全部
    * @returns 下载是否成功
    * @throws 当下载或解压过程中发生错误时抛出异常
    */
   public async downloadAssistantAssets(
     assistantName: string,
-    onProgress: (progress: number) => void
+    onProgress: (progress: number) => void,
+    assetTypes: string[] = []
   ): Promise<{ success: boolean }> {
     return new Promise((resolve, reject) => {
       try {
         // 定义下载和保存路径
-        const downloadsDir = path.join(this.preferredStorageRoot, 'cache')
-        const safeAssistantName = this.sanitizePathComponent(assistantName, '助手名称')
-        const tempZipPath = path.join(downloadsDir, `${safeAssistantName}.zip`)
+        const downloadsDir = path.join(resolveAppDataDir(), 'cache')
+        const tempZipPath = path.join(downloadsDir, `${assistantName}.zip`)
         const assistantDir = this.resolveAssistantDir(assistantName)
-        const assetsDir = path.join(assistantDir, 'assets')
 
         // 确保目标目录存在
         if (!fs.existsSync(downloadsDir)) {
@@ -416,7 +734,7 @@ class AssistantService {
         axios({
           url,
           method: 'POST',
-          data: { name: assistantName },
+          data: { name: assistantName, assetTypes },
           responseType: 'stream',
           onDownloadProgress: (progressEvent) => {
             if (progressEvent.total) {
@@ -431,31 +749,18 @@ class AssistantService {
 
             writer.on('finish', async () => {
               try {
-                // 解压文件
-                if (fs.existsSync(assetsDir)) {
-                  fs.rmSync(assetsDir, { recursive: true, force: true })
-                  fs.mkdirSync(assetsDir, { recursive: true })
-                }
+                const isFullDownload = assetTypes.length === 0
 
-                // 探测编码后用 node-stream-zip 流式解压，避免大包阻塞主进程及中文乱码
-                const nameEncoding = await this.detectZipNameEncoding(tempZipPath)
-                const zip = new StreamZip.async({ file: tempZipPath, nameEncoding })
-                try {
-                  await this.extractZipEntries(
-                    zip,
-                    Object.values(await zip.entries()),
-                    '',
-                    assistantDir,
-                    {
-                      includeNestedEntries: true
-                    }
-                  )
-                } finally {
-                  await zip.close()
-                }
+                // 使用 Worker Thread 执行解压，避免阻塞主进程
+                const extractResult = await this.extractWithWorker(
+                  tempZipPath,
+                  assistantDir,
+                  isFullDownload
+                )
 
-                // 清理临时文件
-                fs.unlinkSync(tempZipPath)
+                if (!extractResult.success) {
+                  throw new Error(extractResult.error || '解压失败')
+                }
 
                 // 更新助手的资产修改时间
                 this.updateAssistantAssetsLastModified(assistantName)
@@ -476,18 +781,89 @@ class AssistantService {
   }
 
   /**
+   * 使用 Worker Thread 执行 zip 解压操作。
+   *
+   * 将解压任务放到独立线程中执行，避免大文件解压时阻塞主进程。
+   * Worker 会通过消息向主线程报告解压进度。
+   *
+   * @param zipPath - zip 文件路径
+   * @param targetDir - 解压目标目录
+   * @param isFullDownload - 是否全量下载（全量时会先清空目标目录）
+   * @returns 解压结果，包含 success 状态和可选的 error 信息
+   */
+  private extractWithWorker(
+    zipPath: string,
+    targetDir: string,
+    isFullDownload: boolean
+  ): Promise<{ success: boolean; error?: string }> {
+    return new Promise((resolve) => {
+      // 先探测编码
+      detectZipNameEncoding(zipPath)
+        .then((nameEncoding) => {
+          // 创建 Worker 执行解压
+          const worker = new Worker(workerPath, {
+            workerData: {
+              zipPath,
+              targetDir,
+              nameEncoding,
+              isFullDownload
+            }
+          })
+
+          // 监听 Worker 消息
+          worker.on('message', (message) => {
+            if (message.type === 'progress') {
+              log.info(`[ExtractWorker] 解压进度: ${message.processed}/${message.total}`)
+            } else if (message.type === 'complete') {
+              log.info(`[ExtractWorker] 解压完成: success=${message.success}`)
+              resolve({
+                success: message.success,
+                error: message.error
+              })
+            }
+          })
+
+          // 监听 Worker 错误
+          worker.on('error', (error) => {
+            log.error('[ExtractWorker] Worker 错误:', error)
+            resolve({ success: false, error: error.message })
+          })
+
+          // Worker 退出时如果还没收到 complete 消息，返回错误
+          worker.on('exit', (code) => {
+            if (code !== 0) {
+              log.error(`[ExtractWorker] Worker 异常退出，代码: ${code}`)
+              resolve({ success: false, error: `Worker 异常退出，代码: ${code}` })
+            }
+          })
+        })
+        .catch((error) => {
+          log.error('[ExtractWorker] 探测编码失败:', error)
+          resolve({ success: false, error: error.message })
+        })
+    })
+  }
+
+  /**
    * 更新助手的资产修改时间戳。
    *
    * 将助手的 `userState.assetsLastModified` 更新为当前时间（Unix 秒级时间戳），
    * 并同步保存到本地磁盘。该时间戳用于判断资产是否需要更新。
    *
    * @param assistantName - 要更新的助手名称
+   * @param assetTypeTimestamps - 可选的云端各类资产时间戳，用于精细化记录各类资产的修改时间
    * @returns 更新是否成功。助手不存在时返回 false
    */
-  private updateAssistantAssetsLastModified(assistantName: string): boolean {
+  private updateAssistantAssetsLastModified(
+    assistantName: string,
+    assetTypeTimestamps?: AssetTypeTimestamps
+  ): boolean {
     const assistant = this.getAssistantInfo(assistantName)
     if (assistant) {
       assistant.userState.assetsLastModified = Math.floor(Date.now() / 1000)
+      if (assetTypeTimestamps) {
+        assistant.userState.assetTypesLastModified = assetTypeTimestamps
+      }
       this.saveAssistantToLocal(assistant)
       return true
     } else {
@@ -500,22 +876,62 @@ class AssistantService {
    * 检查助手的资产是否需要更新。
    *
    * 通过 POST 请求 `/api/assistant/assets/check` 接口，将本地资产的最后修改时间
-   * 与云端进行对比，判断是否需要重新下载资产包。
+   * 与云端进行对比，返回精细化的各类资源更新状态。
    *
    * @param assistant - 要检查的助手信息（需要 userState.assetsLastModified 字段）
-   * @returns 是否需要更新。网络错误时默认返回 false（保守策略，避免误触发下载）
+   * @returns 包含 needsUpdate、assetsLastModified、assetTypes 的检查结果。
+   *          网络错误时默认返回 needsUpdate=false（保守策略，避免误触发下载）
    */
-  public async isNeedsUpdate(assistant: AssistantInfo): Promise<boolean> {
+  public async isNeedsUpdate(assistant: AssistantInfo): Promise<UpdateCheckResult> {
     const url = `${getConfig('baseUrl')}/api/assistant/assets/check`
     try {
+      const assistantDir = this.resolveAssistantDir(assistant.name)
+      const assetsDir = path.join(assistantDir, 'assets')
+      // 检查本地资源是否存在，如果不存在也需要更新
+      if (!fs.existsSync(assetsDir)) {
+        return {
+          needsUpdate: true,
+          assetsLastModified: 0,
+          assetTypes: {
+            audio: 0,
+            images: 0,
+            live2d: 0,
+            models: 0,
+            other: 0
+          }
+        }
+      }
+
       const response = await axios.post(url, {
         name: assistant.name,
         lastModified: assistant.userState.assetsLastModified
       })
-      return response.data.needsUpdate
+
+      const data = response.data
+      return {
+        needsUpdate: data.needsUpdate ?? false,
+        assetsLastModified: data.assetsLastModified ?? 0,
+        assetTypes: data.assetTypes ?? {
+          audio: 0,
+          images: 0,
+          live2d: 0,
+          models: 0,
+          other: 0
+        }
+      }
     } catch (error) {
       log.error('Error checking assistant update:', error)
-      return false
+      return {
+        needsUpdate: false,
+        assetsLastModified: 0,
+        assetTypes: {
+          audio: 0,
+          images: 0,
+          live2d: 0,
+          models: 0,
+          other: 0
+        }
+      }
     }
   }
 
@@ -532,12 +948,14 @@ class AssistantService {
    * @param assistant - 包含更新数据的助手信息对象
    * @param shouldUploadAssets - 是否同时上传资产包（默认 true），频繁保存时可设为 false 避免卡顿
    * @param onProgress - 资产上传进度回调，参数为 0-100 的百分比
+   * @param assetTypes - 可选，需要上传的资源类型（子目录名）数组，为空则全量上传
    * @returns 成功返回 `{ success: true }`，失败返回 `{ success: false, error: string }`
    */
   public async updateAssistant(
     assistant: AssistantInfo,
     shouldUploadAssets = true,
-    onProgress?: (progress: number) => void
+    onProgress?: (progress: number) => void,
+    assetTypes?: string[]
   ): Promise<{ success: boolean; error?: string }> {
     try {
       // 确保必要的字段存在
@@ -560,7 +978,11 @@ class AssistantService {
       this.saveAssistantToLocal(completeAssistant)
       // 仅在资产变更时上传，避免每次保存都压缩大文件导致主进程卡顿
       if (shouldUploadAssets) {
-        const uploadResult = await this.uploadAssistantAssets(completeAssistant.name, onProgress)
+        const uploadResult = await this.uploadAssistantAssets(
+          completeAssistant.name,
+          onProgress,
+          assetTypes
+        )
         if (!uploadResult.success) {
           return { success: false, error: `上传助手资产失败: ${uploadResult.error}` }
         }
@@ -611,11 +1033,13 @@ class AssistantService {
    *
    * @param assistant - 新助手的信息对象（至少需要 name 字段）
    * @param onProgress - 资产上传进度回调，参数为 0-100 的百分比
+   * @param assetTypes - 可选，需要上传的资源类型（子目录名）数组，为空则全量上传
    * @returns 成功返回 `{ success: true }`，失败返回 `{ success: false, error: string }`
    */
   public async addAssistant(
     assistant: AssistantInfo,
-    onProgress?: (progress: number) => void
+    onProgress?: (progress: number) => void,
+    assetTypes?: string[]
   ): Promise<{ success: boolean; error?: string }> {
     let assistantInfoPath = ''
     try {
@@ -664,7 +1088,11 @@ class AssistantService {
       this.assistants.push(completeAssistant)
 
       // 上传助手资源
-      const uploadResult = await this.uploadAssistantAssets(completeAssistant.name, onProgress)
+      const uploadResult = await this.uploadAssistantAssets(
+        completeAssistant.name,
+        onProgress,
+        assetTypes
+      )
       if (!uploadResult.success) {
         return { success: false, error: `上传助手资产失败: ${uploadResult.error}` }
       }
@@ -704,104 +1132,51 @@ class AssistantService {
   }
 
   /**
-   * 加载助手数据并执行云端与本地的双向同步。
+   * 加载助手数据并以云端为准进行单向同步。
    *
-   * 同步策略：
+   * 同步策略（全部以云端数据为准）：
    * 1. 从云端获取所有助手列表
-   * 2. 读取本地已有的助手数据
-   * 3. 对于云端存在的助手：
-   *    - 云端更新时间 > 本地：覆盖本地文件
-   *    - 本地更新时间 > 云端：推送到云端
-   *    - 本地不存在：从云端下载到本地
-   * 4. 检查并下载缺失或过期的资产包
-   * 5. 对于云端不存在但本地存在的助手：删除本地数据
+   * 2. 对于云端存在的助手：始终用云端数据覆盖本地，并检查资产是否需要更新
+   * 3. 对于云端不存在但本地存在的助手：删除本地数据
    *
    * @param onProgress - 资产下载进度回调，参数为 (助手名称, 0-100 进度百分比)
    * @returns 包含 assistants（助手列表）和 source（数据来源）的结果对象
    */
-  private async loadAssistantsData(
-    onProgress?: (assistantName: string, progress: number) => void
-  ): Promise<{ assistants: AssistantInfo[]; source: 'server' | 'local-cache' }> {
-    // 创建一个对象用于跟踪云端存在的助手
+  private async loadAssistantsData(): Promise<AssistantInfo[]> {
+    // 云端助手映射，用于后续对比本地数据
     const cloudAssistantMap = new Map<string, AssistantInfo>()
-    let source: 'server' | 'local-cache' = 'local-cache'
 
     try {
       // 从云端加载助手数据
       const url = `${getConfig('baseUrl')}/api/assistants`
       const response = await axios.get(url)
       const apiData = response.data
-      source = 'server'
 
       if (apiData.data && Array.isArray(apiData.data)) {
-        // 将云端数据映射到Map中以便快速查找
+        // 将云端数据映射到 Map 中以便快速查找
         apiData.data.forEach((assistant: AssistantInfo) => {
           cloudAssistantMap.set(assistant.name, assistant)
         })
 
-        // 从本地获取当前的助手数据
+        // 从本地获取当前的助手数据（用于后续对比删除）
         const localAssistants = this.readLocalAssistants()
 
-        // 同步策略1: 处理云端存在的助手（双向同步）
+        // 同步策略1: 处理云端存在的助手（始终以云端数据为准覆盖本地）
         for (const [assistantName, cloudAssistant] of cloudAssistantMap.entries()) {
           try {
             const assistantDir = this.resolveAssistantDir(assistantName)
             const infoPath = path.join(assistantDir, 'info.json')
 
-            // 检查本地是否存在该助手
-            const localAssistant = localAssistants.get(assistantName)
-
-            if (localAssistant) {
-              const cloudTime = new Date(cloudAssistant.userState.updatedAt).getTime()
-              const localTime = new Date(localAssistant.userState.updatedAt).getTime()
-
-              if (cloudTime > localTime) {
-                // 云端更新，覆盖本地
-                fs.writeFileSync(infoPath, JSON.stringify(cloudAssistant, null, 2))
-              } else if (localTime > cloudTime) {
-                // 本地更新，推送到云端
-                try {
-                  const url = `${getConfig('baseUrl')}/api/assistant/info/update`
-                  await axios.post(url, localAssistant)
-                  log.info(`已将本地助手 ${assistantName} 的更新推送到云端`)
-                } catch (pushError) {
-                  log.error(
-                    `推送本地助手 ${assistantName} 到云端失败:`,
-                    (pushError as Error).message
-                  )
-                }
-              }
-            } else {
-              // 云端有但本地没有，下载到本地
-              fs.writeFileSync(infoPath, JSON.stringify(cloudAssistant, null, 2))
-            }
-
-            // 检查助手资源是否存在或需要更新
-            const assetsDir = path.join(assistantDir, 'assets')
-            const assetsExist = fs.existsSync(assetsDir) && fs.readdirSync(assetsDir).length > 0
-
-            // 如果资源不存在或需要更新，则从云端下载
-            if (!assetsExist || (await this.isNeedsUpdate(cloudAssistant))) {
-              if (onProgress) {
-                onProgress(assistantName, 0) // 开始下载
-              }
-
-              await this.downloadAssistantAssets(assistantName, (progress) => {
-                if (onProgress) {
-                  onProgress(assistantName, progress)
-                }
-              })
-            }
+            // 云端数据覆盖本地
+            fs.writeFileSync(infoPath, JSON.stringify(cloudAssistant, null, 2))
           } catch (saveError) {
             log.error(`Error saving assistant ${assistantName} info:`, saveError)
           }
         }
 
-        // 同步策略2: 处理云端不存在但本地存在的助手
-        // 删除本地助手
+        // 同步策略2: 删除云端不存在但本地存在的助手
         for (const [assistantName] of localAssistants.entries()) {
           if (!cloudAssistantMap.has(assistantName)) {
-            // 删除本地助手数据
             fs.rmSync(path.join(this.getAssistantsRootDir(), assistantName), {
               recursive: true,
               force: true
@@ -817,7 +1192,7 @@ class AssistantService {
 
     // 最终从本地获取所有助手数据（同步后可能已更新）
     const localAssistants = this.readLocalAssistants()
-    return { assistants: Array.from(localAssistants.values()), source }
+    return Array.from(localAssistants.values())
   }
 
   /**
@@ -825,20 +1200,23 @@ class AssistantService {
    *
    * 上传流程：
    * 1. 检查资产目录是否存在
-   * 2. 使用 AdmZip 将资产目录压缩为临时 zip 文件
-   * 3. 通过 FormData 上传到云端（支持进度回调）
-   * 4. 内置 ECONNABORTED 错误重试机制（最多重试 1 次）
-   * 5. 上传完成后清理临时 zip 文件
+   * 2. 根据 assetTypes 参数决定打包范围（全量或增量）
+   * 3. 使用 AdmZip 将资产目录压缩为临时 zip 文件
+   * 4. 通过 FormData 上传到云端（支持进度回调）
+   * 5. 内置 ECONNABORTED 错误重试机制（最多重试 1 次）
+   * 6. 上传完成后清理临时 zip 文件
    *
    * 使用临时文件而非内存 Buffer，降低大文件上传时的内存峰值。
    *
    * @param assistantName - 要上传资产的助手名称
    * @param onProgress - 上传进度回调，参数为 0-100 的百分比
+   * @param assetTypes - 可选，需要上传的资源类型（子目录名）数组，为空则全量上传
    * @returns 成功返回 `{ success: true }`，失败返回 `{ success: false, error: string }`
    */
   private async uploadAssistantAssets(
     assistantName: string,
-    onProgress?: (progress: number) => void
+    onProgress?: (progress: number) => void,
+    assetTypes?: string[]
   ): Promise<{ success: false; error: string } | { success: true }> {
     // 检查助手目录和资产目录是否存在
     const assistantDir = this.resolveAssistantDir(assistantName)
@@ -858,7 +1236,23 @@ class AssistantService {
     try {
       // 使用临时文件而非内存 Buffer，降低大文件上传时内存峰值与阻塞风险
       const zip = new AdmZip()
-      zip.addLocalFolder(assetsDir)
+
+      // 根据 assetTypes 参数决定打包范围
+      if (assetTypes && assetTypes.length > 0) {
+        // 增量上传：只打包指定的子目录
+        for (const assetType of assetTypes) {
+          const subDir = path.join(assetsDir, assetType)
+          if (fs.existsSync(subDir)) {
+            zip.addLocalFolder(subDir, assetType)
+          } else {
+            log.warn(`[AssistantUpload] asset type directory not found: ${assetType}`)
+          }
+        }
+      } else {
+        // 全量上传：打包整个 assets 目录
+        zip.addLocalFolder(assetsDir)
+      }
+
       await zip.writeZipPromise(tempZipPath, { overwrite: true })
 
       const zipStat = fs.statSync(tempZipPath)
@@ -881,6 +1275,11 @@ class AssistantService {
             knownLength: zipSize,
             contentType: 'application/zip'
           })
+
+          // 如果指定了 assetTypes，添加 asset_types 参数
+          if (assetTypes && assetTypes.length > 0) {
+            formData.append('asset_types', assetTypes.join(','))
+          }
 
           const headers = formData.getHeaders()
           const contentLength = await new Promise<number | null>((resolve) => {
@@ -1013,8 +1412,7 @@ class AssistantService {
       if (!fs.existsSync(assetsDir)) {
         fs.mkdirSync(assetsDir, { recursive: true })
       }
-      const safeFileName = this.sanitizePathComponent(fileName, '文件名')
-      const filePath = path.join(assetsDir, safeFileName + '.png')
+      const filePath = path.join(assetsDir, fileName + '.png')
       // 如果传入的是 ArrayBuffer，则转换为 Buffer
       const bufferData = Buffer.isBuffer(fileData) ? fileData : Buffer.from(fileData)
       // 写入文件
@@ -1023,7 +1421,7 @@ class AssistantService {
       // 返回相对路径，用于在应用中引用
       return {
         success: true,
-        path: `assistants/${assistantName}/assets/images/${safeFileName}.png`
+        path: `assistants/${assistantName}/assets/images/${fileName}.png`
       }
     } catch (error) {
       log.error('保存助手文件失败:', error)
@@ -1050,24 +1448,18 @@ class AssistantService {
   public async saveAssistantResourceFile(
     fileData: Buffer | ArrayBuffer,
     assistantName: string,
-    subDir: string,
+    subDir: 'images' | 'audio' | 'live2d' | 'models' | 'other',
     fileName: string,
     oldRelativePath?: string
   ): Promise<{ success: true; path: string } | { success: false; error: string }> {
     try {
-      const normalizedSubDir = subDir.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
-      if (!normalizedSubDir || normalizedSubDir.includes('..')) {
-        return { success: false, error: '无效的资源目录' }
-      }
-
-      const safeFileName = this.sanitizePathComponent(fileName, '文件名')
       const assistantDir = this.resolveAssistantDir(assistantName)
-      const targetDir = path.join(assistantDir, 'assets', normalizedSubDir)
+      const targetDir = path.join(assistantDir, 'assets', subDir)
       if (!fs.existsSync(targetDir)) {
         fs.mkdirSync(targetDir, { recursive: true })
       }
 
-      const targetPath = path.join(targetDir, safeFileName)
+      const targetPath = path.join(targetDir, fileName)
       const bufferData = Buffer.isBuffer(fileData) ? fileData : Buffer.from(fileData)
       fs.writeFileSync(targetPath, bufferData)
 
@@ -1075,8 +1467,8 @@ class AssistantService {
         'assistants',
         assistantName,
         'assets',
-        ...normalizedSubDir.split('/').filter(Boolean),
-        safeFileName
+        ...subDir.split('/').filter(Boolean),
+        fileName
       )
 
       const oldPathClean = oldRelativePath
@@ -1099,7 +1491,7 @@ class AssistantService {
 
       return { success: true, path: relativePath }
     } catch (error) {
-      log.error('保存助手资源文件失败:', error)
+      log.error('保存助手资源文件失败:', Error)
       return { success: false, error: (error as Error).message }
     }
   }
@@ -1131,7 +1523,7 @@ class AssistantService {
         return { success: false, error: '资产配置文件不存在' }
       }
     } catch (error) {
-      log.error('获取助手资产配置失败:', error)
+      log.error('获取助手资产配置失败:', (error as Error).stack)
       return { success: false, error: (error as Error).message }
     }
   }
@@ -1178,36 +1570,6 @@ class AssistantService {
    */
   public getAssistantAssets(assistantName: string): AssistantAssets | null {
     return this.assistantAssetsMap.get(assistantName) || null
-  }
-
-  /**
-   * 探测 zip 文件条目名的字符编码。
-   *
-   * 编码探测策略：
-   * 1. 先以 UTF-8 编码读取所有条目名
-   * 2. 如果发现包含 Unicode 替换字符（U+FFFD �），则判定为 GBK 编码
-   * 3. 否则确认为 UTF-8 编码
-   *
-   * 兼容说明：
-   * - Bandizip / Win11 新版压缩使用 UTF-8（但可能不置位 bit 11）
-   * - 旧版压缩工具使用 GBK 编码
-   *
-   * @param zipPath - zip 文件的绝对路径
-   * @returns 探测到的编码类型：'utf8' 或 'gbk'
-   */
-  private async detectZipNameEncoding(zipPath: string): Promise<'utf8' | 'gbk'> {
-    const probe = new StreamZip.async({ file: zipPath, nameEncoding: 'utf8' })
-    try {
-      const entries = Object.values(await probe.entries())
-      for (const entry of entries) {
-        if (entry.name.includes('�')) {
-          return 'gbk'
-        }
-      }
-      return 'utf8'
-    } finally {
-      await probe.close()
-    }
   }
 
   /**
@@ -1326,7 +1688,7 @@ class AssistantService {
 
     try {
       // 检测编码并打开 zip 文件
-      const nameEncoding = await this.detectZipNameEncoding(zipPath)
+      const nameEncoding = await detectZipNameEncoding(zipPath)
       const zip = new StreamZip.async({ file: zipPath, nameEncoding })
       try {
         const entries = Object.values(await zip.entries())
@@ -1481,7 +1843,7 @@ class AssistantService {
 
         // 先按 UTF-8 探测条目名，若出现替换字符则降级为 GBK：
         // Bandizip / Win11 新版自带压缩使用 UTF-8（但后者不置位 bit 11），旧版工具使用 GBK
-        const nameEncoding = await this.detectZipNameEncoding(tempZipPath)
+        const nameEncoding = await detectZipNameEncoding(tempZipPath)
         const zip = new StreamZip.async({ file: tempZipPath, nameEncoding })
         try {
           await this.extractZipEntries(zip, Object.values(await zip.entries()), '', live2dDir)
