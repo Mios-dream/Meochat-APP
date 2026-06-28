@@ -46,6 +46,10 @@ export function setupAssistantServerIPC(): void {
     })
   })
 
+  ipcMain.handle('assistant:switch', async (_event, name) => {
+    return await assistantService.setCurrentAssistant(name)
+  })
+
   /**
    * 注册聊天框快捷键
    */

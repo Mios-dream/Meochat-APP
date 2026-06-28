@@ -133,6 +133,7 @@ export class Live2DManager {
       resizeTo: window,
       autoDensity: true,
       sharedTicker: true,
+      resolution: window.devicePixelRatio,
       powerPreference: 'high-performance'
     })
 

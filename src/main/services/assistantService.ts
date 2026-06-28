@@ -920,7 +920,7 @@ class AssistantService {
         }
       }
     } catch (error) {
-      log.error('Error checking assistant update:', error)
+      // log.error('Error checking assistant update:', error)
       return {
         needsUpdate: false,
         assetsLastModified: 0,
