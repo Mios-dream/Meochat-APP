@@ -718,9 +718,10 @@ export class Live2DManager {
   }
 
   /**
-   * 设置眨眼是否启用
+   * 设置眨眼是否启用。
+   * 动作帧播放时如需控制眼部参数，可临时禁用原生眨眼，播放完毕后恢复。
    */
-  private setEyeBlinkEnabled(enabled: boolean): void {
+  public setEyeBlinkEnabled(enabled: boolean): void {
     if (!this.model?.internalModel) {
       console.warn('[Live2D] setEyeBlinkEnabled: model 或 internalModel 不存在')
       return

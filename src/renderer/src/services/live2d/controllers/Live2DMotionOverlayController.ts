@@ -136,11 +136,11 @@ export class Live2DMotionOverlayController {
       }
       // 语音播放期间口型由语音控制器独占，避免动作帧抢写。
       if (isSpeaking && speakingBlockedParams.has(paramId)) {
-        console.warn(`[Live2DMotionOverlayController] 跳过锁定的参数 ${paramId}:`, rawValue)
+        // console.warn(`[Live2DMotionOverlayController] 跳过锁定的参数 ${paramId}:`, rawValue)
         continue
       }
       if (!hasModelParameter(coreModel, paramId)) {
-        console.warn(`[Live2DMotionOverlayController] 模型没有这个参数 ${paramId}, skipping.`)
+        // console.warn(`[Live2DMotionOverlayController] 模型没有这个参数 ${paramId}, skipping.`)
         continue
       }
 
@@ -192,7 +192,7 @@ export class Live2DMotionOverlayController {
         continue
       }
       if (!hasModelParameter(coreModel, paramId)) {
-        console.warn(`[Live2DMotionOverlayController] 模型没有这个参数 ${paramId}, skipping.`)
+        // console.warn(`[Live2DMotionOverlayController] 模型没有这个参数 ${paramId}, skipping.`)
         continue
       }
 

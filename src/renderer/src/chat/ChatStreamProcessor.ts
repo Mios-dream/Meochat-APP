@@ -26,15 +26,25 @@ export interface ChatMotionChunk {
   sentence_id: number
   /** 动作帧对应原文，文本块缺失时可用于展示兜底。 */
   source_text?: string
-  /** 动作帧数组，每一项代表一段参数过渡。 */
+  /** 动作帧数组，每一项代表一段参数过渡（旧关键帧）或完整曲线（新方案）。 */
   motions?: Array<{
     /** 当前动作段持续时间，单位毫秒。 */
     duration?: number
     /** 动作名称，目前仅作为后端兼容字段保留。 */
     action?: string
-    /** Live2D 参数 ID 到参数值的映射。 */
+    /**
+     * Live2D 参数 ID 到参数目标值的映射（旧关键帧方案）。
+     * 新曲线方案中该字段为空，改用 curves。
+     */
     parameters?: Record<string, number>
-    /** 表情名称，对应模型 .exp3.json 中定义的 expression（如"脸红"）。 */
+    /**
+     * Live2D 参数 ID 到完整参数值时间序列的映射（新曲线方案）。
+     * 每个参数对应一个等间隔采样的数值数组，配合 fps 使用。
+     */
+    curves?: Record<string, number[]>
+    /** 曲线数据的帧率，单位 fps（新曲线方案专有）。 */
+    fps?: number
+    /** 表情名称列表，对应模型 .exp3.json 中定义的 expression（如"脸红"）。 */
     expression?: string[]
   }>
   /** 兼容后端可能直接返回的持续时间字段。 */
