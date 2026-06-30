@@ -374,7 +374,7 @@ const registeredWidgets = ref<WidgetManifest[]>([
     description: '每日名言诗句，激励每一天',
     version: '1.0.0',
     component: markRaw(DailyQuoteWidget),
-    defaultSize: { width: 350, height: 250 }
+    defaultSize: { width: 300, height: 250 }
   },
   {
     id: 'weather',
@@ -383,13 +383,13 @@ const registeredWidgets = ref<WidgetManifest[]>([
     description: '显示当前天气和温度信息',
     version: '1.0.0',
     component: markRaw(WeatherWidget),
-    defaultSize: { width: 320, height: 250 }
+    defaultSize: { width: 300, height: 100 }
   },
   {
     id: 'todo',
-    name: '待办事项',
+    name: '澪的任务板',
     icon: 'fa-solid fa-list-check',
-    description: '管理你的待办事项列表',
+    description: '澪为你精心设计的任务清单',
     version: '1.0.0',
     component: markRaw(TodoWidget),
     defaultSize: { width: 300, height: 400 }

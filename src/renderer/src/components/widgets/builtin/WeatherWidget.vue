@@ -1,240 +1,97 @@
 <template>
   <div class="weather-widget">
-    <div class="weather-title">Sky Report</div>
-    <!-- 天气主体 -->
-    <div class="weather-main">
-      <!-- 天气图标 -->
-      <div class="weather-icon-container">
-        <div class="weather-icon" :class="currentWeather.icon">
-          <span class="icon-emoji">{{ currentWeather.emoji }}</span>
-        </div>
-        <div class="weather-temp">{{ currentWeather.temp }}°</div>
-      </div>
+    <div class="weather-aura" />
 
-      <!-- 天气信息 -->
+    <!-- 左侧信息区 -->
+    <div class="weather-left">
       <div class="weather-info">
-        <div class="weather-condition">{{ currentWeather.condition }}</div>
-        <div class="weather-detail">
-          <span class="detail-item">
-            <font-awesome-icon icon="fa-solid fa-temperature-half" />
-            体感 {{ currentWeather.feelsLike }}°
-          </span>
-          <span class="detail-item">
-            <font-awesome-icon icon="fa-solid fa-droplet" />
-            {{ currentWeather.humidity }}%
-          </span>
-          <span class="detail-item">
-            <font-awesome-icon icon="fa-solid fa-wind" />
-            {{ currentWeather.wind }}km/h
-          </span>
+        <div class="weather-location">
+          <font-awesome-icon icon="fa-solid fa-location-dot" class="location-icon" />
+          <span class="location-text">{{ weatherData.location }}</span>
         </div>
+        <div class="weather-condition">
+          <font-awesome-icon :icon="conditionIcon" class="condition-icon" />
+          <span class="condition-text">{{ weatherData.condition }}</span>
+        </div>
+      </div>
+      <div class="weather-temp">
+        <span class="temp-value">{{ weatherData.temperature }}</span>
+        <span class="temp-unit">°C</span>
       </div>
     </div>
 
-    <!-- 城市选择 -->
-    <div class="weather-city">
-      <font-awesome-icon icon="fa-solid fa-location-dot" class="city-icon" />
-      <select v-model="selectedCity" class="city-select" @change="updateWeather">
-        <option v-for="city in cities" :key="city.name" :value="city.name">
-          {{ city.name }}
-        </option>
-      </select>
+    <!-- 右侧Q版助手图像 -->
+    <div class="weather-mascot">
+      <img src="../../../assets/images/助手Q版.png" alt="Q版助手" />
     </div>
-
-    <!-- 未来天气 -->
-    <div class="weather-forecast">
-      <div
-        v-for="(day, index) in forecast"
-        :key="index"
-        class="forecast-item"
-        :class="{ today: index === 0 }"
-      >
-        <div class="forecast-day">{{ day.day }}</div>
-        <div class="forecast-icon">{{ day.emoji }}</div>
-        <div class="forecast-temp">
-          <span class="temp-high">{{ day.high }}°</span>
-          <span class="temp-low">{{ day.low }}°</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- 更新时间 -->
-    <div class="weather-update">
-      <font-awesome-icon icon="fa-solid fa-clock" />
-      <span>更新于 {{ updateTime }}</span>
-    </div>
+  </div>
+  <!-- 右下角悬浮宠物爪子图标 -->
+  <div class="weather-paw">
+    <font-awesome-icon icon="fa-solid fa-paw" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { reactive, computed } from 'vue'
 
-/** 天气数据接口 */
+/**
+ * 天气数据接口
+ */
 interface WeatherData {
-  temp: number
-  feelsLike: number
+  location: string
   condition: string
-  humidity: number
-  wind: number
-  icon: string
-  emoji: string
+  temperature: number
 }
 
-/** 预报数据接口 */
-interface ForecastData {
-  day: string
-  high: number
-  low: number
-  icon: string
-  emoji: string
+/** 天气图标映射表 */
+const CONDITION_ICON_MAP: Record<string, string> = {
+  晴: 'fa-solid fa-sun',
+  多云: 'fa-solid fa-cloud-sun',
+  阴: 'fa-solid fa-cloud',
+  小雨: 'fa-solid fa-cloud-rain',
+  中雨: 'fa-solid fa-cloud-showers-heavy',
+  大雨: 'fa-solid fa-cloud-showers-heavy',
+  暴雨: 'fa-solid fa-cloud-showers-heavy',
+  雨: 'fa-solid fa-cloud-rain',
+  雪: 'fa-solid fa-snowflake',
+  小雪: 'fa-solid fa-snowflake',
+  大雪: 'fa-solid fa-snowflake',
+  雷: 'fa-solid fa-bolt',
+  雷雨: 'fa-solid fa-cloud-bolt',
+  风: 'fa-solid fa-wind',
+  霾: 'fa-solid fa-smog',
+  雾: 'fa-solid fa-smog',
+  霜: 'fa-solid fa-snowflake',
+  冰雹: 'fa-solid fa-cloud-meatball'
 }
 
-/** 城市数据接口 */
-interface CityData {
-  name: string
-  weather: WeatherData
-  forecast: ForecastData[]
-}
+/** 天气响应式数据 */
+const weatherData = reactive<WeatherData>({
+  location: '东京',
+  condition: '晴',
+  temperature: 26
+})
 
-/** 模拟天气数据 */
-const WEATHER_DATA: Record<string, CityData> = {
-  北京: {
-    name: '北京',
-    weather: {
-      temp: 22,
-      feelsLike: 20,
-      condition: '晴',
-      humidity: 45,
-      wind: 12,
-      icon: 'sunny',
-      emoji: '☀️'
-    },
-    forecast: [
-      { day: '今天', high: 22, low: 14, icon: 'sunny', emoji: '☀️' },
-      { day: '明天', high: 25, low: 16, icon: 'cloudy', emoji: '⛅' },
-      { day: '后天', high: 20, low: 12, icon: 'rainy', emoji: '🌧️' }
-    ]
-  },
-  上海: {
-    name: '上海',
-    weather: {
-      temp: 26,
-      feelsLike: 28,
-      condition: '多云',
-      humidity: 65,
-      wind: 8,
-      icon: 'cloudy',
-      emoji: '⛅'
-    },
-    forecast: [
-      { day: '今天', high: 26, low: 20, icon: 'cloudy', emoji: '⛅' },
-      { day: '明天', high: 28, low: 22, icon: 'sunny', emoji: '☀️' },
-      { day: '后天', high: 24, low: 19, icon: 'rainy', emoji: '🌧️' }
-    ]
-  },
-  广州: {
-    name: '广州',
-    weather: {
-      temp: 30,
-      feelsLike: 32,
-      condition: '炎热',
-      humidity: 75,
-      wind: 5,
-      icon: 'hot',
-      emoji: '🌡️'
-    },
-    forecast: [
-      { day: '今天', high: 30, low: 25, icon: 'sunny', emoji: '☀️' },
-      { day: '明天', high: 31, low: 26, icon: 'stormy', emoji: '⛈️' },
-      { day: '后天', high: 29, low: 24, icon: 'rainy', emoji: '🌧️' }
-    ]
-  },
-  成都: {
-    name: '成都',
-    weather: {
-      temp: 18,
-      feelsLike: 17,
-      condition: '阴',
-      humidity: 70,
-      wind: 6,
-      icon: 'cloudy',
-      emoji: '☁️'
-    },
-    forecast: [
-      { day: '今天', high: 18, low: 13, icon: 'cloudy', emoji: '☁️' },
-      { day: '明天', high: 20, low: 14, icon: 'sunny', emoji: '☀️' },
-      { day: '后天', high: 17, low: 12, icon: 'rainy', emoji: '🌧️' }
-    ]
-  },
-  杭州: {
-    name: '杭州',
-    weather: {
-      temp: 24,
-      feelsLike: 25,
-      condition: '晴转多云',
-      humidity: 55,
-      wind: 10,
-      icon: 'partly-cloudy',
-      emoji: '🌤️'
-    },
-    forecast: [
-      { day: '今天', high: 24, low: 17, icon: 'partly-cloudy', emoji: '🌤️' },
-      { day: '明天', high: 26, low: 19, icon: 'sunny', emoji: '☀️' },
-      { day: '后天', high: 22, low: 16, icon: 'cloudy', emoji: '⛅' }
-    ]
+/** 根据天气状况返回对应的FontAwesome图标 */
+const conditionIcon = computed<string>(() => {
+  return CONDITION_ICON_MAP[weatherData.condition] || 'fa-solid fa-cloud-sun'
+})
+
+/** 更新天气数据 */
+function updateWeather(data: Partial<WeatherData>): void {
+  if (data.location !== undefined) {
+    weatherData.location = data.location
+  }
+  if (data.condition !== undefined) {
+    weatherData.condition = data.condition
+  }
+  if (data.temperature !== undefined) {
+    weatherData.temperature = data.temperature
   }
 }
 
-interface Emits {
-  (e: 'update:city', city: string): void
-  (e: 'refresh'): void
-}
-
-const emit = defineEmits<Emits>()
-
-/** 城市列表 */
-const cities = Object.values(WEATHER_DATA)
-
-/** 选中的城市 */
-const selectedCity = ref('北京')
-
-/** 当前天气 */
-const currentWeather = computed<WeatherData>(() => {
-  return WEATHER_DATA[selectedCity.value]?.weather || WEATHER_DATA['北京'].weather
-})
-
-/** 天气预报 */
-const forecast = computed<ForecastData[]>(() => {
-  return WEATHER_DATA[selectedCity.value]?.forecast || WEATHER_DATA['北京'].forecast
-})
-
-/** 更新时间 */
-const updateTime = computed(() => {
-  const now = new Date()
-  return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
-})
-
-/** 更新天气 */
-function updateWeather(): void {
-  emit('update:city', selectedCity.value)
-  emit('refresh')
-}
-
-/** 组件挂载 */
-onMounted(() => {
-  // 默认选择北京
-  selectedCity.value = '北京'
-})
-
-/** 暴露方法 */
 defineExpose({
-  getCity: () => selectedCity.value,
-  setCity: (city: string) => {
-    if (WEATHER_DATA[city]) {
-      selectedCity.value = city
-      updateWeather()
-    }
-  }
+  updateWeather
 })
 </script>
 
@@ -242,240 +99,144 @@ defineExpose({
 .weather-widget {
   position: relative;
   display: flex;
-  flex-direction: column;
-  gap: 14px;
+  align-items: center;
+  gap: 12px;
   width: 100%;
-  height: 100%;
-  min-width: 270px;
-  min-height: 250px;
-  padding: 18px;
+  height: 90%;
+  /* padding: 10px 20px; */
   overflow: hidden;
-  background:
-    linear-gradient(150deg, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.78)),
-    url('../../../assets/images/char_background.png');
-  background-size: auto, 24px 24px;
-  border: 2px solid rgba(255, 255, 255, 0.84);
-  border-radius: 26px;
-  box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.72),
-    0 18px 34px rgba(73, 115, 150, 0.18);
-  backdrop-filter: blur(14px);
+  background: #ffffff;
+  border-radius: 14dvh;
+  margin-bottom: 10px;
 }
 
-.weather-widget::after {
-  content: '';
+.weather-aura {
   position: absolute;
-  right: -34px;
-  top: -38px;
-  width: 150px;
-  height: 150px;
-  background: url('../../../assets/images/background_circle.png') center / 58px 40px repeat;
-  opacity: 0.34;
+  inset: 8px;
+  border-radius: 22px;
+  background: radial-gradient(circle at 30% 60%, rgba(255, 182, 193, 0.18), transparent 65%);
   pointer-events: none;
 }
 
-.weather-title {
+/* ── 左侧信息区 ── */
+.weather-left {
   position: relative;
   z-index: 1;
-  align-self: flex-start;
-  padding: 5px 12px;
-  border: 1px solid rgba(251, 114, 153, 0.2);
-  border-radius: 999px;
-  background: #fff5f9;
-  color: #8b1e3f;
-  font-size: 12px;
-  font-weight: 900;
-  letter-spacing: 0.08em;
-}
-
-.weather-main {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  align-items: center;
-  gap: 20px;
-  padding: 12px;
-  border-radius: 20px;
-  background: rgba(255, 255, 255, 0.74);
-  border: 1px solid rgba(251, 114, 153, 0.12);
-}
-
-.weather-icon-container {
+  flex: 1;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 4px;
-}
-
-.weather-icon {
-  width: 70px;
-  height: 70px;
-  border-radius: 50%;
-  background: #fff7fa;
-  box-shadow: inset 0 0 0 1px rgba(251, 114, 153, 0.14);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 48px;
-  animation: float 3s ease-in-out infinite;
-}
-
-@keyframes float {
-  0%,
-  100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-8px);
-  }
-}
-
-.weather-temp {
-  font-size: 36px;
-  font-weight: 700;
-  color: #8b1e3f;
+  padding: 10px 20px;
 }
 
 .weather-info {
-  flex: 1;
+  display: flex;
+  flex-direction: row;
+  gap: 15px;
+}
+
+.weather-location {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #4a3142;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.location-icon {
+  color: var(--theme-color, #fb7299);
+  font-size: 18px;
+  filter: drop-shadow(-1px -1px 0 white) drop-shadow(1px -1px 0 white) drop-shadow(-1px 1px 0 white)
+    drop-shadow(1px 1px 0 white);
+}
+
+.location-text {
+  letter-spacing: 0.04em;
 }
 
 .weather-condition {
-  font-size: 20px;
-  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
   color: #6f2b43;
-  margin-bottom: 8px;
+  font-size: 15px;
+  font-weight: 800;
 }
 
-.weather-detail {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  font-size: 13px;
-  color: #8f6071;
-}
-
-.detail-item {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.detail-item svg {
+.condition-icon {
   color: var(--theme-color, #fb7299);
-  font-size: 12px;
+  font-size: 18px;
+  filter: drop-shadow(-1px -1px 0 white) drop-shadow(1px -1px 0 white) drop-shadow(-1px 1px 0 white)
+    drop-shadow(1px 1px 0 white);
 }
 
-.weather-city {
-  position: relative;
-  z-index: 1;
+.condition-text {
+  letter-spacing: 0.04em;
+}
+
+/* ── 温度区域 ── */
+.weather-temp {
+  margin-left: 25px;
   display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 14px;
-  background: rgba(255, 255, 255, 0.76);
-  border: 1px solid rgba(251, 114, 153, 0.14);
-  border-radius: 999px;
+  align-items: flex-start;
 }
 
-.city-icon {
+.temp-value {
+  font-size: 52px;
+  font-weight: 900;
+  line-height: 1;
   color: var(--theme-color, #fb7299);
-  font-size: 16px;
+  letter-spacing: -0.02em;
+  text-shadow: 0 2px 12px rgba(251, 114, 153, 0.2);
 }
 
-.city-select {
-  flex: 1;
-  border: none;
-  background: transparent;
-  font-size: 14px;
-  font-weight: 500;
-  color: #6f2b43;
-  cursor: pointer;
-  outline: none;
-}
-
-.city-select option {
-  background: white;
-  color: #333;
-}
-
-.weather-forecast {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  gap: 12px;
-}
-
-.forecast-item {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  padding: 12px 8px;
-  background: rgba(255, 255, 255, 0.78);
-  border: 1px solid rgba(251, 114, 153, 0.12);
-  border-radius: 18px;
-  transition: all 0.2s ease;
-}
-
-.forecast-item.today {
-  background: linear-gradient(
-    135deg,
-    var(--theme-color-light, #ffd1e8),
-    var(--theme-color, #fb7299)
-  );
-  color: white;
-}
-
-.forecast-item:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-}
-
-.forecast-day {
-  font-size: 12px;
-  font-weight: 500;
+.temp-unit {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--theme-color, #fb7299);
+  margin-top: 6px;
+  margin-left: 2px;
   opacity: 0.8;
 }
 
-.forecast-item.today .forecast-day {
-  opacity: 1;
-}
-
-.forecast-icon {
-  font-size: 24px;
-}
-
-.forecast-temp {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  font-size: 14px;
-}
-
-.temp-high {
-  font-weight: 600;
-}
-
-.temp-low {
-  font-size: 12px;
-  opacity: 0.7;
-}
-
-.weather-update {
+/* ── 右侧Q版助手图像 ── */
+.weather-mascot {
   position: relative;
   z-index: 1;
+  flex: 1;
+  flex-shrink: 0;
+  width: auto;
+  height: 100%;
+  overflow: hidden;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.weather-mascot img {
+  width: 120%;
+  height: 120%;
+  object-fit: contain;
+}
+
+/* ── 右下角悬浮宠物爪子图标 ── */
+.weather-paw {
+  position: absolute;
+  z-index: 2;
+  right: -8px;
+  bottom: -7px;
+  width: 50px;
+  height: 50px;
+  transform: rotate(-30deg);
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  font-size: 11px;
-  color: #9a6275;
-}
-
-.weather-update svg {
-  font-size: 10px;
+  color: #ff8da1;
+  font-size: 25px;
+  /* animation: pawFloat 2.6s ease-in-out infinite; */
+  cursor: default;
+  filter: drop-shadow(-1px -1px 0 white) drop-shadow(1px -1px 0 white) drop-shadow(-1px 1px 0 white)
+    drop-shadow(1px 1px 0 white);
+  user-select: none;
 }
 </style>

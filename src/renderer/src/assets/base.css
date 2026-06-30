@@ -1,9 +1,10 @@
 :root {
-  --theme-color: #fb7299;
-  --theme-color-light: #fca5b9;
-  --theme-color-dark: #f95a8a;
-  --theme-color-shadow: #ffc0d6;
-  --theme-text-color-dark: #4f4f4f;
+  /* --theme-color: rgb(251, 114, 153); */
+  --theme-color-light: rgb(252, 165, 185);
+  --theme-color-dark: rgb(249, 90, 138);
+  --theme-color-shadow: rgb(255, 192, 214);
+  --theme-text-color-dark: rgb(79, 79, 79);
+  --theme-color: rgb(252, 142, 173);
 }
 
 html,

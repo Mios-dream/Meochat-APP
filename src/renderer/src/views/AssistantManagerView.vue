@@ -749,7 +749,7 @@ onUnmounted(() => {
 
 #assistant-love {
   align-items: start;
-  padding: 5px 10px;
+  padding: 10px;
 }
 
 #assistant-love .head-img {

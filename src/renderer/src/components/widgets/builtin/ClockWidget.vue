@@ -19,19 +19,20 @@
         <span v-if="!is24Hour" class="time-period">{{ period }}</span>
       </div>
 
-      <!-- 日期显示 -->
+      <!-- 日期和农历显示：同一行内并排，避免开启农历时挤压高度 -->
       <div class="date-display">
         <div class="date-main">
-          <span class="date-year">{{ year }}年</span>
-          <span class="date-month">{{ month }}月</span>
-          <span class="date-day">{{ day }}日</span>
+          <span class="date-year">{{ year }}</span>
+          <span class="date-dividing">/</span>
+          <span class="date-month">{{ month }}</span>
+          <span class="date-dividing">/</span>
+          <span class="date-day">{{ day }}</span>
         </div>
-        <div class="date-weekday">{{ weekday }}</div>
-      </div>
-
-      <!-- 农历显示 -->
-      <div v-if="showLunar" class="lunar-display">
-        <span class="lunar-date">{{ lunarDate }}</span>
+        <div class="date-weekday">
+          <span v-if="showLunar">{{ lunarDate }}</span>
+          <span v-if="showLunar" class="date-dividing">|</span>
+          <span>{{ weekday }}</span>
+        </div>
       </div>
     </div>
 
@@ -39,25 +40,25 @@
     <div class="clock-controls">
       <button
         class="control-btn"
+        title="切换12/24小时制"
         :class="{ active: !is24Hour }"
         @click="toggleFormat"
-        title="切换12/24小时制"
       >
         {{ is24Hour ? '24H' : '12H' }}
       </button>
       <button
         class="control-btn"
+        title="显示/隐藏秒数"
         :class="{ active: showSeconds }"
         @click="showSeconds = !showSeconds"
-        title="显示/隐藏秒数"
       >
         秒
       </button>
       <button
         class="control-btn"
+        title="显示/隐藏农历"
         :class="{ active: showLunar }"
         @click="showLunar = !showLunar"
-        title="显示/隐藏农历"
       >
         农历
       </button>
@@ -72,13 +73,53 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 const WEEKDAYS = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六']
 
 /** 农历月份名称 */
-const LUNAR_MONTHS = ['正月', '二月', '三月', '四月', '五月', '六月', '七月', '八月', '九月', '十月', '冬月', '腊月']
+const LUNAR_MONTHS = [
+  '正月',
+  '二月',
+  '三月',
+  '四月',
+  '五月',
+  '六月',
+  '七月',
+  '八月',
+  '九月',
+  '十月',
+  '冬月',
+  '腊月'
+]
 
 /** 农历日期名称 */
 const LUNAR_DAYS = [
-  '初一', '初二', '初三', '初四', '初五', '初六', '初七', '初八', '初九', '初十',
-  '十一', '十二', '十三', '十四', '十五', '十六', '十七', '十八', '十九', '二十',
-  '廿一', '廿二', '廿三', '廿四', '廿五', '廿六', '廿七', '廿八', '廿九', '三十'
+  '初一',
+  '初二',
+  '初三',
+  '初四',
+  '初五',
+  '初六',
+  '初七',
+  '初八',
+  '初九',
+  '初十',
+  '十一',
+  '十二',
+  '十三',
+  '十四',
+  '十五',
+  '十六',
+  '十七',
+  '十八',
+  '十九',
+  '二十',
+  '廿一',
+  '廿二',
+  '廿三',
+  '廿四',
+  '廿五',
+  '廿六',
+  '廿七',
+  '廿八',
+  '廿九',
+  '三十'
 ]
 
 interface Emits {
@@ -118,7 +159,7 @@ const minutes = computed(() => String(now.value.getMinutes()).padStart(2, '0'))
 const seconds = computed(() => String(now.value.getSeconds()).padStart(2, '0'))
 
 /** 上午/下午 */
-const period = computed(() => now.value.getHours() < 12 ? 'AM' : 'PM')
+const period = computed(() => (now.value.getHours() < 12 ? 'AM' : 'PM'))
 
 /** 年份 */
 const year = computed(() => now.value.getFullYear())
@@ -193,15 +234,12 @@ defineExpose({
   min-height: 170px;
   padding: 18px;
   overflow: hidden;
-  background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.78)),
-    url('../../../assets/images/background_circle.png');
-  background-size: auto, 56px 38px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.78));
+  background-size:
+    auto,
+    56px 38px;
   border: 2px solid rgba(255, 255, 255, 0.78);
   border-radius: 26px;
-  box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.72),
-    0 18px 36px rgba(139, 30, 63, 0.2);
   backdrop-filter: blur(14px);
 }
 
@@ -212,7 +250,7 @@ defineExpose({
   bottom: -34px;
   width: 126px;
   height: 126px;
-  background: url('../../../assets/images/assistant_avatar_medium.png') center / contain no-repeat;
+  background: url('../../../assets/images/助手Q版.png') center / contain no-repeat;
   opacity: 0.24;
   pointer-events: none;
 }
@@ -307,8 +345,13 @@ defineExpose({
 }
 
 @keyframes blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.3; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
 }
 
 .time-period {
@@ -331,7 +374,7 @@ defineExpose({
 
 .date-main {
   display: flex;
-  gap: 8px;
+  /* gap: 8px; */
   padding: 7px 12px;
   background: #fff7fa;
   border: 1px solid rgba(251, 114, 153, 0.14);
@@ -346,6 +389,10 @@ defineExpose({
   font-weight: 500;
 }
 
+.date-dividing {
+  padding: 0 2px;
+}
+
 .date-weekday {
   padding: 7px 12px;
   border-radius: 999px;
@@ -353,17 +400,6 @@ defineExpose({
   color: var(--theme-color, #fb7299);
   font-size: 13px;
   font-weight: 800;
-}
-
-.lunar-display {
-  padding: 6px 14px;
-  background: linear-gradient(135deg, #ff9ec3, var(--theme-color, #fb7299));
-  border: 2px solid rgba(255, 255, 255, 0.76);
-  border-radius: 999px;
-  color: white;
-  font-size: 13px;
-  font-weight: 800;
-  box-shadow: 0 8px 18px rgba(251, 114, 153, 0.28);
 }
 
 .clock-controls {
@@ -390,16 +426,16 @@ defineExpose({
 .control-btn:hover {
   transform: translateY(-1px);
   background: #fff;
-  color: var(--theme-color, #fb7299);
+  color: var(--theme-color-dark);
 }
 
 .control-btn.active {
-  background: linear-gradient(135deg, #ff9ec3, var(--theme-color, #fb7299));
+  background: var(--theme-color);
   color: white;
   box-shadow: 0 8px 18px rgba(251, 114, 153, 0.26);
 }
 
 .control-btn.active:hover {
-  background: var(--theme-color-dark, #e05a8a);
+  background: var(--theme-color-dark);
 }
 </style>

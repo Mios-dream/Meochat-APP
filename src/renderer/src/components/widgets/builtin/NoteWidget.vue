@@ -11,10 +11,10 @@
         @input="debounceSave"
       />
       <div class="note-actions">
-        <button class="action-btn" @click="clearNote" title="清空">
+        <button class="action-btn" title="清空" @click="clearNote">
           <font-awesome-icon icon="fa-solid fa-eraser" />
         </button>
-        <button class="action-btn" @click="copyNote" title="复制">
+        <button class="action-btn" title="复制" @click="copyNote">
           <font-awesome-icon :icon="copied ? 'fa-solid fa-check' : 'fa-solid fa-copy'" />
         </button>
       </div>
@@ -43,9 +43,6 @@
         </span>
       </div>
       <div class="note-status" :class="{ saved: isSaved }">
-        <font-awesome-icon
-          :icon="isSaved ? 'fa-solid fa-cloud-check' : 'fa-solid fa-cloud-arrow-up'"
-        />
         <span>{{ isSaved ? '已保存' : '保存中...' }}</span>
       </div>
     </div>
@@ -228,17 +225,12 @@ defineExpose({
   width: 100%;
   height: 100%;
   min-height: 240px;
-  background:
-    linear-gradient(145deg, #fff8e6, #fff3f7), url('../../../assets/images/char_background.png');
+  background: linear-gradient(145deg, #fff8e6, #fff3f7);
   background-size:
     auto,
     24px 24px;
-  border: 2px solid rgba(255, 255, 255, 0.84);
   border-radius: 26px;
   overflow: hidden;
-  box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.7),
-    0 18px 34px rgba(139, 30, 63, 0.18);
   backdrop-filter: blur(14px);
 }
 
@@ -267,7 +259,7 @@ defineExpose({
   font-weight: 900;
   letter-spacing: 0.08em;
   text-align: center;
-  transform: rotate(-32deg);
+  transform: rotate(-38deg);
   box-shadow: 0 8px 18px rgba(251, 114, 153, 0.22);
 }
 

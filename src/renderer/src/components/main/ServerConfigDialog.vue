@@ -17,45 +17,6 @@
       <div class="dialog-body">
         <section class="config-section">
           <div class="section-header">
-            <h3>SV</h3>
-            <span class="section-badge">声纹识别</span>
-          </div>
-          <div class="section-grid two-column">
-            <div class="field-card">
-              <label class="field-label">服务运行状态</label>
-              <div class="field-description">是否启用声纹识别</div>
-              <ToggleSwitch
-                :model-value="localConfig.SV.enable"
-                @update:model-value="localConfig.SV.enable = $event"
-              />
-            </div>
-
-            <div class="field-card">
-              <label class="field-label">音频文件</label>
-              <div class="field-description">用于声纹识别的音频文件路径</div>
-              <SimpleInput
-                v-model="localConfig.SV.master_audio"
-                class="input-container"
-                placeholder="test.wav"
-              />
-            </div>
-
-            <div class="field-card">
-              <label class="field-label">阈值 thr</label>
-              <div class="field-description">留空表示不启用阈值</div>
-              <SimpleInput
-                type="number"
-                class="input-container"
-                :model-value="localConfig.SV.thr ?? ''"
-                placeholder="留空表示 null"
-                @update:model-value="updateNullableNumber((value) => (localConfig.SV.thr = value))"
-              />
-            </div>
-          </div>
-        </section>
-
-        <section class="config-section">
-          <div class="section-header">
             <h3>LLM</h3>
             <span class="section-badge">通用任务模型</span>
           </div>
@@ -281,22 +242,6 @@ const submitConfig = (): void => {
 //     setter(text ? text : null)
 //   }
 // }
-
-const updateNullableNumber = (setter: (value: number | null) => void) => {
-  return (value: string | number): void => {
-    const text = String(value).trim()
-    if (!text) {
-      setter(null)
-      return
-    }
-
-    const parsedValue = Number(text)
-    if (Number.isFinite(parsedValue)) {
-      setter(parsedValue)
-    }
-  }
-}
-
 // const updateNumber = (setter: (value: number) => void) => {
 //   return (value: string | number): void => {
 //     const parsedValue = Number(String(value))

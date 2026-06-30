@@ -23,7 +23,7 @@
       <!-- 控制按钮 -->
       <Transition name="fade">
         <div v-show="showControlsFlag" class="widget-controls">
-          <button class="control-btn" :title="isPinned ? '取消置顶' : '置顶'" @click="togglePin">
+          <button class="control-btn" :title="isPinned ? '取消固定' : '固定'" @click="togglePin">
             <font-awesome-icon icon="fa-solid fa-thumbtack" :class="{ active: isPinned }" />
           </button>
           <button class="control-btn close-btn" title="关闭" @click="deleteWidget">
@@ -147,9 +147,9 @@ onMounted(() => {
     },
     {
       id: 'todo',
-      name: '待办事项',
+      name: '澪的任务板',
       icon: 'fa-solid fa-list-check',
-      description: '管理待办事项',
+      description: '澪为你精心设计的任务清单',
       version: '1.0.0',
       component: TodoWidget,
       defaultSize: { width: 300, height: 400 }
@@ -290,7 +290,7 @@ onUnmounted(() => {
 }
 
 .close-btn:hover {
-  background: rgba(255, 0, 0, 0.3);
+  background: var(--theme-color);
   color: white;
 }
 

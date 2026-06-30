@@ -516,7 +516,7 @@ function change<K extends keyof typeof config.value>(
 
 .support-button {
   padding: 8px 16px;
-  background-color: var(--theme-color-light);
+  background-color: var(--theme-color);
   box-shadow: 0 4px 12px rgba(251, 114, 153, 0.3);
   border: 2px solid transparent;
   color: white;
@@ -646,12 +646,12 @@ function change<K extends keyof typeof config.value>(
 
 .mode-btn.active {
   color: #fff;
-  background: var(--theme-color-light);
-  border: 2px solid var(--theme-color-light);
+  background-color: var(--theme-color);
+  border: 2px solid var(--theme-color);
   box-shadow: 0 4px 12px rgba(251, 114, 153, 0.3);
 }
 
 .mode-btn:not(.active):hover {
-  color: var(--theme-color-light);
+  color: var(--theme-color);
 }
 </style>
