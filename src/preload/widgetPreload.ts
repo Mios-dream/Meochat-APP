@@ -5,6 +5,60 @@
 
 import { ipcRenderer, contextBridge } from 'electron'
 
+interface LocationData {
+  lat: number | null
+  lon: number | null
+  city?: string
+  region?: string
+  country?: string
+}
+
+function getBrowserLocation(): Promise<{ lat: number; lon: number }> {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) {
+      reject(new Error('浏览器不支持地理定位'))
+      return
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        resolve({
+          lat: position.coords.latitude,
+          lon: position.coords.longitude
+        })
+      },
+      (error) => reject(error),
+      {
+        enableHighAccuracy: true,
+        timeout: 8000,
+        maximumAge: 5 * 60 * 1000
+      }
+    )
+  })
+}
+
+async function getSystemLocation(): Promise<{
+  success: boolean
+  data?: LocationData
+  error?: string
+}> {
+  try {
+    const point = await getBrowserLocation()
+    return {
+      success: true,
+      data: {
+        lat: point.lat,
+        lon: point.lon
+      }
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: (error as Error).message || '系统定位失败'
+    }
+  }
+}
+
 /** 小组件 API */
 const widgetApi = {
   // 获取当前小组件实例数据
@@ -55,7 +109,42 @@ const widgetApi = {
   getAllConfigs: () => ipcRenderer.invoke('widget:config:get-all'),
 
   // 保存配置
-  saveConfig: (config) => ipcRenderer.invoke('widget:config:save', config)
+  saveConfig: (config) => ipcRenderer.invoke('widget:config:save', config),
+
+  // ── 天气相关 ──
+
+  /**
+   * 根据城市名称获取天气数据
+   * @param location 城市名称或经纬度路径（例如 /-78.46,106.79）
+   * @returns { success: boolean, data?: WeatherData, error?: string }
+   */
+  fetchWeather: (location: string) => ipcRenderer.invoke('weather:fetch', { location }),
+
+  /**
+   * 获取当前位置
+   * 优先使用系统地理定位，失败时回退到IP定位
+   */
+  getLocation: async () => {
+    const systemLocation = await getSystemLocation()
+    if (systemLocation.success) {
+      return systemLocation
+    }
+
+    const ipLocation = await ipcRenderer.invoke('location:get')
+    if (ipLocation && ipLocation.success) {
+      return ipLocation
+    }
+
+    return {
+      success: false,
+      error: systemLocation.error || ipLocation?.error || '无法获取位置'
+    }
+  },
+
+  /**
+   * 清除天气缓存
+   */
+  clearWeatherCache: () => ipcRenderer.invoke('weather:clear-cache')
 }
 
 // 暴露 API 到渲染进程

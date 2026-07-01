@@ -47,6 +47,42 @@ interface WidgetDataMessage {
   payload: any
 }
 
+/** 天气数据 */
+interface WeatherData {
+  /** 城市名称 */
+  location: string
+  /** 天气状况描述 */
+  condition: string
+  /** 当前温度（摄氏度） */
+  temperature: number
+}
+
+/** 天气获取结果 */
+interface WeatherFetchResult {
+  /** 是否成功 */
+  success: boolean
+  /** 天气数据（成功时存在） */
+  data?: WeatherData
+  /** 错误信息（失败时存在） */
+  error?: string
+}
+
+/** 位置数据 */
+interface LocationData {
+  lat: number | null
+  lon: number | null
+  city?: string
+  region?: string
+  country?: string
+}
+
+/** 位置获取结果 */
+interface LocationFetchResult {
+  success: boolean
+  data?: LocationData
+  error?: string
+}
+
 /** 小组件 API 接口 */
 interface WidgetApi {
   /** 获取当前小组件实例数据 */
@@ -89,6 +125,15 @@ interface WidgetApi {
 
   /** 保存配置 */
   saveConfig: (config: WidgetConfigFile) => Promise<{ success: boolean; error?: string }>
+
+  /** 根据位置获取天气数据 */
+  fetchWeather: (location: string) => Promise<WeatherFetchResult>
+
+  /** 清除天气缓存 */
+  clearWeatherCache: () => Promise<{ success: boolean }>
+
+  /** 获取位置信息，优先系统地理定位，失败时回退到IP定位 */
+  getLocation: () => Promise<LocationFetchResult>
 }
 
 /** 基础 API 接口 */

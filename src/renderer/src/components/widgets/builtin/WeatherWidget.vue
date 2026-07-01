@@ -32,7 +32,7 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, computed } from 'vue'
+import { reactive, computed, ref, onMounted, onUnmounted } from 'vue'
 
 /**
  * 天气数据接口
@@ -58,29 +58,77 @@ const CONDITION_ICON_MAP: Record<string, string> = {
   大雪: 'fa-solid fa-snowflake',
   雷: 'fa-solid fa-bolt',
   雷雨: 'fa-solid fa-cloud-bolt',
+  雷雪: 'fa-solid fa-cloud-bolt',
   风: 'fa-solid fa-wind',
   霾: 'fa-solid fa-smog',
+  烟霾: 'fa-solid fa-smog',
   雾: 'fa-solid fa-smog',
   霜: 'fa-solid fa-snowflake',
+  冻雨: 'fa-solid fa-cloud-rain',
+  雨夹雪: 'fa-solid fa-cloud-snow-rain',
   冰雹: 'fa-solid fa-cloud-meatball'
 }
 
 /** 天气响应式数据 */
 const weatherData = reactive<WeatherData>({
-  location: '东京',
+  location: '雾都',
   condition: '晴',
   temperature: 26
 })
+
+/** 天气查询目标（城市名或经纬度路径） */
+const weatherQuery = ref<string>('重庆')
+
+/** 加载状态 */
+const isLoading = ref<boolean>(false)
+
+/** 错误信息 */
+const error = ref<string>('')
+
+/** 定时刷新定时器ID */
+let refreshTimer: ReturnType<typeof setInterval> | null = null
+
+/** 刷新间隔（15分钟） */
+const REFRESH_INTERVAL = 15 * 60 * 1000
 
 /** 根据天气状况返回对应的FontAwesome图标 */
 const conditionIcon = computed<string>(() => {
   return CONDITION_ICON_MAP[weatherData.condition] || 'fa-solid fa-cloud-sun'
 })
 
-/** 更新天气数据 */
+/**
+ * 从widgetApi获取真实天气数据
+ * 通过IPC调用主进程天气API
+ */
+async function fetchRealWeather(): Promise<void> {
+  if (isLoading.value) return
+
+  isLoading.value = true
+  error.value = ''
+
+  try {
+    const result = await window.widgetApi.fetchWeather(weatherQuery.value)
+    if (result.success && result.data) {
+      weatherData.location = result.data.location
+      weatherData.condition = result.data.condition
+      weatherData.temperature = result.data.temperature
+    } else {
+      error.value = result.error || '获取天气数据失败'
+      console.warn('[WeatherWidget] 获取天气失败:', error.value)
+    }
+  } catch (err) {
+    error.value = (err as Error).message || '网络请求失败'
+    console.error('[WeatherWidget] 天气请求异常:', err)
+  } finally {
+    isLoading.value = false
+  }
+}
+
+/** 更新天气数据（外部调用接口，保持向后兼容） */
 function updateWeather(data: Partial<WeatherData>): void {
   if (data.location !== undefined) {
     weatherData.location = data.location
+    weatherQuery.value = data.location
   }
   if (data.condition !== undefined) {
     weatherData.condition = data.condition
@@ -88,7 +136,51 @@ function updateWeather(data: Partial<WeatherData>): void {
   if (data.temperature !== undefined) {
     weatherData.temperature = data.temperature
   }
+  // 城市变更后重新获取真实天气
+  fetchRealWeather()
 }
+
+/**
+ * 启动定时刷新
+ * 每15分钟自动获取最新天气数据
+ */
+function startAutoRefresh(): void {
+  stopAutoRefresh()
+  refreshTimer = setInterval(() => {
+    fetchRealWeather()
+  }, REFRESH_INTERVAL)
+}
+
+/** 停止定时刷新 */
+function stopAutoRefresh(): void {
+  if (refreshTimer) {
+    clearInterval(refreshTimer)
+    refreshTimer = null
+  }
+}
+
+onMounted(async () => {
+  // 组件挂载时尝试获取位置信息，优先使用系统坐标直接请求天气
+  try {
+    const locResult = await window.widgetApi.getLocation()
+    if (locResult && locResult.success && locResult.data) {
+      const { lat, lon } = locResult.data
+      if (typeof lat === 'number' && typeof lon === 'number') {
+        weatherQuery.value = `/${lat},${lon}`
+      }
+    }
+  } catch (e) {
+    console.warn('[WeatherWidget] 获取位置信息失败:', e)
+  }
+
+  // 获取真实天气并启动定时刷新
+  fetchRealWeather()
+  startAutoRefresh()
+})
+
+onUnmounted(() => {
+  stopAutoRefresh()
+})
 
 defineExpose({
   updateWeather
@@ -114,7 +206,6 @@ defineExpose({
   position: absolute;
   inset: 8px;
   border-radius: 22px;
-  background: radial-gradient(circle at 30% 60%, rgba(255, 182, 193, 0.18), transparent 65%);
   pointer-events: none;
 }
 
@@ -125,7 +216,7 @@ defineExpose({
   flex: 1;
   display: flex;
   flex-direction: column;
-  padding: 10px 20px;
+  padding-left: 15px;
 }
 
 .weather-info {
@@ -137,10 +228,17 @@ defineExpose({
 .weather-location {
   display: flex;
   align-items: center;
-  gap: 6px;
+  max-width: 100px;
+  gap: 3px;
   color: #4a3142;
   font-size: 14px;
   font-weight: 700;
+}
+
+.location-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .location-icon {
@@ -150,16 +248,12 @@ defineExpose({
     drop-shadow(1px 1px 0 white);
 }
 
-.location-text {
-  letter-spacing: 0.04em;
-}
-
 .weather-condition {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 3px;
   color: #6f2b43;
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 800;
 }
 
@@ -170,13 +264,10 @@ defineExpose({
     drop-shadow(1px 1px 0 white);
 }
 
-.condition-text {
-  letter-spacing: 0.04em;
-}
-
 /* ── 温度区域 ── */
 .weather-temp {
-  margin-left: 25px;
+  /* margin-left: 25px; */
+  margin: auto;
   display: flex;
   align-items: flex-start;
 }
@@ -187,7 +278,7 @@ defineExpose({
   line-height: 1;
   color: var(--theme-color, #fb7299);
   letter-spacing: -0.02em;
-  text-shadow: 0 2px 12px rgba(251, 114, 153, 0.2);
+  text-shadow: 0 2px 18px rgba(251, 114, 153, 0.5);
 }
 
 .temp-unit {
@@ -203,9 +294,8 @@ defineExpose({
 .weather-mascot {
   position: relative;
   z-index: 1;
-  flex: 1;
   flex-shrink: 0;
-  width: auto;
+  width: 100px;
   height: 100%;
   overflow: hidden;
   display: flex;

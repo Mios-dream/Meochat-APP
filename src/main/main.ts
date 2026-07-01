@@ -9,7 +9,9 @@ import {
   setupLoggerIPC,
   setupUtilityIPC,
   setupOnboardingIPC,
-  setupSystemEventIPC
+  setupSystemEventIPC,
+  setupLocationIPC,
+  setupWeatherIPC
 } from './ipc'
 import { setupWidgetIPC } from './ipc/widgetHandlers'
 import { setupConfigIPC } from './config/configManager'
@@ -42,6 +44,10 @@ try {
   setupOnboardingIPC()
   // 设置系统事件IPC
   setupSystemEventIPC()
+  // 设置位置IPC（基于IP定位，用于小组件自动填充城市）
+  setupLocationIPC()
+  // 设置天气IPC
+  setupWeatherIPC()
   // 设置小组件IPC
   setupWidgetIPC()
   // 注册文件协议
