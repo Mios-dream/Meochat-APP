@@ -260,8 +260,10 @@ export class ChatPlaybackController {
     try {
       let carriedParams: Record<string, number> = {}
 
-      for (const step of sequence) {
+      for (const [stepIndex, step] of sequence.entries()) {
         if (token !== this.motionSequenceToken) return
+
+        const isFirstStep = stepIndex === 0
 
         if (step.expression && step.expression.length > 0) {
           console.log(
@@ -272,7 +274,7 @@ export class ChatPlaybackController {
 
         // 新曲线方案：完整参数时间序列，按原始时长逐帧插值播放
         if (step.curves) {
-          await this.playMotionCurveFrames(step, token)
+          await this.playMotionCurveFrames(step, token, isFirstStep)
           continue
         }
 
@@ -282,7 +284,10 @@ export class ChatPlaybackController {
           carriedParams = mergedParams
 
           const durationMs = step.durationMs
-          const transitionMs = Math.min(980, Math.max(220, Math.floor(durationMs * 0.88)))
+          // 跨 chunk 的第一个 step 用 500ms 过渡防止动作突变，其余按原始时长的 88%
+          const transitionMs = isFirstStep
+            ? 500
+            : Math.min(980, Math.max(220, Math.floor(durationMs * 0.88)))
           const holdMs = durationMs + Math.min(220, Math.floor(durationMs * 0.24))
           const waitMs = Math.max(100, durationMs)
 
@@ -309,7 +314,11 @@ export class ChatPlaybackController {
    * @param step 包含 curves 和 fps 的动作步骤
    * @param token 中断令牌，与当前令牌不匹配时停止播放
    */
-  private async playMotionCurveFrames(step: Live2DMotionStep, token: number): Promise<void> {
+  private async playMotionCurveFrames(
+    step: Live2DMotionStep,
+    token: number,
+    isFirstStep: boolean = false
+  ): Promise<void> {
     if (!this.live2DManager || !step.curves) return
 
     const curves = step.curves
@@ -321,11 +330,14 @@ export class ChatPlaybackController {
 
     // transitionMs 选 clampDuration 下限 60，保证每帧能快速向目标值过渡
     // holdMs 选 clampDuration 下限 300，避免被后续帧立即覆盖影响缓动表现
-    const transitionMs = 60
+    // 跨 chunk 的第一个 step 的第一帧用 500ms 过渡，防止动作突变
     const holdMs = 300
 
     for (let frameIndex = 0; frameIndex < totalFrames; frameIndex++) {
       if (token !== this.motionSequenceToken) return
+
+      const isFirstFrame = isFirstStep && frameIndex === 0
+      const transitionMs = isFirstFrame ? 500 : 60
 
       // 当前帧在源时间轴上的时间位置（秒），按原始时长不做缩放
       const sourceTimeSeconds = (frameIndex * CURVE_FRAME_INTERVAL_MS) / 1000

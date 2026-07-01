@@ -101,9 +101,12 @@ class ChatManager {
     return ChatManager.instance
   }
 
-  /** 初始化消息提示 DOM 元素。 */
-  public initializeMessageTips(element: HTMLElement): void {
-    this.messageTips.setTipsElement(element)
+  /** 初始化消息提示渲染回调。 */
+  public initializeMessageTips(
+    _element: HTMLElement,
+    renderCallback: Parameters<MessageTips['setRenderCallback']>[0]
+  ): void {
+    this.messageTips.setRenderCallback(renderCallback)
   }
 
   /** 获取当前助手的本地聊天历史。 */
