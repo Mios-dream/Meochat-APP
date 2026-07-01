@@ -1,5 +1,5 @@
 import { ipcMain } from 'electron'
-import { OnboardingMode, OnboardingProfile } from '../../renderer/src/types/onboarding'
+import { OnboardingMode, OnboardingProfile } from '@shared/types/onboarding'
 import { OnboardingStoreService } from '../services/onboardingStore'
 
 const onboardingStore = OnboardingStoreService.getInstance()

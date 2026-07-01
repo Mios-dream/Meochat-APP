@@ -6,12 +6,9 @@ import path from 'path'
 import axios from 'axios'
 import StreamZip from 'node-stream-zip'
 import log from '../utils/logger'
-import type { KernelRemoteVersion, KernelUpdateState } from '../../renderer/src/types/KernelInfo'
+import type { KernelRemoteVersion, KernelUpdateState } from '@shared/types/kernel'
 import { resolveAppDataDir, resolveLogDir } from '../utils/pathResolve'
-import type {
-  EnvironmentCheckResult,
-  EnvironmentCheckItem
-} from '../../renderer/src/types/KernelInfo'
+import type { EnvironmentCheckResult, EnvironmentCheckItem } from '@shared/types/kernel'
 import { decodeBuffer } from '../utils/buffer'
 
 const execAsync = promisify(exec)

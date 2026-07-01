@@ -8,42 +8,11 @@ import fs from 'fs'
 import path from 'path'
 import { resolveAppDataDir } from '../utils/pathResolve'
 import log from '../utils/logger'
-
-/** 小组件位置 */
-interface WidgetPosition {
-  x: number
-  y: number
-}
-
-/** 小组件尺寸 */
-interface WidgetSize {
-  width: number
-  height: number
-}
-
-/** 小组件实例配置 */
-interface WidgetInstance {
-  id: string
-  widgetId: string
-  position: WidgetPosition
-  size: WidgetSize
-  enabled: boolean
-  pinned?: boolean
-  config?: Record<string, unknown>
-}
-
-/** 小组件全局设置 */
-interface WidgetGlobalSettings {
-  snapToGrid: boolean
-  gridSize: number
-  showOnDesktop: boolean
-}
-
-/** 小组件配置文件结构 */
-interface WidgetConfigFile {
-  instances: WidgetInstance[]
-  globalSettings: WidgetGlobalSettings
-}
+import type {
+  WidgetInstance,
+  WidgetConfigFile,
+  WidgetGlobalSettings
+} from '@shared/types/widget'
 
 /** 默认配置 */
 const DEFAULT_CONFIG: WidgetConfigFile = {

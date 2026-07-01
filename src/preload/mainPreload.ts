@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import globalAPI from './sharePreload'
-import type { AssistantInfo, AssistantAssets } from '../renderer/src/types/AssistantInfo'
+import type { AssistantInfo, AssistantAssets } from '@shared/types/assistantTypes'
 
 // 文件选择工具API
 const fileSelectAPI = {

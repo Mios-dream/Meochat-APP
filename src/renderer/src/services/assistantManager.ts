@@ -1,4 +1,4 @@
-import { AssistantAssets, AssistantInfo } from '../types/AssistantInfo'
+import { AssistantAssets, AssistantInfo } from '@shared/types/assistantTypes'
 
 export interface AssistantLoadResult {
   success: boolean

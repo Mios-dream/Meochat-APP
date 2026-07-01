@@ -302,7 +302,7 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useUIStore } from '../stores/useUIStore'
 import { useConfigStore } from '../stores/useConfigStore'
 import { NotificationService } from '../services/NotificationService'
-import type { KernelUpdateState, EnvironmentCheckResult } from '../types/KernelInfo'
+import type { KernelUpdateState, EnvironmentCheckResult } from '@shared/types/kernel'
 import KernelLogTerminal from '../components/KernelLogTerminal.vue'
 import sakuraImg from '../assets/images/sakura.webp'
 

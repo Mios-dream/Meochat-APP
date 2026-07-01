@@ -5,7 +5,7 @@
 
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { WidgetInstance, WidgetConfigFile, WidgetGlobalSettings } from '../types/widget'
+import type { WidgetInstance, WidgetConfigFile, WidgetGlobalSettings } from '@shared/types/widget'
 
 export const useWidgetStore = defineStore('widget', () => {
   /** 小组件实例列表 */

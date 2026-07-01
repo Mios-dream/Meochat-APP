@@ -286,8 +286,8 @@ import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 import { useConfigStore } from '../stores/useConfigStore'
-import { OnboardingMode, OnboardingProfile } from '../types/onboarding'
-import type { KernelUpdateState, EnvironmentCheckResult } from '../types/KernelInfo'
+import { OnboardingMode, OnboardingProfile } from '@shared/types/onboarding'
+import type { KernelUpdateState, EnvironmentCheckResult } from '@shared/types/kernel'
 import KernelLogTerminal from '../components/KernelLogTerminal.vue'
 import ParticleCanvas from '../components/onboarding/ParticleCanvas.vue'
 
@@ -313,7 +313,7 @@ const configStore = useConfigStore()
 // ─── state machine ──────────────────────────────────────────────────────────
 
 const currentState = ref<OnboardingState>('BOOT')
-const currentMode = ref<OnboardingMode>('')
+const currentMode = ref<OnboardingMode>('local')
 const isDissolving = ref(false)
 
 // ─── particle canvas control ────────────────────────────────────────────────
@@ -737,7 +737,7 @@ async function retryBackend(): Promise<void> {
 }
 
 async function switchMode(): Promise<void> {
-  if (currentMode.value === 'local' || currentMode.value === '') {
+  if (currentMode.value === 'local') {
     currentMode.value = 'api'
     currentState.value = 'LOG_STREAM'
     backendError.value = ''

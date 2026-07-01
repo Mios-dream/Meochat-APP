@@ -4,14 +4,7 @@
  */
 
 import { ipcRenderer, contextBridge } from 'electron'
-
-interface LocationData {
-  lat: number | null
-  lon: number | null
-  city?: string
-  region?: string
-  country?: string
-}
+import type { LocationData } from '@shared/types/widget'
 
 function getBrowserLocation(): Promise<{ lat: number; lon: number }> {
   return new Promise((resolve, reject) => {

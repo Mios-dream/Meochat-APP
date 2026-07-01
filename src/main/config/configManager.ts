@@ -1,7 +1,7 @@
 import Store, { Schema } from 'electron-store'
 import { ipcMain, BrowserWindow, app } from 'electron'
 
-import { AppConfig } from '../../renderer/src/types/appConfig'
+import { AppConfig } from '@shared/types/appConfig'
 import { resolveAppDataDir } from '../utils/pathResolve'
 
 // 配置项的默认值

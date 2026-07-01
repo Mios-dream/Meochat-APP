@@ -1,11 +1,7 @@
 import Store, { Schema } from 'electron-store'
 
 import { resolveAppDataDir } from '../utils/pathResolve'
-import {
-  OnboardingMode,
-  OnboardingProfile,
-  OnboardingState
-} from '../../renderer/src/types/onboarding'
+import { OnboardingMode, OnboardingProfile, OnboardingState } from '@shared/types/onboarding'
 
 interface OnboardingStoreShape {
   completed: boolean

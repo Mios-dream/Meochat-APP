@@ -9,8 +9,10 @@ import { contextBridge, ipcRenderer } from 'electron'
 const tipsApi = {
   // 监听显示提示事件
   onShow: (callback: (data?: { message?: string; avatarUrl?: string }) => void) => {
-    const listener = (_event: Electron.IpcRendererEvent, data?: { message?: string; avatarUrl?: string }): void =>
-      callback(data)
+    const listener = (
+      _event: Electron.IpcRendererEvent,
+      data?: { message?: string; avatarUrl?: string }
+    ): void => callback(data)
     ipcRenderer.on('tips:show', listener)
     return () => ipcRenderer.removeListener('tips:show', listener)
   },
@@ -24,8 +26,10 @@ const tipsApi = {
 
   // 监听消息更新事件
   onMessage: (callback: (data: { message: string; avatarUrl?: string }) => void) => {
-    const listener = (_event: Electron.IpcRendererEvent, data: { message: string; avatarUrl?: string }): void =>
-      callback(data)
+    const listener = (
+      _event: Electron.IpcRendererEvent,
+      data: { message: string; avatarUrl?: string }
+    ): void => callback(data)
     ipcRenderer.on('tips:message', listener)
     return () => ipcRenderer.removeListener('tips:message', listener)
   },

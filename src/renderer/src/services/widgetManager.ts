@@ -3,7 +3,7 @@
  * 负责小组件的注册、加载和管理
  */
 
-import type { WidgetManifest, WidgetInstance } from '../types/widget'
+import type { WidgetManifest, WidgetInstance } from '@shared/types/widget'
 
 /**
  * 小组件管理器单例类

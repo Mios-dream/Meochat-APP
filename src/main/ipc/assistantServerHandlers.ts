@@ -2,7 +2,7 @@ import { ipcMain } from 'electron'
 import fs from 'fs'
 import path from 'path'
 import { AssistantService } from '../services/assistantService'
-import { AssistantAssets } from '../../renderer/src/types/AssistantInfo'
+import { AssistantAssets } from '@shared/types/assistantTypes'
 import { resolveAppDataDir } from '../utils/pathResolve'
 
 /**

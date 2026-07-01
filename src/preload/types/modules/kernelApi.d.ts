@@ -1,7 +1,4 @@
-import type {
-  KernelUpdateState,
-  EnvironmentCheckResult
-} from '../../../renderer/src/types/KernelInfo'
+import type { KernelUpdateState, EnvironmentCheckResult } from '@shared/types/kernel'
 
 export interface KernelApi {
   kernel: {

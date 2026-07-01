@@ -1,15 +1,7 @@
-import {
-  AssistantInfo,
-  AssistantBaseInfo,
-  UpdateCheckResult
-} from '../../../renderer/src/types/AssistantInfo'
-import { PythonServiceStatus } from '../../../renderer/src/types/PythonService'
-import { PythonTask } from '../../../renderer/src/types/PythonService'
-import {
-  OnboardingMode,
-  OnboardingProfile,
-  OnboardingState
-} from '../../../renderer/src/types/onboarding'
+import { AssistantInfo, AssistantBaseInfo } from '@shared/types/assistantTypes'
+import type { UpdateCheckResult } from '@shared/types/assistantUpdate'
+import { PythonServiceStatus, PythonTask } from '@shared/types/pythonService'
+import { OnboardingMode, OnboardingProfile, OnboardingState } from '@shared/types/onboarding'
 
 export interface MainWindowApi {
   // 主窗口

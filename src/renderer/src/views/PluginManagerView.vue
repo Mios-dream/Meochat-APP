@@ -331,7 +331,7 @@ import { ref, computed, onMounted, onBeforeUnmount, markRaw, reactive } from 'vu
 import { useWidgetStore } from '../stores/useWidgetStore'
 import { WidgetManager } from '../services/widgetManager'
 import WidgetPreview from '../components/widgets/WidgetPreview.vue'
-import type { WidgetManifest } from '../types/widget'
+import type { WidgetManifest } from '@shared/types/widget'
 import type { ComponentPublicInstance } from 'vue'
 
 // 内置小组件

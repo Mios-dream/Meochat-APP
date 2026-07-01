@@ -1,4 +1,4 @@
-export type OnboardingMode = '' | 'local' | 'api'
+export type OnboardingMode = 'local' | 'api'
 
 export interface OnboardingProfile {
   birthday: string

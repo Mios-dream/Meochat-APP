@@ -15,9 +15,9 @@ import {
   AssistantAssets,
   AssistantBaseInfo,
   AssistantInfo,
-  AssetTypeTimestamps,
-  UpdateCheckResult
-} from '../../renderer/src/types/AssistantInfo'
+  AssetTypeTimestamps
+} from '@shared/types/assistantTypes'
+import type { UpdateCheckResult } from '@shared/types/assistantUpdate'
 import { createWindow, chatBoxWindowConfig } from '../windows'
 import ImageMetadataExtractor from '../utils/imageMetadataExtractor'
 import { resolveAppDataDir } from '../utils/pathResolve'

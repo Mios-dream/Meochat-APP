@@ -1,4 +1,4 @@
-import { AssistantInfo } from '../../../renderer/src/types/AssistantInfo'
+import { AssistantInfo, AssistantAssets } from '@shared/types/assistantTypes'
 
 export interface AssistantApi {
   getForegroundAppUsage: () => Promise<{

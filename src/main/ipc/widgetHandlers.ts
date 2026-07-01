@@ -13,13 +13,7 @@ import {
 } from '../windows'
 import log from '../utils/logger'
 
-/** 小组件数据消息 */
-interface WidgetDataMessage {
-  fromId: string
-  toId?: string
-  type: string
-  payload: unknown
-}
+import type { WidgetDataMessage } from '@shared/types/widget'
 
 /**
  * 设置小组件相关 IPC 处理器

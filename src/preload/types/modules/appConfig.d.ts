@@ -1,4 +1,4 @@
-import { AppConfig } from '../../../renderer/src/types/appConfig'
+import { AppConfig } from '@shared/types/appConfig'
 
 export interface ConfigApi {
   config: {
