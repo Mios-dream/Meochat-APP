@@ -200,6 +200,7 @@ import { mergeServerConfig, normalizeServerConfig } from '../types/serverConfig'
 import type { ServerConfig } from '../types/serverConfig'
 import { storeToRefs } from 'pinia'
 import { ref, onMounted, onUnmounted } from 'vue'
+import { request } from '@shared/api/request'
 
 const configStore = useConfigStore()
 const { config } = storeToRefs(configStore)
@@ -234,10 +235,6 @@ onMounted(async () => {
   currentVersion.value = await window.api.getCurrentVersion()
 })
 
-const buildApiUrl = (path: string): string => {
-  return `${config.value.baseUrl}${path}`
-}
-
 async function openServerConfigDialog(): Promise<void> {
   if (!config.value.baseUrl) {
     notificationService.warning({
@@ -249,16 +246,8 @@ async function openServerConfigDialog(): Promise<void> {
 
   isLoadingServerConfig.value = true
   try {
-    const response = await fetch(buildApiUrl('/api/get_config'), {
-      method: 'GET'
-    })
-
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`)
-    }
-
-    const data = await response.json()
-    serverConfigDraft.value = normalizeServerConfig(data)
+    const response = await request.get('/api/get_config')
+    serverConfigDraft.value = normalizeServerConfig(response.data)
     showServerConfigDialog.value = true
   } catch (error) {
     console.error('获取服务器配置失败:', error)
@@ -274,19 +263,8 @@ async function openServerConfigDialog(): Promise<void> {
 async function saveServerConfig(updatedConfig: ServerConfig): Promise<void> {
   isSavingServerConfig.value = true
   try {
-    const response = await fetch(buildApiUrl('/api/update_config'), {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ data: updatedConfig })
-    })
-
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`)
-    }
-
-    const result = await response.json()
+    const response = await request.post('/api/update_config', { data: updatedConfig })
+    const result = response.data
     if (result?.config && serverConfigDraft.value) {
       serverConfigDraft.value = mergeServerConfig(
         serverConfigDraft.value,

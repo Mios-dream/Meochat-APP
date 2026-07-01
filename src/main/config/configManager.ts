@@ -3,6 +3,7 @@ import { ipcMain, BrowserWindow, app } from 'electron'
 
 import { AppConfig } from '@shared/types/appConfig'
 import { resolveAppDataDir } from '../utils/pathResolve'
+import { setBaseUrl } from '@shared/api/request'
 
 // 配置项的默认值
 const schema: Schema<AppConfig> = {
@@ -47,6 +48,8 @@ const store = new Store({
   cwd: appDataDir
 })
 
+setBaseUrl(getConfig('baseUrl'))
+
 function getConfig<K extends keyof AppConfig>(key: K): AppConfig[K] {
   return store.get(key) as AppConfig[K]
 }
@@ -58,6 +61,7 @@ function setConfig<K extends keyof AppConfig>(key: K, value: AppConfig[K]): void
 function setupConfigIPC(): void {
   // 监听配置更新并广播给所有渲染进程
   store.onDidAnyChange(() => {
+    setBaseUrl(getConfig('baseUrl'))
     BrowserWindow.getAllWindows().forEach((win) => {
       win.webContents.send('config:changed', store.store)
     })

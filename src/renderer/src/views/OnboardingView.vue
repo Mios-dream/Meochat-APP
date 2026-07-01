@@ -290,6 +290,7 @@ import { OnboardingMode, OnboardingProfile } from '@shared/types/onboarding'
 import type { KernelUpdateState, EnvironmentCheckResult } from '@shared/types/kernel'
 import KernelLogTerminal from '../components/KernelLogTerminal.vue'
 import ParticleCanvas from '../components/onboarding/ParticleCanvas.vue'
+import { request } from '@shared/api/request'
 
 // ─── type helpers ───────────────────────────────────────────────────────────
 
@@ -887,14 +888,9 @@ async function submitModelConfig(): Promise<void> {
       return
     }
 
-    const baseUrl = configStore.config.baseUrl || 'http://127.0.0.1:8001'
-    const normalizedBase = baseUrl
-
     // 1. 保存配置
-    const saveResponse = await fetch(`${normalizedBase}/api/update_config`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+    try {
+      await request.post('/api/update_config', {
         data: {
           LLM: {
             api: modelConfig.api.trim(),
@@ -908,11 +904,9 @@ async function submitModelConfig(): Promise<void> {
           }
         }
       })
-    })
-
-    if (!saveResponse.ok) {
-      const result = await saveResponse.json().catch(() => ({}))
-      modelConfigError.value = (result as { detail?: string }).detail || '配置保存失败，请检查参数'
+    } catch (error) {
+      const err = error as { response?: { data?: { detail?: string } } }
+      modelConfigError.value = err.response?.data?.detail || '配置保存失败，请检查参数'
       return
     }
 
@@ -921,14 +915,12 @@ async function submitModelConfig(): Promise<void> {
     verifyingModelConfig.value = true
     modelConfigError.value = ''
 
-    const testResponse = await fetch(`${normalizedBase}/api/llm_chat`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ msg: [{ role: 'user', content: 'hi' }] }),
-      signal: AbortSignal.timeout(30000)
-    })
-
-    if (!testResponse.ok) {
+    try {
+      await request.post('/api/llm_chat',
+        { msg: [{ role: 'user', content: 'hi' }] },
+        { timeout: 30000 }
+      )
+    } catch {
       modelConfigError.value = '模型连接测试失败，请检查 API 地址、Key 和模型名称是否正确'
       return
     }
@@ -939,11 +931,7 @@ async function submitModelConfig(): Promise<void> {
     await startFirstMeeting()
   } catch (e) {
     const err = e as Error
-    if (err.name === 'TimeoutError') {
-      modelConfigError.value = '模型连接超时，请检查 API 地址是否可达'
-    } else {
-      modelConfigError.value = `配置验证失败：${err.message}`
-    }
+    modelConfigError.value = `配置验证失败：${err.message}`
   } finally {
     savingModelConfig.value = false
     verifyingModelConfig.value = false

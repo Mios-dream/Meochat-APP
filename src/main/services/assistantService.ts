@@ -1,5 +1,4 @@
 import fs from 'fs'
-import axios from 'axios'
 import FormData from 'form-data'
 import AdmZip from 'adm-zip'
 import StreamZip from 'node-stream-zip'
@@ -11,6 +10,7 @@ import workerPath from '../workers/extractWorker?modulePath'
 import { globalShortcut, BrowserWindow, screen } from 'electron'
 import { getConfig, setConfig } from '../config/configManager'
 import log from '../utils/logger'
+import { request } from '@shared/api/request'
 import {
   AssistantAssets,
   AssistantBaseInfo,
@@ -533,8 +533,7 @@ class AssistantService {
    */
   private async getCurrentAssistantFromCloud(): Promise<AssistantInfo | null> {
     try {
-      const url = `${getConfig('baseUrl')}/api/assistant/current`
-      const response = await axios.get(url)
+      const response = await request.get('/api/assistant/current')
       return response.data.data
     } catch (error) {
       log.error('获取当前助手失败:', (error as Error).message)
@@ -677,8 +676,7 @@ class AssistantService {
     assistantName: string
   ): Promise<{ success: boolean; data: AssistantInfo } | { success: false; error: string }> {
     try {
-      const url = `${getConfig('baseUrl')}/api/assistant/switch`
-      const response = await axios.post(url, { name: assistantName })
+      const response = await request.post('/api/assistant/switch', { name: assistantName })
       return {
         success: true,
         data: response.data.data
@@ -727,12 +725,11 @@ class AssistantService {
         if (!fs.existsSync(downloadsDir)) {
           fs.mkdirSync(downloadsDir, { recursive: true })
         }
-        const url = `${getConfig('baseUrl')}/api/assistant/assets/download`
-        // 使用axios发送POST请求并监控进度
+        // 使用 axios 发送 POST 请求并监控进度
         const writer = fs.createWriteStream(tempZipPath)
 
-        axios({
-          url,
+        request({
+          url: '/api/assistant/assets/download',
           method: 'POST',
           data: { name: assistantName, assetTypes },
           responseType: 'stream',
@@ -883,7 +880,6 @@ class AssistantService {
    *          网络错误时默认返回 needsUpdate=false（保守策略，避免误触发下载）
    */
   public async isNeedsUpdate(assistant: AssistantInfo): Promise<UpdateCheckResult> {
-    const url = `${getConfig('baseUrl')}/api/assistant/assets/check`
     try {
       const assistantDir = this.resolveAssistantDir(assistant.name)
       const assetsDir = path.join(assistantDir, 'assets')
@@ -902,7 +898,7 @@ class AssistantService {
         }
       }
 
-      const response = await axios.post(url, {
+      const response = await request.post('/api/assistant/assets/check', {
         name: assistant.name,
         lastModified: assistant.userState.assetsLastModified
       })
@@ -971,8 +967,7 @@ class AssistantService {
       }
 
       // 上传到云端
-      const url = `${getConfig('baseUrl')}/api/assistant/info/update`
-      await axios.post(url, completeAssistant)
+      await request.post('/api/assistant/info/update', completeAssistant)
 
       // 保存在本地
       this.saveAssistantToLocal(completeAssistant)
@@ -1078,8 +1073,7 @@ class AssistantService {
       }
 
       // 上传到云端
-      const url = `${getConfig('baseUrl')}/api/assistant/info/add`
-      await axios.post(url, completeAssistant)
+      await request.post('/api/assistant/info/add', completeAssistant)
 
       // 保存在本地
       this.saveAssistantToLocal(completeAssistant)
@@ -1148,8 +1142,7 @@ class AssistantService {
 
     try {
       // 从云端加载助手数据
-      const url = `${getConfig('baseUrl')}/api/assistants`
-      const response = await axios.get(url)
+      const response = await request.get('/api/assistants')
       const apiData = response.data
 
       if (apiData.data && Array.isArray(apiData.data)) {
@@ -1263,8 +1256,7 @@ class AssistantService {
       )
 
       // 上传到云端
-      const url = `${getConfig('baseUrl')}/api/assistant/assets/upload`
-      const maxRetry = 1
+          const maxRetry = 1
 
       for (let attempt = 0; attempt <= maxRetry; attempt++) {
         try {
@@ -1296,7 +1288,7 @@ class AssistantService {
             headers['Content-Length'] = String(contentLength)
           }
 
-          await axios.post(url, formData, {
+          await request.post('/api/assistant/assets/upload', formData, {
             headers,
             timeout: 0,
             maxBodyLength: Infinity,
@@ -1356,8 +1348,7 @@ class AssistantService {
     try {
       const assistantDir = this.resolveAssistantDir(assistantName, false)
       // 先删除云端资产
-      const url = `${getConfig('baseUrl')}/api/assistant/info/delete`
-      await axios.post(url, { name: assistantName })
+      await request.post('/api/assistant/info/delete', { name: assistantName })
 
       // 再删除本地资产
       if (fs.existsSync(assistantDir)) {
@@ -1749,7 +1740,6 @@ class AssistantService {
     zipPath: string
   ): Promise<{ success: true; data: AssistantInfo } | { success: false; error: string }> {
     try {
-      const url = `${getConfig('baseUrl')}/api/assistant/import-from-zip`
       const zipStat = fs.statSync(zipPath)
 
       log.info(`[AssistantZipImport] start zipSizeMB=${(zipStat.size / 1024 / 1024).toFixed(2)}`)
@@ -1776,7 +1766,7 @@ class AssistantService {
         headers['Content-Length'] = String(contentLength)
       }
 
-      const response = await axios.post(url, formData, {
+      const response = await request.post('/api/assistant/import-from-zip', formData, {
         headers,
         timeout: 0,
         maxBodyLength: Infinity,

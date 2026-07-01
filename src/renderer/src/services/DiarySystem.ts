@@ -1,5 +1,4 @@
-import { useConfigStore } from '../stores/useConfigStore'
-import { computed } from 'vue'
+import { request } from '@shared/api/request'
 
 export interface DiaryRecord {
   day: string
@@ -28,11 +27,6 @@ interface DiaryApiResponse {
 }
 
 export class DiarySystem {
-  private baseApiUrl = computed(() => {
-    const configStore = useConfigStore()
-    return configStore.config.baseUrl
-  })
-
   /**
    * 从后端拉取助手日记
    */
@@ -72,22 +66,11 @@ export class DiarySystem {
       searchParams.set('end_day', endDay)
     }
 
-    // 使用静态方法获取共享的 API URL
-    const response = await fetch(
-      `${this.baseApiUrl.value}/api/chat/diary?${searchParams.toString()}`,
-      {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      }
+    const response = await request.get<DiaryApiResponse>(
+      `/api/chat/diary?${searchParams.toString()}`
     )
 
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`)
-    }
-
-    const result = (await response.json()) as DiaryApiResponse
+    const result = response.data
     const normalizedData = Array.isArray(result.data)
       ? result.data.map((item) => ({
           day: typeof item.day === 'string' ? item.day : '',

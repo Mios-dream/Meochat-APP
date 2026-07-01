@@ -69,7 +69,7 @@ export interface ChatAudioChunk {
 }
 
 /** SSE 完成块，表示本轮回复流结束。 */
-interface ChatDoneChunk {
+export interface ChatDoneChunk {
   type: 'done'
   /** 后端聚合后的完整回复文本，用于聊天历史保存。 */
   full_text?: string
@@ -77,7 +77,7 @@ interface ChatDoneChunk {
 }
 
 /** 后端 SSE 可能返回的全部 chunk 类型。 */
-type ChatStreamChunk = ChatTextChunk | ChatMotionChunk | ChatAudioChunk | ChatDoneChunk
+export type ChatStreamChunk = ChatTextChunk | ChatMotionChunk | ChatAudioChunk | ChatDoneChunk
 
 /** 文本、音频、动作乱序到达时的句子同步状态。 */
 export interface SentenceAssemblyState {
@@ -117,8 +117,6 @@ export class ChatStreamProcessor implements SentenceAssemblyContext {
   private pendingSentences: Map<number, SentenceAssemblyState> = new Map()
   /** 下一个允许入队的 sentence_id，确保播放顺序稳定。 */
   private nextSentenceId: number = 1
-  /** SSE 文本缓冲区，用于处理网络 chunk 截断 JSON 行的问题。 */
-  private chunkBuffer = ''
   /** 当前回复是否期望动作帧，用于决定有音频但还没动作时能否提前入队。 */
   private useMotion = false
   /** 文本 chunk 处理器。 */
@@ -141,15 +139,13 @@ export class ChatStreamProcessor implements SentenceAssemblyContext {
   public reset(useMotion: boolean): void {
     this.pendingSentences.clear()
     this.nextSentenceId = 1
-    this.chunkBuffer = ''
     this.useMotion = useMotion
   }
 
-  /** 清除所有待同步数据和残留缓冲，通常用于中断当前回复。 */
+  /** 清除所有待同步数据，通常用于中断当前回复。 */
   public clearPending(): void {
     this.pendingSentences.clear()
     this.nextSentenceId = 1
-    this.chunkBuffer = ''
   }
 
   /** 判断流处理层是否还有未入队句子。 */
@@ -177,74 +173,8 @@ export class ChatStreamProcessor implements SentenceAssemblyContext {
     this.pendingSentences.set(sentenceId, state)
   }
 
-  /** 读取 Response.body 流，并把解码后的文本片段交给行解析器。 */
-  public async readStreamResponse(response: Response): Promise<void> {
-    const reader = response.body!.getReader()
-    const decoder = new TextDecoder()
-
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) {
-        const flushChunk = decoder.decode()
-        if (flushChunk) {
-          this.parseStreamChunk(flushChunk)
-        }
-
-        const pendingLine = this.chunkBuffer.trim()
-        this.chunkBuffer = ''
-        if (pendingLine) {
-          this.parseStreamLine(pendingLine)
-        }
-        break
-      }
-
-      const chunk = decoder.decode(value, { stream: true })
-      this.parseStreamChunk(chunk)
-    }
-  }
-
-  /** 解析网络 chunk，并把不完整的最后一行留到下一次拼接。 */
-  private parseStreamChunk(chunk: string): void {
-    if (!chunk) {
-      return
-    }
-
-    this.chunkBuffer += chunk
-
-    const lines = this.chunkBuffer.split(/\r?\n/)
-    this.chunkBuffer = lines.pop() || ''
-
-    for (const line of lines) {
-      this.parseStreamLine(line)
-    }
-  }
-
-  /** 解析单行 SSE 数据，兼容 data: 前缀和直接 JSON 两种格式。 */
-  private parseStreamLine(line: string): void {
-    const trimmedLine = line.trim()
-
-    if (!trimmedLine || trimmedLine === '[DONE]') {
-      return
-    }
-
-    if (!trimmedLine.startsWith('data:') && !trimmedLine.startsWith('{')) {
-      return
-    }
-
-    const jsonStr = trimmedLine.startsWith('data:')
-      ? trimmedLine.replace(/^data:\s*/, '')
-      : trimmedLine
-
-    try {
-      const data = JSON.parse(jsonStr) as ChatStreamChunk
-      void this.handleStreamChunk(data)
-    } catch (error) {
-      console.error('解析数据失败:', error, jsonStr)
-    }
-  }
-
-  /** 根据 chunk 类型分发给对应处理器。 */
-  private async handleStreamChunk(data: ChatStreamChunk): Promise<void> {
+  /** 向处理器喂入一个已解析的 SSE chunk，内部按 type 分发给对应子处理器。 */
+  public feed(data: ChatStreamChunk): void {
     if (!('type' in data) || typeof data.type !== 'string') {
       return
     }
@@ -264,8 +194,6 @@ export class ChatStreamProcessor implements SentenceAssemblyContext {
         return
       case 'done':
         this.onComplete(data.full_text)
-        return
-      default:
         return
     }
   }

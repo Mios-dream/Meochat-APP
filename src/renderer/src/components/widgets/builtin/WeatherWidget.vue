@@ -24,10 +24,10 @@
     <div class="weather-mascot">
       <img src="../../../assets/images/助手Q版.png" alt="Q版助手" />
     </div>
-  </div>
-  <!-- 右下角悬浮宠物爪子图标 -->
-  <div class="weather-paw">
-    <font-awesome-icon icon="fa-solid fa-paw" />
+    <!-- 右下角悬浮宠物爪子图标 -->
+    <div class="weather-paw">
+      <font-awesome-icon icon="fa-solid fa-paw" />
+    </div>
   </div>
 </template>
 
@@ -196,7 +196,6 @@ defineExpose({
   width: 100%;
   height: 90%;
   /* padding: 10px 20px; */
-  overflow: hidden;
   background: #ffffff;
   border-radius: 14dvh;
   margin-bottom: 10px;
@@ -313,8 +312,8 @@ defineExpose({
 .weather-paw {
   position: absolute;
   z-index: 2;
-  right: -8px;
-  bottom: -7px;
+  right: -10px;
+  bottom: -15px;
   width: 50px;
   height: 50px;
   transform: rotate(-30deg);

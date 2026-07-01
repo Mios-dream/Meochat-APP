@@ -1,8 +1,7 @@
 import { ipcMain, app, dialog, BrowserWindow } from 'electron'
 import { getAutoUpdater } from '../utils/appUpdater'
 import log from '../utils/logger'
-import axios from 'axios'
-import { getConfig } from '../config/configManager'
+import { request } from '@shared/api/request'
 
 const autoUpdater = getAutoUpdater()
 
@@ -96,9 +95,8 @@ function setupUpdaterIPC(): void {
   ipcMain.handle('updater:check-cloud-version', async () => {
     const currentVersion = app.getVersion()
     try {
-      const url = `${getConfig('baseUrl')}/api/health`
       // 调用云端健康检查API
-      const response = await axios.get(url)
+      const response = await request.get('/api/health')
       const cloudVersion = response.data.version
 
       // 比较前两个版本号（主版本和次版本），忽略最后的小版本

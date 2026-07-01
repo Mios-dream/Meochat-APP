@@ -1,16 +1,17 @@
-import { computed, watch } from 'vue'
+import { watch } from 'vue'
 import { MessageTips } from '../services/MessageTips'
 import { Live2DManager } from '../services/Live2dManager'
 import { AssistantManager } from '../services/assistantManager'
 import { useConfigStore } from '../stores/useConfigStore'
 import { normalizeNumber } from '@renderer/utils/MathUtils'
-import { ChatHistoryStore, type ChatHistoryApiResponse, type ChatMessage } from './ChatHistoryStore'
+import { ChatHistoryStore, type ChatMessage } from './ChatHistoryStore'
 import {
   audioBase64ToBlob,
   ChatPlaybackController,
   estimateAudioDurationMs
 } from './ChatPlaybackController'
-import { ChatStreamProcessor } from './ChatStreamProcessor'
+import { ChatStreamProcessor, type ChatStreamChunk } from './ChatStreamProcessor'
+import { request } from '@shared/api/request'
 
 /** 自动交互事件请求载荷，用于 /api/interaction/message。 */
 export interface InteractionEventPayload {
@@ -60,12 +61,6 @@ class ChatManager {
   public isChatting: boolean = false
   /** 当前交互事件的图标配置，用于在台词板末尾显示对应图标。 */
   private currentInteractionIcon?: { path: string }
-
-  /** 后端 API 基础地址，随配置中的 baseUrl 响应式变化。 */
-  private apiUrl = computed(() => {
-    const configStore = useConfigStore()
-    return configStore.config.baseUrl
-  })
 
   /** 初始化各内部模块，并监听全局音量配置变化。 */
   private constructor() {
@@ -118,19 +113,9 @@ class ChatManager {
 
   /** 从后端拉取当前助手聊天历史，并同步到本地历史缓存。 */
   public async fetchChatHistory(): Promise<ChatMessage[]> {
-    const response = await fetch(this.apiUrl.value + '/api/chat/history?only_assistant=false', {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json'
-      }
-    })
+    const response = await request.get('/api/chat/history?only_assistant=false')
 
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`)
-    }
-
-    const result = (await response.json()) as ChatHistoryApiResponse
-    return this.chatHistoryStore.syncFromApi(result)
+    return this.chatHistoryStore.syncFromApi(response.data as never)
   }
 
   /** 清空全部助手的本地聊天历史缓存。 */
@@ -193,24 +178,16 @@ class ChatManager {
       const useMotionGenerate = configStore.config.generateMotion
       this.streamProcessor.reset(useMotionGenerate)
 
-      const response = await fetch(this.apiUrl.value + '/api/chat', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
+      await request.stream<ChatStreamChunk>(
+        '/api/chat',
+        {
           msg: this.chatHistoryStore.get(),
           generation_motion: useMotionGenerate,
           is_sleep_mode: isSleepMode
-        }),
-        signal: this.abortController.signal
-      })
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
-      }
-
-      await this.streamProcessor.readStreamResponse(response)
+        },
+        (chunk) => this.streamProcessor.feed(chunk),
+        { signal: this.abortController.signal }
+      )
       this.refreshCurrentAssistantSafely()
 
       return true
@@ -245,23 +222,15 @@ class ChatManager {
       this.playbackController.setKeepSleepEyesClosed(payload.keepSleepEyes === true)
       this.abortController = new AbortController()
 
-      const response = await fetch(this.apiUrl.value + '/api/interaction/message', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
+      await request.stream<ChatStreamChunk>(
+        '/api/interaction/message',
+        {
           ...payload,
           generation_motion: useMotionGenerate
-        }),
-        signal: this.abortController.signal
-      })
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
-      }
-
-      await this.streamProcessor.readStreamResponse(response)
+        },
+        (chunk) => this.streamProcessor.feed(chunk),
+        { signal: this.abortController.signal }
+      )
       this.refreshCurrentAssistantSafely()
 
       return this.getCurrentDisplayText().trim() || null
@@ -286,22 +255,15 @@ class ChatManager {
     this.abortController = new AbortController()
 
     try {
-      const response = await fetch(this.apiUrl.value + '/api/gptsovits', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          msg: message
-        }),
-        signal: this.abortController.signal
-      })
+      const response = await request.post(
+        '/api/gptsovits',
+        { msg: message },
+        {
+          signal: this.abortController.signal
+        }
+      )
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
-      }
-
-      const result = await response.json()
+      const result = response.data
       const ttsMessage = typeof result.message === 'string' ? result.message : ''
       const ttsFile = typeof result.file === 'string' ? result.file : ''
 
