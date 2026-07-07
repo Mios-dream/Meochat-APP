@@ -42,6 +42,7 @@ import { useConfigStore } from '../stores/useConfigStore'
 import { storeToRefs } from 'pinia'
 import { InteractionSystem } from '@renderer/core/interaction/InteractionSystem'
 import { WakewordService } from '../services/WakewordService'
+import { MessageTips } from '../services/MessageTips'
 
 const configStore = useConfigStore()
 const { config } = storeToRefs(configStore)
@@ -51,7 +52,7 @@ const isLocked = ref(JSON.parse(localStorage.getItem('assistantSettings') || '{}
 // 右键菜单
 const contextMenuVisible = ref(false)
 const contextMenuStyle = ref({ top: '0px', left: '0px' })
-
+const messageTips = new MessageTips()
 // 消息是否显示
 const isTipsActive: Ref<boolean> = ref(false)
 // 当前消息
@@ -133,7 +134,7 @@ const contextMenuItems = computed(() => [
 function toggleLock(): void {
   isLocked.value = !isLocked.value
   const message = isLocked.value ? '位置已锁定' : '位置已解锁'
-  chatService.showTempMessage(message, 2000, 10)
+  messageTips.showMessage(message, 2000, 10)
   hideContextMenu()
 }
 
@@ -146,7 +147,7 @@ async function toggleQuietMode(): Promise<void> {
   const nextMode = !config.value.quietMode
   await configStore.updateConfig('quietMode', nextMode)
   const message = nextMode ? '已开启安静模式，不再自动发起聊天' : '已关闭安静模式'
-  chatService.showTempMessage(message, 2000, 10)
+  messageTips.showMessage(message, 2000, 10)
   hideContextMenu()
 }
 
@@ -354,13 +355,17 @@ function installChatBoxListener(): void {
       const isSleepMode = interactionSystem.isSleepMode()
       // 调用 ChatManager 处理消息，并等待语音/动作播放完成后再解锁输入
       await chatService.chat(data.text, isSleepMode)
-      await chatService.waitForReplyPlaybackComplete()
     } finally {
       // 发送状态更新给 ChatBox
       window.api.ipcRenderer.send('chat-box:update-status', {
         loading: false
       })
     }
+  })
+
+  // 监听来自ChatBox的取消消息
+  window.api.ipcRenderer.on('chat-box:cancel-message', () => {
+    chatService.interruptCurrentPlayback()
   })
 }
 
@@ -457,6 +462,7 @@ onUnmounted(() => {
   interactionSystem.stop()
   wakewordService.stop()
   window.api.ipcRenderer.removeAllListeners('chat-box:send-message')
+  window.api.ipcRenderer.removeAllListeners('chat-box:cancel-message')
   live2DManager.destroy()
   // 清除Tips更新定时器
   if (tipsUpdateInterval) {
@@ -485,15 +491,6 @@ watch(
       await syncWakewordState()
     } catch (error) {
       console.error('配置变更后同步唤醒词状态失败:', error)
-    }
-  }
-)
-
-watch(
-  () => config.value.desktopSpeechBoard,
-  (enabled) => {
-    if (!enabled) {
-      chatService.hideMessage()
     }
   }
 )

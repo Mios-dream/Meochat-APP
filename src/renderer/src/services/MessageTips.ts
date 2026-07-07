@@ -85,7 +85,7 @@ class MessageTips {
     const segments = this.splitByBracketDim(text)
     const visibleSegments = this.fitSegmentsToSingleView(segments, maxTipHeight)
 
-    const allText = visibleSegments.map(s => s.text).join('')
+    const allText = visibleSegments.map((s) => s.text).join('')
     const prefixLength = this.getCommonPrefixLength(this.lastRenderedText, allText)
     const [staticSegments, appendedSegments] = this.splitSegmentsByCharOffset(
       visibleSegments,
@@ -94,12 +94,9 @@ class MessageTips {
 
     const staticChars = this.segmentsToCharData(staticSegments, 0, 0)
     const totalNewChars = appendedSegments.reduce((s, seg) => s + seg.text.length, 0)
-    const delayPerChar = totalNewChars > 0 ? Math.max(250, Math.floor(fadeDuration)) / totalNewChars : 0
-    const newChars = this.segmentsToCharData(
-      appendedSegments,
-      delayPerChar,
-      staticChars.length
-    )
+    const delayPerChar =
+      totalNewChars > 0 ? Math.max(250, Math.floor(fadeDuration)) / totalNewChars : 0
+    const newChars = this.segmentsToCharData(appendedSegments, delayPerChar, staticChars.length)
 
     return [...staticChars, ...newChars]
   }
@@ -233,10 +230,7 @@ class MessageTips {
     return [staticSegments, appendedSegments]
   }
 
-  private fitSegmentsToSingleView(
-    segments: SegmentData[],
-    maxTipHeight: number
-  ): SegmentData[] {
+  private fitSegmentsToSingleView(segments: SegmentData[], maxTipHeight: number): SegmentData[] {
     if (segments.length === 0) {
       return segments
     }
@@ -272,9 +266,7 @@ class MessageTips {
     return this.compressChars(chars.slice(bestStart))
   }
 
-  private expandSegmentsToChars(
-    segments: SegmentData[]
-  ): Array<{ char: string; dim: boolean }> {
+  private expandSegmentsToChars(segments: SegmentData[]): Array<{ char: string; dim: boolean }> {
     const chars: Array<{ char: string; dim: boolean }> = []
     for (const segment of segments) {
       for (const char of segment.text) {
@@ -284,9 +276,7 @@ class MessageTips {
     return chars
   }
 
-  private compressChars(
-    chars: Array<{ char: string; dim: boolean }>
-  ): SegmentData[] {
+  private compressChars(chars: Array<{ char: string; dim: boolean }>): SegmentData[] {
     const segments: SegmentData[] = []
     for (const item of chars) {
       const last = segments[segments.length - 1]

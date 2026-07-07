@@ -59,6 +59,29 @@ const globalAPI = {
     ipcRenderer.on('assistant:data-updated', listener)
     return () => ipcRenderer.removeListener('assistant:data-updated', listener)
   },
+  // ===== WebSocket API（主进程 WS 桥接） =====
+  ws: {
+    /** 向服务端发送消息 */
+    send: (msg) => ipcRenderer.invoke('ws:send', msg),
+    /** 请求建立 WS 连接 */
+    connect: () => ipcRenderer.invoke('ws:connect'),
+    /** 请求断开 WS 连接 */
+    disconnect: () => ipcRenderer.invoke('ws:disconnect'),
+    /** 查询当前连接状态 */
+    getStatus: () => ipcRenderer.invoke('ws:status'),
+    /** 监听服务端推送消息 */
+    onMessage: (callback) => {
+      const listener = (_event, msg): void => callback(msg)
+      ipcRenderer.on('ws:message', listener)
+      return () => ipcRenderer.removeListener('ws:message', listener)
+    },
+    /** 监听连接状态变更 */
+    onStatusChange: (callback) => {
+      const listener = (_event, connected): void => callback(connected)
+      ipcRenderer.on('ws:status-change', listener)
+      return () => ipcRenderer.removeListener('ws:status-change', listener)
+    }
+  },
 
   // ===== 日志 =====
   log: {

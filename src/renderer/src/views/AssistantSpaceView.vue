@@ -394,7 +394,6 @@ async function sendOnboardingWelcomeIfNeeded(): Promise<void> {
   const fromRoute = route.query.welcome === 'true'
   if (fromRoute) {
     await chatService.sendMessage('您好，阁下！我是澪，您的专属助手，将满足您的所有愿望。')
-    await chatService.waitForReplyPlaybackComplete()
 
     // 欢迎语只需要触发一次，触发后移除路由标记，避免切换 tab 重复触发
     const restQuery = { ...route.query }
@@ -471,7 +470,6 @@ onMounted(async () => {
         const isSleepMode = interactionSystem.isSleepMode()
         // 调用 ChatManager 处理消息，并等待语音/动作播放完成后再解锁输入
         await chatService.chat(data.text, isSleepMode)
-        await chatService.waitForReplyPlaybackComplete()
       } finally {
         // 发送状态更新给 ChatBox
         window.api.ipcRenderer.send('chat-box:update-status', {
@@ -479,11 +477,17 @@ onMounted(async () => {
         })
       }
     })
+
+    // 监听来自ChatBox的取消消息
+    window.api.ipcRenderer.on('chat-box:cancel-message', () => {
+      chatService.interruptCurrentPlayback()
+    })
   })
 })
 
 onUnmounted(() => {
   window.api.ipcRenderer.removeAllListeners('chat-box:send-message')
+  window.api.ipcRenderer.removeAllListeners('chat-box:cancel-message')
 
   const tabs = document.getElementById('tabs-container')
   tabs!.style.opacity = '1'
@@ -543,15 +547,6 @@ watch(
   { immediate: true }
 )
 
-watch(
-  () => config.value.appSpeechBoard,
-  (enabled) => {
-    if (!enabled) {
-      chatService.hideMessage()
-    }
-  }
-)
-
 /**
  * 更新配置项
  * @param key - 配置项键
@@ -587,7 +582,7 @@ async function handleDiaryClick(): Promise<void> {
   isDiaryPrompting.value = true
   try {
     if (chatService.getReplyStatus()) {
-      await chatService.waitForReplyPlaybackComplete()
+      return
     }
 
     await chatService.interactionChat({
@@ -597,8 +592,6 @@ async function handleDiaryClick(): Promise<void> {
       context: {},
       generation_motion: false
     })
-
-    await chatService.waitForReplyPlaybackComplete()
   } catch (error) {
     console.error('日记访问提示失败:', error)
   } finally {

@@ -11,14 +11,17 @@
     />
     <div id="role-image"></div>
 
-    <button v-if="inputValue.trim()" id="message-icon" :disabled="loading" @click="handleSubmit">
-      <font-awesome-icon :icon="loading ? 'spinner' : 'paper-plane'" :spin="loading" />
+    <!-- 加载中：显示取消按钮 -->
+    <button v-if="loading" id="cancel-icon" @click="handleCancel">
+      <font-awesome-icon icon="stop" />
     </button>
-    <button v-else id="voice-icon" :disabled="loading" @click="handleVoiceInput">
-      <font-awesome-icon
-        :icon="loading ? 'spinner' : isRecording ? 'stop' : 'microphone'"
-        :spin="loading"
-      />
+    <!-- 有输入内容且非加载中：显示发送按钮 -->
+    <button v-else-if="inputValue.trim()" id="message-icon" @click="handleSubmit">
+      <font-awesome-icon icon="paper-plane" />
+    </button>
+    <!-- 无输入内容且非加载中：显示语音按钮 -->
+    <button v-else id="voice-icon" @click="handleVoiceInput">
+      <font-awesome-icon :icon="isRecording ? 'stop' : 'microphone'" />
     </button>
   </div>
 </template>
@@ -110,8 +113,16 @@ async function handleSubmit(): Promise<void> {
 
   // 2️⃣ 获取输入内容并清空输入框
   const message = inputValue.value.trim()
+  inputValue.value = '' // 立即清空输入框
   loading.value = true // 设置加载状态
   window.api.ipcRenderer.send('chat-box:send-message', { text: message })
+}
+
+/**
+ * 处理取消当前对话
+ */
+function handleCancel(): void {
+  window.api.ipcRenderer.send('chat-box:cancel-message', { text: '用户取消' })
 }
 
 async function handleVoiceInput(): Promise<void> {
@@ -242,7 +253,8 @@ onUnmounted(() => {
 }
 
 #message-icon,
-#voice-icon {
+#voice-icon,
+#cancel-icon {
   color: white;
   background-color: #ffc0d6;
   width: 50px;
@@ -260,11 +272,15 @@ onUnmounted(() => {
   transition: all 0.3s ease;
   font-size: 16px;
 }
+#message-icon:hover:not(:disabled),
+#voice-icon:hover:not(:disabled),
+#cancel-icon:hover {
+  transform: translateY(-50%) scale(1.05);
+}
 
 #message-icon:hover:not(:disabled),
 #voice-icon:hover:not(:disabled) {
   background-color: #ffb0c6;
-  transform: translateY(-50%) scale(1.05);
 }
 
 #message-icon:disabled,

@@ -728,13 +728,6 @@ export class Live2DManager {
     }
 
     const internalModel = this.model.internalModel as unknown as Record<string, unknown>
-    console.log('[Live2D] setEyeBlinkEnabled:', {
-      enabled,
-      hasEyeBlink: !!internalModel.eyeBlink,
-      eyeBlinkType: typeof internalModel.eyeBlink,
-      eyeBlinkKeys: internalModel.eyeBlink ? Object.keys(internalModel.eyeBlink as object) : [],
-      hasOriginalRef: !!this.originalEyeBlinkUpdate
-    })
 
     const eyeBlink = internalModel.eyeBlink as
       | { updateParameters?: (...args: unknown[]) => void }

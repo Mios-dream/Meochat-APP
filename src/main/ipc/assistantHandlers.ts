@@ -102,6 +102,12 @@ function setupChatBoxIPC(): void {
     })
   })
 
+  ipcMain.on('chat-box:cancel-message', () => {
+    BrowserWindow.getAllWindows().forEach((win) => {
+      win.webContents.send('chat-box:cancel-message')
+    })
+  })
+
   ipcMain.on('chat-box:update-status', (_event, data) => {
     BrowserWindow.getAllWindows().forEach((win) => {
       win.webContents.send('chat-box:status-updated', data)

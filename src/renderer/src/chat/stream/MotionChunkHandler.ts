@@ -1,16 +1,13 @@
-import type {
-  ChatMotionChunk,
-  Live2DMotionStep,
-  SentenceAssemblyContext
-} from '../ChatStreamProcessor'
+import type { ChatMotionMessage, ChatMotionItem } from '@shared/types/ws'
+import type { Live2DMotionStep, SentenceAssemblyContext } from '../ChatStreamProcessor'
 
 /**
- * 动作 chunk 处理器。
+ * 动作消息处理器。
  *
  * 负责清洗后端 Live2D 参数数据，支持新旧两种接口格式：
- * - 旧方案：每个 motion 提供参数关键帧（parameters + duration），播放层手动过渡。
- * - 新方案：每个 motion 提供完整参数曲线（curves + duration + fps），播放层逐帧播放。
- * 两种方案互不干扰，旧方案代码保留备用。
+ * - 新曲线方案（motion.curves 存在）：透传完整参数时间序列给播放层逐帧播放。
+ * - 旧关键帧方案（motion.parameters 存在）：保留备用，映射参数 ID 到目标值。
+ * 两种方案可共存于同一 sequence 中。
  */
 export class MotionChunkHandler {
   public constructor(private readonly context: SentenceAssemblyContext) {}
@@ -18,31 +15,30 @@ export class MotionChunkHandler {
   /**
    * 规范化并合并动作帧到对应 sentence_id 的同步状态。
    * 根据后端返回数据自动选择旧关键帧方案或新曲线方案。
+   * @param data - chat:motion 消息对象
    */
-  public handle(data: ChatMotionChunk): void {
-    const motionSequence = normalizeMotionFrame(data)
+  public handle(data: ChatMotionMessage): void {
+    const motionSequence = normalizeMotionFrame(data.motions)
     const state = this.context.getSentenceState(data.sentence_id)
     state.motionSequence = motionSequence
-    state.message = data.source_text
     state.motionChunkState = true
     this.context.setSentenceState(data.sentence_id, state)
   }
 }
 
 /**
- * 将后端动作帧规范化为播放层可直接消费的 Live2DMotionStep 数组。
- * 自动检测数据格式并选择对应处理逻辑：
- * - 包含 curves 字段 → 使用新曲线方案
- * - 包含 parameters 字段 → 使用旧关键帧方案（保留备用）
+ * 将动作数据规范化为播放层可直接消费的 Live2DMotionStep 数组。
+ *
+ * @param motions - chat:motion 消息中的 motions 数组
  */
-function normalizeMotionFrame(data: ChatMotionChunk): Live2DMotionStep[] {
-  if (!Array.isArray(data.motions) || data.motions.length === 0) {
+function normalizeMotionFrame(motions: ChatMotionItem[]): Live2DMotionStep[] {
+  if (!Array.isArray(motions) || motions.length === 0) {
     return []
   }
 
   const normalized: Live2DMotionStep[] = []
 
-  for (const motion of data.motions) {
+  for (const motion of motions) {
     if (!motion) continue
 
     // 新曲线方案：motion 包含 curves 字段
@@ -70,12 +66,7 @@ function normalizeMotionFrame(data: ChatMotionChunk): Live2DMotionStep[] {
  * 规范化新曲线方案的动作数据。
  * 直接透传 curves 数据和 fps 给播放层，由播放层负责帧率匹配和插值。
  */
-function normalizeCurveMotion(motion: {
-  duration?: number
-  curves?: Record<string, number[]>
-  fps?: number
-  expression?: string[]
-}): Live2DMotionStep | null {
+function normalizeCurveMotion(motion: ChatMotionItem): Live2DMotionStep | null {
   const curves = motion.curves
   if (!curves) return null
 
@@ -119,11 +110,7 @@ function normalizeCurveMotion(motion: {
  * 规范化旧关键帧方案的动作数据（保留备用）。
  * 将 parameters 映射转换为播放层可消费的 Live2DMotionStep。
  */
-function normalizeKeyframeMotion(motion: {
-  duration?: number
-  parameters?: Record<string, number>
-  expression?: string[]
-}): Live2DMotionStep | null {
+function normalizeKeyframeMotion(motion: ChatMotionItem): Live2DMotionStep | null {
   if (!motion.parameters) return null
 
   const params: Record<string, number> = {}
@@ -142,7 +129,11 @@ function normalizeKeyframeMotion(motion: {
   }
 }
 
-/** 将动作持续时间限制在安全范围内，避免过短闪烁或过长卡住后续句子。 */
+/**
+ * 将动作持续时间限制在安全范围内，避免过短闪烁或过长卡住后续句子。
+ *
+ * @param durationMs - 动作持续时间，单位毫秒
+ */
 function clampMotionDuration(durationMs?: number): number {
   const defaultDuration = 700
   if (typeof durationMs !== 'number' || !Number.isFinite(durationMs)) {

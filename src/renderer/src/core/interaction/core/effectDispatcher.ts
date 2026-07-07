@@ -71,6 +71,5 @@ export class EffectDispatcher {
     effect: Extract<InteractionEffect, { type: 'chat' }>
   ): Promise<void> {
     await this.chatService.interactionChat(effect.payload)
-    await this.chatService.waitForReplyPlaybackComplete()
   }
 }

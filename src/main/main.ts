@@ -11,7 +11,8 @@ import {
   setupOnboardingIPC,
   setupSystemEventIPC,
   setupLocationIPC,
-  setupWeatherIPC
+  setupWeatherIPC,
+  setupWsIPC
 } from './ipc'
 import { setupWidgetIPC } from './ipc/widgetHandlers'
 import { setupConfigIPC } from './config/configManager'
@@ -48,6 +49,8 @@ try {
   setupLocationIPC()
   // 设置天气IPC
   setupWeatherIPC()
+  // 设置 WebSocket IPC
+  setupWsIPC()
   // 设置小组件IPC
   setupWidgetIPC()
   // 注册文件协议
