@@ -6,9 +6,13 @@ import type { ServerMessage, ClientMessage } from '@shared/types/ws'
 /**
  * 断线重连配置常量。
  */
-const RECONNECT_MAX_RETRIES = 5
+// 最大重试次数, -1 表示无限重试
+const RECONNECT_MAX_RETRIES = -1
+// 初始重连延迟（毫秒），每次重连失败后按指数增长，最大不超过 30 秒
 const RECONNECT_BASE_DELAY = 1000
+// 心跳间隔（毫秒），用于保持连接活跃
 const HEARTBEAT_INTERVAL_MS = 60_000
+// WebSocket 连接路径
 const WS_PATH = '/api/chat_ws'
 
 /**
@@ -123,9 +127,9 @@ export class WsService {
       const delay = Math.min(RECONNECT_BASE_DELAY * Math.pow(2, this.retryCount), 30_000)
       this.retryCount++
 
-      if (this.retryCount <= RECONNECT_MAX_RETRIES) {
+      if (RECONNECT_MAX_RETRIES === -1 || this.retryCount <= RECONNECT_MAX_RETRIES) {
         console.log(
-          `[WsService] ${delay}ms 后尝试重连 (${this.retryCount}/${RECONNECT_MAX_RETRIES})`
+          `[WsService] ${delay}ms 后尝试重连 (${this.retryCount}/${RECONNECT_MAX_RETRIES === -1 ? '∞' : RECONNECT_MAX_RETRIES})`
         )
         setTimeout(() => this.connect(), delay)
       } else {

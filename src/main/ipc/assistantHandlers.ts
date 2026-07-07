@@ -119,6 +119,13 @@ function setupChatBoxIPC(): void {
       win.webContents.send('chat-box:wakeword-detected', data)
     })
   })
+
+  // 工具状态广播：Assistant 窗口 → 主进程 → ChatBox 窗口
+  ipcMain.on('chat-box:update-tool-status', (_event, data) => {
+    BrowserWindow.getAllWindows().forEach((win) => {
+      win.webContents.send('chat-box:tool-status-updated', data)
+    })
+  })
 }
 
 function setupAssistantIPC(): void {

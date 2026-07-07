@@ -13,7 +13,12 @@ import { ChatStreamProcessor } from './ChatStreamProcessor'
 import { request } from '@shared/api/request'
 import { ChatWebSocketManager } from '@renderer/composables/useChatWebSocket'
 import { ToolSystem } from '@renderer/composables/useToolSystem'
-import type { ChatDoneMessage, ErrorMessage } from '@shared/types/ws'
+import type {
+  ChatDoneMessage,
+  ErrorMessage,
+  ToolCallEvent,
+  ToolResultEvent
+} from '@shared/types/ws'
 
 /** 自动交互事件请求载荷，用于 /api/interaction/message（保留 HTTP 方式）。 */
 export interface InteractionEventPayload {
@@ -36,6 +41,28 @@ export interface InteractionEventPayload {
     /** 本地图片路径，如 'icon_bell.png'。 */
     path: string
   }
+}
+
+/**
+ * 工具状态变更数据，由 ChatManager 通过回调通知视图组件。
+ *
+ * 视图组件（AssistantView）接收后通过 IPC 广播给 ChatBox 窗口以展示当前工具调用状态。
+ */
+export interface ToolStatusData {
+  /** 是否有活跃的工具调用。 */
+  active: boolean
+  /** 当前活跃的工具调用列表。 */
+  tools: ToolStatusItem[]
+}
+
+/** 单个工具调用的状态信息。 */
+export interface ToolStatusItem {
+  /** 工具调用唯一 ID。 */
+  call_id: string
+  /** 被调用的工具名称。 */
+  tool_name: string
+  /** 工具调用已耗时，单位秒。 */
+  elapsed: number
 }
 
 /**
@@ -71,6 +98,10 @@ class ChatManager {
   private interactionDoneResolve: ((value: string | null) => void) | null = null
   /** 当前交互请求的 reject 函数，chat:error 或中断时调用。 */
   private interactionDoneReject: ((reason: unknown) => void) | null = null
+  /** 活跃的工具调用映射，key = call_id，value = 工具名和开始时间。 */
+  private activeToolCalls: Map<string, { tool_name: string; startTime: number }> = new Map()
+  /** 工具状态变更回调集合。视图组件（AssistantView）订阅后通过 IPC 通知 ChatBox 窗口。 */
+  private toolStatusCallbacks: Array<(data: ToolStatusData) => void> = []
 
   /** 初始化各内部模块，建立 WS 连接并注册消息监听。 */
   private constructor() {
@@ -103,9 +134,14 @@ class ChatManager {
     // 建立 WebSocket 连接并注册 IPC 监听器，使渲染进程能接收后端推送的消息
     this.ws.connect()
 
-    // 整段回复播放完毕后自动隐藏台词板
+    // 整段回复播放完毕后自动隐藏台词板。
+    // 若播放结束时有活跃的工具调用（耗时工具等待中），同步重置累积显示文本，
+    // 避免工具返回后台词板重新显示时从头重复播放已展示过的旧文本。
     this.playbackController.onSpeechEnd(() => {
       this.messageTips.hideMessage()
+      if (this.activeToolCalls.size > 0) {
+        this.playbackController.resetDisplayText()
+      }
     })
 
     this.registerClientTools()
@@ -259,6 +295,9 @@ class ChatManager {
 
     this.isChatting = true
 
+    // 清除上一轮交互残留的台词板显示内容，防止文本堆积
+    this.interruptCurrentPlayback()
+
     this.currentInteractionIcon = payload.icon
 
     // 清理上一轮未 resolve/reject 的 Promise
@@ -353,6 +392,7 @@ class ChatManager {
     this.streamProcessor.clearPending()
     this.playbackController.resetDisplayText()
     this.currentInteractionIcon = undefined
+    this.clearActiveToolCalls()
 
     this.ws.send({ type: 'chat:cancel' })
 
@@ -395,11 +435,13 @@ class ChatManager {
 
     this.ws.on('chat:done', (msg: ChatDoneMessage) => {
       this.streamProcessor.feed(msg)
+      this.clearActiveToolCalls()
       this.resolveChatDonePromise(msg.full_text)
     })
 
     this.ws.on('error', (msg: ErrorMessage) => {
       this.streamProcessor.feed(msg)
+      this.clearActiveToolCalls()
       if (this.chatDoneReject) {
         this.chatDoneReject(new Error(msg.data))
       }
@@ -408,13 +450,15 @@ class ChatManager {
       }
     })
 
-    // ---- LLM 工具调用事件（仅用于 UI 展示） ----
-    this.ws.on('tool_call', (msg) => {
+    // ---- LLM 工具调用事件（聊天框上显示当前正在调用的工具） ----
+    this.ws.on('tool_call', (msg: ToolCallEvent) => {
       console.log('[ToolCall]', msg.tool_name, msg.arguments)
+      this.addActiveToolCall(msg.call_id, msg.tool_name)
     })
 
-    this.ws.on('tool_result', (msg) => {
+    this.ws.on('tool_result', (msg: ToolResultEvent) => {
       console.log('[ToolResult]', msg.tool_name, msg.success, `${msg.duration_ms}ms`)
+      this.removeActiveToolCall(msg.tool_call_id)
     })
 
     // ---- WS 工具协议 ----
@@ -489,6 +533,106 @@ class ChatManager {
         role: 'assistant',
         content: textToSave
       })
+    }
+  }
+
+  /**
+   * 将新工具调用记录到活跃列表，并刷新聊天框上的工具状态显示。
+   *
+   * @param callId - 工具调用唯一 ID
+   * @param toolName - 被调用的工具名称
+   */
+  private addActiveToolCall(callId: string, toolName: string): void {
+    this.activeToolCalls.set(callId, { tool_name: toolName, startTime: Date.now() })
+    this.updateToolStatusDisplay()
+  }
+
+  /**
+   * 从活跃列表中移除已完成的工具调用，并刷新或清除聊天框上的工具状态显示。
+   *
+   * @param callId - 工具调用唯一 ID（对应 ToolResultEvent.tool_call_id）
+   */
+  private removeActiveToolCall(callId: string): void {
+    this.activeToolCalls.delete(callId)
+    this.updateToolStatusDisplay()
+  }
+
+  /**
+   * 根据当前活跃工具调用列表刷新聊天框上的工具状态文本。
+   *
+   * 无活跃工具时清除显示；有活跃工具时格式化名称列表并通过 MessageTips 展示。
+   * 优先级设为 1，低于聊天文本（999），确保工具状态不会覆盖正在播放的助手回复。
+   */
+  private updateToolStatusDisplay(): void {
+    if (this.activeToolCalls.size === 0) {
+      this.messageTips.showMessage('', 0, 0, 0)
+      this.emitToolStatusChange()
+      return
+    }
+
+    const names: string[] = []
+    const now = Date.now()
+    for (const info of this.activeToolCalls.values()) {
+      const elapsed = ((now - info.startTime) / 1000).toFixed(1)
+      names.push(`${info.tool_name} (${elapsed}s)`)
+    }
+
+    this.messageTips.showMessage(`正在调用工具: ${names.join(', ')}`, -1, 1, 0)
+    this.emitToolStatusChange()
+  }
+
+  /**
+   * 清空所有活跃工具调用记录并隐藏工具状态显示。
+   *
+   * 在 chat:done、chat:error 及用户中断时调用。
+   */
+  private clearActiveToolCalls(): void {
+    this.activeToolCalls.clear()
+    this.messageTips.showMessage('', 0, 0, 0)
+    this.emitToolStatusChange()
+  }
+
+  /**
+   * 注册工具状态变更监听器。
+   *
+   * 视图组件（如 AssistantView）通过此方法订阅工具状态变化，
+   * 再通过 IPC 广播给 ChatBox 窗口以展示当前工具调用状态。
+   *
+   * @param callback - 工具状态变更时触发的回调，接收完整的 ToolStatusData
+   * @returns 取消注册的函数
+   */
+  public onToolStatusChange(callback: (data: ToolStatusData) => void): () => void {
+    this.toolStatusCallbacks.push(callback)
+    return () => {
+      const idx = this.toolStatusCallbacks.indexOf(callback)
+      if (idx !== -1) this.toolStatusCallbacks.splice(idx, 1)
+    }
+  }
+
+  /**
+   * 向所有已注册的工具状态回调派发当前工具调用状态。
+   *
+   * 在 addActiveToolCall、removeActiveToolCall、clearActiveToolCalls 后自动调用。
+   */
+  private emitToolStatusChange(): void {
+    const data: ToolStatusData = {
+      active: this.activeToolCalls.size > 0,
+      tools: []
+    }
+    const now = Date.now()
+    for (const [callId, info] of this.activeToolCalls) {
+      data.tools.push({
+        call_id: callId,
+        tool_name: info.tool_name,
+        elapsed: (now - info.startTime) / 1000
+      })
+    }
+    for (const cb of this.toolStatusCallbacks) {
+      try {
+        cb(data)
+      } catch (error) {
+        console.error('[ChatManager] 工具状态回调异常:', error)
+      }
     }
   }
 }

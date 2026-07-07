@@ -367,6 +367,11 @@ function installChatBoxListener(): void {
   window.api.ipcRenderer.on('chat-box:cancel-message', () => {
     chatService.interruptCurrentPlayback()
   })
+
+  // 订阅工具状态变更，通过 IPC 广播给 ChatBox 窗口以展示当前工具调用状态
+  chatService.onToolStatusChange((data) => {
+    window.api.ipcRenderer.send('chat-box:update-tool-status', data)
+  })
 }
 
 /**

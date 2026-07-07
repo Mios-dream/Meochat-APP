@@ -1,5 +1,16 @@
 <template>
   <div id="chatBox" :class="{ 'slide-up': isVisible }">
+    <!-- 工具调用状态栏：显示当前 LLM 正在调用的工具 -->
+    <Transition name="tool-status-fade">
+      <div v-if="toolStatus.active" id="toolStatusBar">
+        <!-- <div v-if="true" id="toolStatusBar"> -->
+        <span class="tool-status-dot" />
+        <span class="tool-status-text">
+          {{ formatToolStatusText }}
+        </span>
+      </div>
+    </Transition>
+
     <input
       id="chatBoxInput"
       ref="inputRef"
@@ -31,6 +42,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { MicrophoneManager } from '../services/MicrophoneManager'
 import { useConfigStore } from '../stores/useConfigStore'
 import { storeToRefs } from 'pinia'
+import type { ToolStatusData } from '../chat/ChatManager'
 
 const configStore = useConfigStore()
 const { config } = storeToRefs(configStore)
@@ -46,6 +58,22 @@ const inputValue = ref('')
 const loading = ref(false)
 // 录音状态
 const isRecording = ref(false)
+// 工具调用状态（由 Assistant 窗口通过 IPC 广播）
+const toolStatus = ref<ToolStatusData>({ active: false, tools: [] })
+/** 本地计时器：自最近一次 IPC 更新后累计的秒数，用于驱动耗时文本实时刷新。 */
+const elapsedTick = ref(0)
+/** 计时器句柄，工具不再活跃时清理。 */
+let elapsedTimer: ReturnType<typeof setInterval> | null = null
+
+// 工具状态文本格式化（elapsedTick 变化时自动重新计算）
+const formatToolStatusText = computed(() => {
+  if (toolStatus.value.tools.length === 0) return ''
+  const names = toolStatus.value.tools.map((t) => {
+    const totalElapsed = t.elapsed + elapsedTick.value
+    return `${t.tool_name} (${totalElapsed.toFixed(1)}s)`
+  })
+  return `正在调用工具: ${names.join(', ')}`
+})
 const voiceIdleTimeoutMs = 10000
 let voiceIdleTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -187,12 +215,33 @@ onMounted(() => {
     loading.value = true // 设置加载状态
     window.api.ipcRenderer.send('chat-box:send-message', { text: wakeword })
   })
+  // 监听工具状态更新事件（由 Assistant 窗口通过 IPC 广播）
+  window.api.ipcRenderer.on('chat-box:tool-status-updated', (_, data: ToolStatusData) => {
+    toolStatus.value = data
+    elapsedTick.value = 0
+
+    // 根据活跃状态启停本地计时器，驱动耗时文本每秒刷新
+    if (elapsedTimer) {
+      clearInterval(elapsedTimer)
+      elapsedTimer = null
+    }
+    if (data.active) {
+      elapsedTimer = setInterval(() => {
+        elapsedTick.value++
+      }, 1000)
+    }
+  })
 })
 
 onUnmounted(() => {
   // 清理事件监听
   window.api.ipcRenderer.removeAllListeners('chat-box:status-updated')
   window.api.ipcRenderer.removeAllListeners('chat-box:wakeword-detected')
+  window.api.ipcRenderer.removeAllListeners('chat-box:tool-status-updated')
+  if (elapsedTimer) {
+    clearInterval(elapsedTimer)
+    elapsedTimer = null
+  }
   clearVoiceIdleTimer()
   // 停止录音
   micManager.stopRecording()
@@ -287,5 +336,68 @@ onUnmounted(() => {
 #voice-icon:disabled {
   cursor: not-allowed;
   opacity: 0.6;
+}
+
+/* ───── 工具调用状态栏 ───── */
+#toolStatusBar {
+  position: absolute;
+  top: -35px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  width: 80%;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 20px;
+  background: rgba(255, 192, 214, 0.15);
+  border: 1px solid rgba(255, 192, 214, 0.4);
+  border-radius: 20px 20px 0px 0px;
+  font-size: 13px;
+  color: #c06a8a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  backdrop-filter: blur(4px);
+  z-index: -1;
+}
+
+.tool-status-dot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ffa0c0;
+  animation: tool-dot-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes tool-dot-pulse {
+  0%,
+  100% {
+    opacity: 0.4;
+    transform: scale(0.8);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.2);
+  }
+}
+
+.tool-status-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 工具状态栏出现/消失过渡 */
+.tool-status-fade-enter-active,
+.tool-status-fade-leave-active {
+  transition: all 0.3s ease;
+}
+
+.tool-status-fade-enter-from,
+.tool-status-fade-leave-to {
+  opacity: 0;
+  transform: translateY(-8px);
 }
 </style>

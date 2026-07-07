@@ -13,7 +13,7 @@ const SLEEP_TIME = { startHour: 22, endHour: 7 }
 const SLEEP_CHECK_INTERVAL = 10 * 1000
 /** 梦话触发间隔配置 (毫秒) */
 // const DREAM_TALK_INTERVAL = { min: 10 * 60 * 1000, max: 30 * 60 * 1000 }
-const DREAM_TALK_INTERVAL = { min: 60 * 1000, max: 5 * 60 * 1000 }
+const DREAM_TALK_INTERVAL = { min: 3 * 60 * 1000, max: 6 * 60 * 1000 }
 
 /**
  * 睡眠事件模块
