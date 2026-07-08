@@ -8,6 +8,12 @@ contextBridge.exposeInMainWorld('api', {
   startDrag: () => ipcRenderer.send('assistant:start-drag'),
   setIgnoreMouse: (ignore) => ipcRenderer.send('assistant:set-ignore-mouse', ignore),
 
+  // ===== 悬浮设置窗口 =====
+  /** 打开桌宠助手悬浮设置窗口 */
+  openAssistantSettings: () => ipcRenderer.send('assistantSettings:open'),
+  /** 关闭桌宠助手悬浮设置窗口 */
+  closeAssistantSettings: () => ipcRenderer.send('assistantSettings:close'),
+
   // 助手数据
   loadAssistantData: () => ipcRenderer.invoke('assistant:load-data'),
   getCurrentAssistant: () => ipcRenderer.invoke('assistant:get-current'),

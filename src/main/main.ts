@@ -22,6 +22,8 @@ import { startAutoService } from './services/autoService'
 import { registerFileProtocol, handleFileProtocol } from './protocol/fileProtocol'
 import { KernelManager } from './services/kernelManager'
 import { WidgetService } from './services/widgetService'
+import { setupAssistantSettingsIPC } from './ipc/assistantSettingsHandlers'
+import { dispatchCenter } from './dispatch/DispatchCenter'
 import log from './utils/logger'
 
 try {
@@ -53,6 +55,10 @@ try {
   setupWsIPC()
   // 设置小组件IPC
   setupWidgetIPC()
+  // 初始化统一调度中心
+  dispatchCenter.setupIPC()
+  // 设置桌宠悬浮设置窗口 IPC
+  setupAssistantSettingsIPC()
   // 注册文件协议
   registerFileProtocol()
 } catch (error) {

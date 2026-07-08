@@ -71,6 +71,8 @@ const wakewordService = WakewordService.getInstance()
 let tipsUpdateInterval: ReturnType<typeof setTimeout> | null = null
 // 当前已激活的助手名称，用于过滤重复的助手切换事件，避免睡眠模式等状态被意外重置
 let currentAssistantName = ''
+// 窗口 resize 防抖定时器，用于在窗口尺寸变化后重新居中模型
+let resizeDebounceTimer: ReturnType<typeof setTimeout> | null = null
 
 /**
  * 注册由事件系统驱动的 Live2D 表现副作用。
@@ -139,7 +141,7 @@ function toggleLock(): void {
 }
 
 function openSettings(): void {
-  window.api.maximizeApp()
+  window.api.openAssistantSettings?.()
   hideContextMenu()
 }
 
@@ -410,6 +412,22 @@ function installTipsListeners(): void {
   })
 }
 
+/**
+ * 窗口 resize 事件处理：主进程调整窗口尺寸后，重新居中 Live2D 模型。
+ * 使用防抖确保 PixiJS ResizePlugin 先完成内部 canvas resize，
+ * 再基于新的渲染器尺寸重新计算模型位置。
+ */
+function handleWindowResize(): void {
+  if (resizeDebounceTimer) {
+    clearTimeout(resizeDebounceTimer)
+  }
+  resizeDebounceTimer = setTimeout(() => {
+    requestAnimationFrame(() => {
+      live2DManager.resetModelTransform()
+    })
+  }, 200)
+}
+
 onMounted(async () => {
   // 初始化模型，只有成功加载模型后才启用服务
   initAssistantModel().then(async (modelLoaded) => {
@@ -426,6 +444,8 @@ onMounted(async () => {
         registerWakewordService()
         installChatBoxListener()
         installTipsListeners()
+        // 监听窗口 resize，在尺寸变化后重新居中模型
+        window.addEventListener('resize', handleWindowResize)
         syncWakewordState()
       } catch (error) {
         console.error('同步唤醒词状态失败:', error)
@@ -466,6 +486,11 @@ onMounted(async () => {
 onUnmounted(() => {
   interactionSystem.stop()
   wakewordService.stop()
+  window.removeEventListener('resize', handleWindowResize)
+  if (resizeDebounceTimer) {
+    clearTimeout(resizeDebounceTimer)
+    resizeDebounceTimer = null
+  }
   window.api.ipcRenderer.removeAllListeners('chat-box:send-message')
   window.api.ipcRenderer.removeAllListeners('chat-box:cancel-message')
   live2DManager.destroy()

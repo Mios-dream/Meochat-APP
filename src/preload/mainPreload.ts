@@ -88,6 +88,9 @@ contextBridge.exposeInMainWorld('api', {
   /** 加载助手数据（初始化） */
   loadAssistantData: () => ipcRenderer.invoke('assistant:load-data'),
 
+  /** 获取所有助手列表（从主进程内存直接读取） */
+  getAllAssistants: () => ipcRenderer.invoke('assistant:get-all'),
+
   /** 注册聊天框快捷键 */
   registerChatShortcut: (shortcut: string) =>
     ipcRenderer.invoke('assistant:register-chat-shortcut', shortcut),

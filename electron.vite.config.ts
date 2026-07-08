@@ -28,7 +28,8 @@ export default defineConfig({
           sharePreload: resolve(__dirname, 'src/preload/sharePreload.ts'),
           widgetPreload: resolve(__dirname, 'src/preload/widgetPreload.ts'),
           chatBoxPreload: resolve(__dirname, 'src/preload/chatBoxPreload.ts'),
-          tipsPreload: resolve(__dirname, 'src/preload/tipsPreload.ts')
+          tipsPreload: resolve(__dirname, 'src/preload/tipsPreload.ts'),
+          assistantSettingsPreload: resolve(__dirname, 'src/preload/assistantSettingsPreload.ts')
         }
       }
     }
@@ -50,7 +51,8 @@ export default defineConfig({
           widget: resolve(__dirname, 'src/renderer/widget.html'),
           assistant: resolve(__dirname, 'src/renderer/assistant.html'),
           chatbox: resolve(__dirname, 'src/renderer/chatbox.html'),
-          assistantTips: resolve(__dirname, 'src/renderer/assistantTips.html')
+          assistantTips: resolve(__dirname, 'src/renderer/assistantTips.html'),
+          assistantSettings: resolve(__dirname, 'src/renderer/assistantSettings.html')
         }
       }
     }

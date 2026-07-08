@@ -46,6 +46,16 @@ export function setupAssistantServerIPC(): void {
     })
   })
 
+  /**
+   * 获取所有助手列表（直接从内存返回，不触发同步）
+   */
+  ipcMain.handle('assistant:get-all', async () => {
+    return {
+      success: true,
+      data: assistantService.getAssistants()
+    }
+  })
+
   ipcMain.handle('assistant:switch', async (_event, name) => {
     return await assistantService.setCurrentAssistant(name)
   })

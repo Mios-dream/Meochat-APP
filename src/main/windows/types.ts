@@ -15,6 +15,7 @@ export type WindowType =
   | 'assistant' // 助手窗口
   | 'chatBox' // 聊天框窗口
   | 'tips' // 提示窗口
+  | 'assistantSettings' // 桌宠助手悬浮设置窗口
 
 /**
  * 窗口生命周期状态

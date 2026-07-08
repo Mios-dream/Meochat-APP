@@ -7,6 +7,7 @@ import { ipcRenderer } from 'electron'
  * - 窗口控制：最小化、最大化、隐藏、退出
  * - 助手窗口：打开、关闭、显示、隐藏
  * - 聊天窗口：打开、关闭、显示、隐藏
+ * - 统一调度中心：跨窗口定向消息分发
  * - 事件监听：助手切换、助手数据更新
  * - 日志、配置等通用功能
  */
@@ -36,6 +37,83 @@ const globalAPI = {
 
   // ===== 外部链接 =====
   openExternal: (url) => ipcRenderer.send('tool:open-external', url),
+
+  // ===== 统一调度中心 =====
+  dispatch: {
+    /**
+     * 向指定类型窗口发送单向消息
+     * @param target 目标窗口类型（如 'assistant'、'main'、'all'）
+     * @param action 动作名称
+     * @param payload 附带数据
+     */
+    sendTo: (target: string, action: string, payload?: unknown) =>
+      ipcRenderer.send('dispatch:send-to', { target, action, payload }),
+
+    /**
+     * 通过 DispatchCenter 执行一个动作并获取回执
+     * @param request 包含 action、payload、target 的请求对象
+     * @returns 调度响应结果
+     */
+    invoke: (request: { action: string; payload?: unknown; target: string }) =>
+      new Promise((resolve) => {
+        const actionId = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
+        ipcRenderer
+          .invoke('dispatch:invoke', { ...request, actionId })
+          .then((res: any) => {
+            resolve(res?.result ?? null)
+          })
+          .catch((err) => {
+            resolve({ success: false, error: String(err) })
+          })
+      }),
+
+    /**
+     * 监听来自 DispatchCenter 分发的动作
+     * @param callback 回调函数，接收 { action, payload }
+     * @returns 取消监听函数
+     */
+    onAction: (callback: (data: { action: string; payload?: unknown }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: { action: string; payload?: unknown }): void => {
+        callback(data)
+      }
+      ipcRenderer.on('dispatch:action', handler)
+      return () => ipcRenderer.removeListener('dispatch:action', handler)
+    },
+
+    /**
+     * 监听来自 DispatchCenter 的 invoke 请求
+     * @param callback 回调函数
+     * @returns 取消监听函数
+     */
+    onInvoke: (callback: (data: {
+      action: string
+      payload?: unknown
+      responseChannel: string
+      actionId: string
+    }) => void) => {
+      const handler = (
+        _event: Electron.IpcRendererEvent,
+        data: {
+          action: string
+          payload?: unknown
+          responseChannel: string
+          actionId: string
+        }
+      ): void => {
+        callback(data)
+      }
+      ipcRenderer.on('dispatch:invoke', handler)
+      return () => ipcRenderer.removeListener('dispatch:invoke', handler)
+    },
+
+    /**
+     * 向 DispatchCenter 回执 invoke 响应
+     * @param responseChannel 从 invoke 请求中获取的响应通道名
+     * @param result 执行结果
+     */
+    respond: (responseChannel: string, result: { success: boolean; data?: unknown; error?: string }) =>
+      ipcRenderer.send(responseChannel, result)
+  },
 
   // ===== 事件监听 =====
 

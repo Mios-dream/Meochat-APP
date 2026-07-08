@@ -28,6 +28,12 @@ export interface AssistantApi {
   getAssistantAssets: (
     assistantName: string
   ) => Promise<{ success: boolean; data?: AssistantAssets | null; error?: string }>
+  /** 获取所有助手列表（从主进程内存直接读取） */
+  getAllAssistants: () => Promise<{
+    success: boolean
+    data?: AssistantInfo[]
+    error?: string
+  }>
   onAssistantSwitched: (
     callback: (data: AssistantInfo | null) => void
   ) => () => Electron.IpcRenderer

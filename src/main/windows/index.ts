@@ -39,5 +39,6 @@ export {
   assistantWindowConfig,
   chatBoxWindowConfig,
   tipsWindowConfig,
+  assistantSettingsWindowConfig,
   createWidgetOptions
 } from './configs'

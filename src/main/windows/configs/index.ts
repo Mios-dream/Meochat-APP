@@ -9,6 +9,7 @@ import { widgetWindowConfig } from './widget.config'
 import { assistantWindowConfig } from './assistant.config'
 import { chatBoxWindowConfig } from './chatBox.config'
 import { tipsWindowConfig } from './tips.config'
+import { assistantSettingsWindowConfig } from './assistantSettings.config'
 
 /** 窗口配置映射表 */
 export const windowConfigs: Record<WindowType, typeof mainWindowConfig> = {
@@ -16,7 +17,8 @@ export const windowConfigs: Record<WindowType, typeof mainWindowConfig> = {
   widget: widgetWindowConfig,
   assistant: assistantWindowConfig,
   chatBox: chatBoxWindowConfig,
-  tips: tipsWindowConfig
+  tips: tipsWindowConfig,
+  assistantSettings: assistantSettingsWindowConfig
 }
 
 /**
@@ -34,3 +36,4 @@ export { widgetWindowConfig, createWidgetOptions } from './widget.config'
 export { assistantWindowConfig } from './assistant.config'
 export { chatBoxWindowConfig } from './chatBox.config'
 export { tipsWindowConfig } from './tips.config'
+export { assistantSettingsWindowConfig } from './assistantSettings.config'

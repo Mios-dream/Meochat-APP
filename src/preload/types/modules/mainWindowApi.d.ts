@@ -139,14 +139,22 @@ export interface MainWindowApi {
   registerChatShortcut: (shortcut: string) => Promise<boolean>
 
   /**
-   * 从服务器加载所有助手数据
-   * @returns 助手信息、来源和当前助手
+   * 触发助手数据初始化加载（触发后台云端同步）
+   * 实际助手数据通过 assistant:data-updated 事件返回
+   * @returns 加载是否成功
    */
   loadAssistantData: () => Promise<{
     success: boolean
     error?: string
-    data: AssistantInfo[]
-    currentAssistant: AssistantInfo | null
+  }>
+  /**
+   * 获取所有助手列表（从主进程内存直接读取）
+   * @returns 助手列表
+   */
+  getAllAssistants: () => Promise<{
+    success: boolean
+    data?: AssistantInfo[]
+    error?: string
   }>
   /**
    * 添加助手，并上传助手资产到服务器

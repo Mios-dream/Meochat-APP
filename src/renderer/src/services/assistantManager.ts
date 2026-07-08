@@ -32,12 +32,15 @@ class AssistantManager {
   }
 
   /**
-   * 获取所有助手信息（每次都从主进程读取）
+   * 获取所有助手信息（从主进程内存直接读取）
    * @returns 助手信息数组
    */
   public async getAssistants(): Promise<AssistantInfo[]> {
-    const result = await window.api.loadAssistantData()
-    return result.data || []
+    const result = await window.api.getAllAssistants()
+    if (result?.success && result.data) {
+      return result.data
+    }
+    return []
   }
 
   /**
