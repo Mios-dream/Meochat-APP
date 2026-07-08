@@ -176,6 +176,60 @@ onMounted(async () => {
   // 获取真实天气并启动定时刷新
   fetchRealWeather()
   startAutoRefresh()
+
+  // ── 小组件动作协议监听 ──
+  // 处理来自 LLM 工具调用的 remote action 指令
+  window.widgetApi?.onAction((request) => {
+    if (request.widget_type !== 'weather') return
+
+    const { action_id, action, params } = request
+
+    switch (action) {
+      case 'set_location': {
+        const city = typeof params.city === 'string' ? params.city.trim() : ''
+        if (!city) {
+          window.widgetApi.sendActionResult({ action_id, success: false, error: 'city 参数为空' })
+          return
+        }
+        weatherQuery.value = city
+        weatherData.location = city
+        fetchRealWeather()
+          .then(() => {
+            window.widgetApi.sendActionResult({
+              action_id,
+              success: true,
+              result: { location: city, updated: true }
+            })
+          })
+          .catch((err) => {
+            window.widgetApi.sendActionResult({
+              action_id,
+              success: false,
+              error: (err as Error).message
+            })
+          })
+        break
+      }
+      case 'get_weather': {
+        window.widgetApi.sendActionResult({
+          action_id,
+          success: true,
+          result: {
+            location: weatherData.location,
+            condition: weatherData.condition,
+            temperature: weatherData.temperature
+          }
+        })
+        break
+      }
+      default:
+        window.widgetApi.sendActionResult({
+          action_id,
+          success: false,
+          error: `未知动作: ${action}`
+        })
+    }
+  })
 })
 
 onUnmounted(() => {

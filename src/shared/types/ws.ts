@@ -3,8 +3,10 @@
 //
 // 定义了 MoeChat 前端与服务端之间基于 WebSocket 双向通信的完整消息格式。
 // 包括：聊天流式消息（text / audio / motion / done / error）、
-// LLM 工具调用事件（仅 UI 展示）、客户端工具协议（注册 / 调用 / 结果 / 进度）。
+// LLM 工具调用事件（仅 UI 展示）、客户端工具协议（协商 / 调用 / 结果 / 进度）。
 // ═══════════════════════════════════════════════════════════════════════════
+
+import type { ComponentToolDefinition } from '@shared/types/widget'
 
 // ─────────────────────────────────────────────────────────────────────────
 // 服务端 → 客户端 消息类型
@@ -174,6 +176,11 @@ export interface PongMessage {
   server_time: number
 }
 
+/** 服务端查询客户端可用工具列表。连接建立后由服务端主动发送。 */
+export interface ToolQueryMessage {
+  type: 'tool:query'
+}
+
 /** 服务端下发的所有消息联合类型。 */
 export type ServerMessage =
   | ChatTextMessage
@@ -187,6 +194,7 @@ export type ServerMessage =
   | ToolCancelWsMessage
   | ToolAsyncResultWsMessage
   | PongMessage
+  | ToolQueryMessage
 
 // ─────────────────────────────────────────────────────────────────────────
 // 客户端 → 服务端 消息类型
@@ -279,6 +287,20 @@ export interface ToolConfirmMessage {
   extra_data?: Record<string, unknown>
 }
 
+/**
+ * 客户端工具协商 · 回复服务端 tool:query 的可用工具列表。
+ *
+ * WS 连接建立后服务端发送 tool:query，
+ * 客户端回复此消息上报所有已注册的客户端工具。
+ * 服务端收到后逐条校验（name / required / properties keys），
+ * 校验通过的写入会话工具表，组件维度隔离。
+ */
+export interface ToolDefinitionsMessage {
+  type: 'tool:definitions'
+  /** 所有组件及其注册的工具清单。 */
+  components: ComponentToolDefinition[]
+}
+
 /** 客户端发送的所有消息联合类型。 */
 export type ClientMessage =
   | PingMessage
@@ -288,3 +310,4 @@ export type ClientMessage =
   | ToolResultMessage
   | ToolProgressMessage
   | ToolConfirmMessage
+  | ToolDefinitionsMessage

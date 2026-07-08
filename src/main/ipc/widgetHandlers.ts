@@ -13,7 +13,12 @@ import {
 } from '../windows'
 import log from '../utils/logger'
 
-import type { WidgetDataMessage } from '@shared/types/widget'
+import type {
+  IpcResponse,
+  WidgetDataMessage,
+  WidgetActionRequest,
+  WidgetActionResult
+} from '@shared/types/widget'
 
 /**
  * 设置小组件相关 IPC 处理器
@@ -220,6 +225,100 @@ export function setupWidgetIPC(): void {
       return { success: false, error: String(error) }
     }
   })
+
+  // ── 小组件动作协议（LLM 工具调用 → 遥控小组件） ──
+
+  /**
+   * 执行小组件动作并等待结果。
+   *
+   * 主渲染进程通过此 IPC 向目标类型的所有小组件窗口广播动作指令，
+   * 等待首个成功响应或全部失败后返回。
+   */
+  ipcMain.handle(
+    'widget:action:exec',
+    async (
+      _,
+      payload: {
+        widget_type: string
+        action: string
+        params: Record<string, unknown>
+        timeout_ms?: number
+      }
+    ): Promise<IpcResponse<WidgetActionResult>> => {
+      const { widget_type, action, params, timeout_ms = 8000 } = payload
+      const actionId = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
+
+      // 查找匹配类型且已启用的实例
+      const instances = widgetService.getInstancesByType(widget_type)
+
+      if (instances.length === 0) {
+        return {
+          success: false,
+          error: `没有找到已启用的「${widget_type}」小组件实例，请先添加该组件。`
+        }
+      }
+
+      // 筛选出已打开窗口的实例
+      const openWindows: Array<{ instance: (typeof instances)[0]; win: Electron.BrowserWindow }> =
+        []
+      for (const inst of instances) {
+        const win = windowRegistry.getWindow(`widget:${inst.id}`)
+        if (win && !win.isDestroyed()) {
+          openWindows.push({ instance: inst, win })
+        }
+      }
+
+      if (openWindows.length === 0) {
+        return {
+          success: false,
+          error: `「${widget_type}」小组件窗口未打开，请先打开该组件。`
+        }
+      }
+
+      // 广播动作到所有打开的小组件窗口，等待首个响应
+      return new Promise<IpcResponse<WidgetActionResult>>((resolve) => {
+        let settled = false
+
+        const timer = setTimeout(() => {
+          if (!settled) {
+            settled = true
+            ipcMain.removeListener('widget:action:result', resultHandler)
+            resolve({
+              success: false,
+              error: `小组件动作执行超时（${timeout_ms}ms），${widget_type} 未响应。`
+            })
+          }
+        }, timeout_ms)
+
+        const resultHandler = (_event: Electron.IpcMainEvent, result: WidgetActionResult): void => {
+          if (result.action_id !== actionId) return
+          if (settled) return
+
+          settled = true
+          clearTimeout(timer)
+          ipcMain.removeListener('widget:action:result', resultHandler)
+
+          if (result.success) {
+            resolve({ success: true, data: result })
+          } else {
+            resolve({ success: false, error: result.error ?? '未知错误' })
+          }
+        }
+
+        ipcMain.on('widget:action:result', resultHandler)
+
+        const request: WidgetActionRequest = { action_id: actionId, widget_type, action, params }
+
+        for (const { win } of openWindows) {
+          try {
+            win.webContents.send('widget:action:received', request)
+          } catch (err) {
+            log.error(`向小组件窗口发送动作失败:`, err)
+          }
+        }
+      })
+    }
+  )
 
   log.info('小组件 IPC 处理器已设置')
 }

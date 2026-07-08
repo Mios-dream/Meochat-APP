@@ -13,6 +13,10 @@ import { ChatStreamProcessor } from './ChatStreamProcessor'
 import { request } from '@shared/api/request'
 import { ChatWebSocketManager } from '@renderer/composables/useChatWebSocket'
 import { ToolSystem } from '@renderer/composables/useToolSystem'
+import {
+  registerAllWidgetTools,
+  ALL_WIDGET_COMPONENT_DEFINITIONS
+} from '@renderer/composables/widgetTools'
 import type {
   ChatDoneMessage,
   ErrorMessage,
@@ -474,6 +478,19 @@ class ChatManager {
       console.log('[ToolAsyncResult]', msg.call_id, msg.result)
     })
 
+    // ---- 客户端工具协商 ----
+    this.ws.on('tool:query', () => {
+      console.log(
+        '[ToolQuery] 服务端请求客户端工具列表，上报组件:',
+        ALL_WIDGET_COMPONENT_DEFINITIONS.length,
+        '个'
+      )
+      this.ws.send({
+        type: 'tool:definitions',
+        components: ALL_WIDGET_COMPONENT_DEFINITIONS
+      })
+    })
+
     // ---- 断连处理 ----
     this.ws.onDisconnect(() => {
       this.interruptCurrentPlayback()
@@ -487,26 +504,12 @@ class ChatManager {
    * 工具通过 Electron IPC 或浏览器 API 完成本地操作后回传结果。
    */
   private registerClientTools(): void {
-    // 示例: 设置天气城市（如果后端注册了该工具）
-    // this.toolSystem.register('set_weather_location', async (args) => {
-    //   await window.electronAPI?.setWeatherCity(args.city as string)
-    //   return { city: args.city, updated: true }
-    // })
-    // 示例: 打开文件选择器（混合工具 Phase 1）
-    // this.toolSystem.register('file_selector', async (args) => {
-    //   const file = await window.electronAPI?.openFileDialog({
-    //     filters: (args.accept as string[])?.map((ext: string) => ({ extensions: [ext] }))
-    //   })
-    //   return file ? { file_path: file.path, file_name: file.name } : { cancelled: true }
-    // })
-    // 示例: 截屏
-    // this.toolSystem.register('screenshot', async (args, ctx) => {
-    //   ctx.sendProgress('executing', 0, '正在截屏...')
-    //   const img = await window.electronAPI?.captureScreen((args.region as string) ?? 'full')
-    //   ctx.sendProgress('finalizing', 1, '完成')
-    //   return { base64: img, format: 'png' }
-    // })
-    // TODO: 在此注册你需要的所有客户端工具
+    // 注册所有小组件相关的客户端工具（天气 / 待办 / 便签 / 时钟 / 每日一句）
+    registerAllWidgetTools(this.toolSystem)
+
+    // 可按需在此继续注册非小组件类的客户端工具（如文件选择器、截屏等）
+    // 示例: 打开文件选择器
+    // this.toolSystem.register('file_selector', async (args) => { ... })
   }
 
   /**

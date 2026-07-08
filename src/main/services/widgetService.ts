@@ -8,11 +8,7 @@ import fs from 'fs'
 import path from 'path'
 import { resolveAppDataDir } from '../utils/pathResolve'
 import log from '../utils/logger'
-import type {
-  WidgetInstance,
-  WidgetConfigFile,
-  WidgetGlobalSettings
-} from '@shared/types/widget'
+import type { WidgetInstance, WidgetConfigFile, WidgetGlobalSettings } from '@shared/types/widget'
 
 /** 默认配置 */
 const DEFAULT_CONFIG: WidgetConfigFile = {
@@ -196,6 +192,20 @@ export class WidgetService {
    */
   getAllInstances(): WidgetInstance[] {
     return [...this.config.instances]
+  }
+
+  /**
+   * 根据小组件类型 ID 获取已启用的实例列表。
+   *
+   * 用于 LLM 工具调用时按目标小组件类型查找需要通知的窗口实例。
+   *
+   * @param widgetId - 小组件类型 ID（weather / todo / note / clock / daily-quote）
+   * @returns 匹配类型且已启用的 WidgetInstance 数组
+   */
+  getInstancesByType(widgetId: string): WidgetInstance[] {
+    return this.config.instances.filter(
+      (instance) => instance.widgetId === widgetId && instance.enabled !== false
+    )
   }
 
   /**

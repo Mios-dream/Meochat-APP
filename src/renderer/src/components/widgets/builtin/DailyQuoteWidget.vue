@@ -128,6 +128,41 @@ async function refreshQuote(): Promise<void> {
 /** 组件挂载 */
 onMounted(() => {
   currentQuote.value = getRandomQuote()
+
+  // ── 小组件动作协议监听 ──
+  window.widgetApi?.onAction((request) => {
+    if (request.widget_type !== 'daily-quote') return
+
+    const { action_id, action } = request
+
+    switch (action) {
+      case 'get_current': {
+        const quote = currentQuote.value
+        window.widgetApi.sendActionResult({
+          action_id,
+          success: true,
+          result: { text: quote.text, author: quote.author, source: quote.source ?? '' }
+        })
+        break
+      }
+      case 'refresh': {
+        refreshQuote()
+        const newQuote = currentQuote.value
+        window.widgetApi.sendActionResult({
+          action_id,
+          success: true,
+          result: { text: newQuote.text, author: newQuote.author, source: newQuote.source ?? '' }
+        })
+        break
+      }
+      default:
+        window.widgetApi.sendActionResult({
+          action_id,
+          success: false,
+          error: `未知动作: ${action}`
+        })
+    }
+  })
 })
 
 /** 暴露方法 */

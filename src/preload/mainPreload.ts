@@ -208,5 +208,42 @@ contextBridge.exposeInMainWorld('api', {
     ): void => callback(data)
     ipcRenderer.on('assistant:data-updated', listener)
     return () => ipcRenderer.removeListener('assistant:data-updated', listener)
+  },
+
+  // ════════════════════════════════════════════════════════════════════════
+  // 小组件动作 API · LLM 工具调用时遥控小组件
+  // ════════════════════════════════════════════════════════════════════════
+
+  /**
+   * 小组件动作控制 API。
+   *
+   * 主窗口渲染进程通过此 API 向指定类型的小组件窗口发送动作指令，
+   * 并等待首个成功响应的执行结果。
+   */
+  widgetAction: {
+    /**
+     * 执行小组件动作。
+     *
+     * 根据 widget_type 查找所有已启用且已打开窗口的小组件实例，
+     * 广播动作指令并等待首个响应（或超时）。
+     *
+     * @param widgetType - 目标小组件类型 ID（weather / todo / note / clock / daily-quote）
+     * @param action - 动作名称（set_location / add_item / clear_all 等）
+     * @param params - 动作参数对象
+     * @param timeoutMs - 超时时间（毫秒），默认 8000ms
+     * @returns IpcResponse<WidgetActionResult>
+     */
+    exec: (
+      widgetType: string,
+      action: string,
+      params: Record<string, unknown>,
+      timeoutMs?: number
+    ): Promise<{ success: boolean; data?: Record<string, unknown>; error?: string }> =>
+      ipcRenderer.invoke('widget:action:exec', {
+        widget_type: widgetType,
+        action,
+        params,
+        timeout_ms: timeoutMs
+      })
   }
 })

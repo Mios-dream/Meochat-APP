@@ -183,6 +183,52 @@ function formatTime(date: Date): string {
 /** 组件挂载 */
 onMounted(() => {
   loadNote()
+
+  // ── 小组件动作协议监听 ──
+  window.widgetApi?.onAction((request) => {
+    if (request.widget_type !== 'note') return
+
+    const { action_id, action, params } = request
+
+    switch (action) {
+      case 'set_content': {
+        const newTitle = typeof params.title === 'string' ? params.title : title.value
+        const newContent = typeof params.content === 'string' ? params.content : content.value
+        title.value = newTitle
+        content.value = newContent
+        debounceSave()
+        window.widgetApi.sendActionResult({
+          action_id,
+          success: true,
+          result: { title: title.value, content: content.value, char_count: content.value.length }
+        })
+        break
+      }
+      case 'get_content': {
+        window.widgetApi.sendActionResult({
+          action_id,
+          success: true,
+          result: { title: title.value, content: content.value, char_count: content.value.length }
+        })
+        break
+      }
+      case 'clear': {
+        clearNote()
+        window.widgetApi.sendActionResult({
+          action_id,
+          success: true,
+          result: { cleared: true }
+        })
+        break
+      }
+      default:
+        window.widgetApi.sendActionResult({
+          action_id,
+          success: false,
+          error: `未知动作: ${action}`
+        })
+    }
+  })
 })
 
 /** 组件卸载 */

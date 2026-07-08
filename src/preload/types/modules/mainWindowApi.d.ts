@@ -393,4 +393,14 @@ export interface MainWindowApi {
     markCompleted: () => Promise<OnboardingState>
     reset: () => Promise<OnboardingState>
   }
+
+  /** 小组件动作控制 API。主窗口通过此接口向小组件窗口发送遥控指令。 */
+  widgetAction: {
+    exec: (
+      widgetType: string,
+      action: string,
+      params: Record<string, unknown>,
+      timeoutMs?: number
+    ) => Promise<{ success: boolean; data?: Record<string, unknown>; error?: string }>
+  }
 }

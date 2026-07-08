@@ -4,7 +4,7 @@
  */
 
 import { ipcRenderer, contextBridge } from 'electron'
-import type { LocationData } from '@shared/types/widget'
+import type { LocationData, WidgetActionResult } from '@shared/types/widget'
 
 function getBrowserLocation(): Promise<{ lat: number; lon: number }> {
   return new Promise((resolve, reject) => {
@@ -137,7 +137,35 @@ const widgetApi = {
   /**
    * 清除天气缓存
    */
-  clearWeatherCache: () => ipcRenderer.invoke('weather:clear-cache')
+  clearWeatherCache: () => ipcRenderer.invoke('weather:clear-cache'),
+
+  // ── 小组件动作协议 ──
+
+  /**
+   * 监听来自主进程（LLM 工具调用）下发的动作指令。
+   *
+   * @param callback - 收到动作请求时的回调，参数为 WidgetActionRequest
+   * @returns 取消监听的清理函数
+   */
+  onAction: (callback: (request: import('@shared/types/widget').WidgetActionRequest) => void) => {
+    const listener = (
+      _event: Electron.IpcRendererEvent,
+      req: import('@shared/types/widget').WidgetActionRequest
+    ): void => {
+      callback(req)
+    }
+    ipcRenderer.on('widget:action:received', listener)
+    return () => ipcRenderer.removeListener('widget:action:received', listener)
+  },
+
+  /**
+   * 向主进程回传小组件动作的执行结果。
+   *
+   * @param result - 动作执行结果，包含 action_id 用于匹配原始请求
+   */
+  sendActionResult: (result: WidgetActionResult) => {
+    ipcRenderer.send('widget:action:result', result)
+  }
 }
 
 // 暴露 API 到渲染进程
