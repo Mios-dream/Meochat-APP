@@ -1,19 +1,12 @@
 import { Live2DManager } from '../services/Live2dManager'
 
-/** 曲线数据逐帧播放时的目标帧率。使用 60fps 以获得平滑动作表现。 */
-const CURVE_PLAYBACK_FPS = 60
-/** 曲线逐帧播放时每帧间隔，单位毫秒。 */
-const CURVE_FRAME_INTERVAL_MS = 1000 / CURVE_PLAYBACK_FPS
-
 /** 单个 Live2D 动作步骤，播放层不关心它来自哪个后端 chunk。 */
 export interface Live2DMotionStep {
   /** 当前动作步骤持续时间，单位毫秒。 */
   durationMs: number
-  /** 当前步骤要应用到 Live2D 模型的参数（旧关键帧方案）。 */
-  parameters?: Record<string, number>
-  /** 参数完整时间序列曲线，key 为参数 ID，value 为等间隔采样的数值数组（新曲线方案）。 */
-  curves?: Record<string, number[]>
-  /** 曲线数据的帧率，单位 fps（新曲线方案专有）。 */
+  /** 参数完整时间序列曲线，key 为参数 ID，value 为等间隔采样的数值数组。 */
+  curves: Record<string, number[]>
+  /** 曲线数据的帧率，单位 fps。 */
   fps?: number
   /** 表情名称列表，对应模型 .exp3.json 中定义的 expression。 */
   expression?: string[]
@@ -139,6 +132,7 @@ export class ChatPlaybackController {
     this.playbackQueue = []
     this.isPlaying = false
     this.motionSequenceToken++
+    this.live2DManager?.stopMotionCurve()
     this.live2DManager?.clearMotionFrame()
     this.live2DManager?.stopSpeaking()
     this.finishSleepTalkMotion()
@@ -241,10 +235,8 @@ export class ChatPlaybackController {
   /**
    * 按顺序播放 Live2D 动作序列，动作按原始时长播放，不做时间缩放。
    *
-   * 支持两种动作数据格式：
-   * - 旧关键帧方案（step.parameters 存在）：逐 step 过渡播放，参数跨 step 累加。
-   * - 新曲线方案（step.curves 存在）：按播放帧率逐帧采样曲线，线性插值播放。
-   * 两种格式可在同一 sequence 中混合，但推荐统一使用一种。
+   * 将曲线数据构建 motion3.json 交由 SDK 原生 CubismMotion 播放，
+   * 利用 fade weight 机制实现平滑淡入，结束阶段由 overlay 覆盖层接管释放。
    *
    * 当动作序列包含眼部参数（ParamEyeLOpen/ParamEyeROpen）时，
    * 临时禁用原生眨眼系统，播放完毕后恢复，避免眨眼覆盖动作写入值。
@@ -258,8 +250,6 @@ export class ChatPlaybackController {
     this.live2DManager.setEyeBlinkEnabled(false)
 
     try {
-      let carriedParams: Record<string, number> = {}
-
       for (const [stepIndex, step] of sequence.entries()) {
         if (token !== this.motionSequenceToken) return
 
@@ -272,28 +262,18 @@ export class ChatPlaybackController {
           this.live2DManager.applyExpressions(step.expression)
         }
 
-        // 新曲线方案：完整参数时间序列，按原始时长逐帧插值播放
-        if (step.curves) {
-          await this.playMotionCurveFrames(step, token, isFirstStep)
-          continue
-        }
-
-        // 旧关键帧方案（保留备用）：单帧目标值 + 平滑过渡
-        if (step.parameters) {
-          const mergedParams = { ...carriedParams, ...step.parameters }
-          carriedParams = mergedParams
-
-          const durationMs = step.durationMs
-          // 跨 chunk 的第一个 step 用 500ms 过渡防止动作突变，其余按原始时长的 88%
-          const transitionMs = isFirstStep
-            ? 500
-            : Math.min(980, Math.max(220, Math.floor(durationMs * 0.88)))
-          const holdMs = durationMs + Math.min(220, Math.floor(durationMs * 0.24))
-          const waitMs = Math.max(100, durationMs)
-
-          this.live2DManager.applyMotionFrame(mergedParams, { transitionMs, holdMs })
-          await new Promise((resolve) => window.setTimeout(resolve, waitMs))
-        }
+        // fire-and-forget 启动 SDK 原生 CubismMotion，
+        // 利用 fade weight 机制平滑淡入。不依赖 SDK 回调判断完成，
+        // 直接使用曲线自带时长 + 轮询 token 确定播放结束
+        const fadeInMs = isFirstStep ? 500 : 16
+        this.live2DManager.playMotionCurves(
+          step.curves!,
+          step.fps || 30,
+          step.durationMs,
+          fadeInMs
+        )
+        const waitMs = step.durationMs + fadeInMs + 50
+        if (!(await this.waitWithTokenCheck(waitMs, token))) return
       }
     } finally {
       // 无论正常结束还是因中断令牌提前退出，都恢复原生眨眼
@@ -301,56 +281,31 @@ export class ChatPlaybackController {
     }
 
     if (token === this.motionSequenceToken) {
+      // 将曲线步骤最后帧参数注入 overlay 覆盖层，
+      // 使 clearMotionFrame 能接管释放阶段，模型平滑恢复到默认姿态
+      const releaseFrame = extractMotionFinalValues(sequence)
+      if (releaseFrame) {
+        this.live2DManager.applyMotionFrame(releaseFrame, { transitionMs: 0, holdMs: 16 })
+      }
       this.live2DManager.clearMotionFrame()
     }
   }
 
   /**
-   * 按原始时长逐帧播放曲线数据，不做时间缩放。
+   * 等待指定时长，期间每 50ms 轮询 token 是否变化。
+   * 用于替代 SDK 回调的不确定性，直接使用曲线数据中的时长判断播放完成。
    *
-   * 对源曲线（sourceFps）按播放帧率（CURVE_PLAYBACK_FPS）做线性插值，
-   * 得到每一帧的参数值后通过 applyMotionFrame 应用到 Live2D 模型。
-   *
-   * @param step 包含 curves 和 fps 的动作步骤
-   * @param token 中断令牌，与当前令牌不匹配时停止播放
+   * @param ms 等待时长（ms）
+   * @param token 当前中断令牌
+   * @returns token 未变化（正常完成）返回 true，被中断返回 false
    */
-  private async playMotionCurveFrames(
-    step: Live2DMotionStep,
-    token: number,
-    isFirstStep: boolean = false
-  ): Promise<void> {
-    if (!this.live2DManager || !step.curves) return
-
-    const curves = step.curves
-    const sourceFps = step.fps || 30
-    const totalDurationMs = step.durationMs
-
-    // 播放总帧数（向上取整保证覆盖全程）
-    const totalFrames = Math.ceil((totalDurationMs / 1000) * CURVE_PLAYBACK_FPS)
-
-    // transitionMs 选 clampDuration 下限 60，保证每帧能快速向目标值过渡
-    // holdMs 选 clampDuration 下限 300，避免被后续帧立即覆盖影响缓动表现
-    // 跨 chunk 的第一个 step 的第一帧用 500ms 过渡，防止动作突变
-    const holdMs = 300
-
-    for (let frameIndex = 0; frameIndex < totalFrames; frameIndex++) {
-      if (token !== this.motionSequenceToken) return
-
-      const isFirstFrame = isFirstStep && frameIndex === 0
-      const transitionMs = isFirstFrame ? 500 : 60
-
-      // 当前帧在源时间轴上的时间位置（秒），按原始时长不做缩放
-      const sourceTimeSeconds = (frameIndex * CURVE_FRAME_INTERVAL_MS) / 1000
-
-      // 从每条曲线中插值当前帧的参数值
-      const frameParams = interpolateCurveFrame(curves, sourceFps, sourceTimeSeconds)
-
-      if (Object.keys(frameParams).length > 0) {
-        this.live2DManager.applyMotionFrame(frameParams, { transitionMs, holdMs })
-      }
-
-      await new Promise((resolve) => window.setTimeout(resolve, CURVE_FRAME_INTERVAL_MS))
+  private async waitWithTokenCheck(ms: number, token: number): Promise<boolean> {
+    const deadline = performance.now() + ms
+    while (performance.now() < deadline) {
+      if (token !== this.motionSequenceToken) return false
+      await new Promise<void>((resolve) => setTimeout(resolve, 50))
     }
+    return true
   }
 
   /** 异步通知外部：第一条台词准备好且播放循环开始。 */
@@ -371,6 +326,28 @@ export class ChatPlaybackController {
         .catch((e) => console.error('speechEnd callback error:', e))
     }
   }
+}
+
+/**
+ * 从动作序列中提取所有参数在最后一帧的最终值，
+ * 用于在播放完毕后通过 overlay 覆盖层平滑释放到默认姿态。
+ *
+ * 后续步骤中的同名参数会覆盖前面的值，取最后一个步骤的终值。
+ * @param sequence 动作步骤序列
+ * @returns 最后一帧参数键值表；序列为空或无曲线/关键帧时返回 null
+ */
+function extractMotionFinalValues(sequence: Live2DMotionStep[]): Record<string, number> | null {
+  const values: Record<string, number> = {}
+
+  for (const step of sequence) {
+    for (const [paramId, samples] of Object.entries(step.curves)) {
+      if (Array.isArray(samples) && samples.length > 0) {
+        values[paramId] = samples[samples.length - 1]
+      }
+    }
+  }
+
+  return Object.keys(values).length > 0 ? values : null
 }
 
 /** 将后端返回的 base64 音频内容转换为 Blob。 */
@@ -417,45 +394,6 @@ export async function estimateAudioDurationMs(audioBlob: Blob): Promise<number> 
 /** 统计动作序列总时长，供仅动作播放和语音动作对齐使用。 */
 export function sumMotionDurationMs(sequence: Live2DMotionStep[]): number {
   return sequence.reduce((sum, step) => sum + step.durationMs, 0)
-}
-
-/**
- * 从多条参数曲线中线性插值出指定时刻的参数帧。
- *
- * @param curves 参数 ID 到完整时间序列的映射
- * @param sourceFps 源曲线数据的帧率
- * @param timeSeconds 需要采样的时刻（源时间轴，单位秒）
- * @returns 该时刻所有参数的值
- */
-function interpolateCurveFrame(
-  curves: Record<string, number[]>,
-  sourceFps: number,
-  timeSeconds: number
-): Record<string, number> {
-  const frameParams: Record<string, number> = {}
-
-  for (const [paramId, curve] of Object.entries(curves)) {
-    if (!Array.isArray(curve) || curve.length === 0) continue
-
-    // 将源时间转换为曲线数组中的浮点索引
-    const sourceIndex = timeSeconds * sourceFps
-    const lowerIdx = Math.floor(sourceIndex)
-    const upperIdx = Math.min(lowerIdx + 1, curve.length - 1)
-
-    if (lowerIdx < 0) {
-      // 时间戳在曲线开始之前，使用第一个值
-      frameParams[paramId] = curve[0]
-    } else if (lowerIdx >= curve.length - 1) {
-      // 时间戳在曲线结束之后，使用最后一个值
-      frameParams[paramId] = curve[curve.length - 1]
-    } else {
-      // 在两个采样点之间线性插值
-      const t = sourceIndex - lowerIdx
-      frameParams[paramId] = curve[lowerIdx] + (curve[upperIdx] - curve[lowerIdx]) * t
-    }
-  }
-
-  return frameParams
 }
 
 /** Live2DManager 不可用时的普通 Audio 播放降级方案。 */

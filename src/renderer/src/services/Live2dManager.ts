@@ -490,11 +490,47 @@ export class Live2DManager {
   }
 
   /**
+   * 由睡眠控制器管理、可能与动作遮罩层产生竞争的参数全集。
+   * 包括眼睛开合、眼球位置、头部角度。
+   * 当遮罩层正在管理其中某些参数时，睡眠写入应只跳过冲突的参数（按交集排除），
+   * 而非全量暂停，避免注视/角度动作被睡眠写回归零强行修正。
+   *
+   * 注意：遮罩层未管理的参数仍需由睡眠写入，保证闭眼待机表现不受影响。
+   */
+  private static readonly SLEEP_MANAGED_PARAM_IDS = new Set<string>([
+    'ParamEyeLOpen',
+    'ParamEyeROpen',
+    'ParamEyeBallX',
+    'ParamEyeBallY',
+    'ParamAngleX',
+    'ParamAngleY'
+  ])
+
+  /**
    * Live2D 内置动作更新后的自定义参数写入。
+   *
+   * 睡眠模式下会计算动作遮罩层活跃参数与睡眠管理参数的**交集**，
+   * 只排除交集内的参数，让动作帧的注视/角度/眼部动画完整表现。
+   * 遮罩层未覆盖的睡眠参数继续由睡眠控制器写入。
+   *
+   * 写入顺序：先写睡眠参数（冲突项被排除），再写动作遮罩参数覆盖在上层。
    */
   private handleAfterMotionUpdate(): void {
-    this.motionOverlayController.tick(performance.now(), this.model?.internalModel.coreModel)
+    if (this.sleepModel) {
+      const activeParams = this.motionOverlayController.getActiveParameterIds()
+      const conflictingParams = this.intersectSleepManagedParams(activeParams)
+
+      if (conflictingParams.size > 0) {
+        this.sleepController.setExcludedParameters(conflictingParams)
+      } else {
+        this.sleepController.clearExcludedParameters()
+      }
+    }
+
+    // 先写入睡眠参数（冲突项被排除），再写入动作遮罩参数。
+    // 这样动作遮罩的写入拥有更高优先级。
     this.sleepController.flushSleepParameters()
+    this.motionOverlayController.tick(performance.now(), this.model?.internalModel.coreModel)
 
     // 最后写入口型，确保语音驱动不被动作覆盖。
     if (this.speechController.isSpeaking()) {
@@ -503,17 +539,69 @@ export class Live2DManager {
   }
 
   /**
-   * 应用动作帧参数
+   * 计算遮罩层活跃参数与睡眠管理参数的交集。
+   * 只返回那些同时被遮罩层和睡眠控制器管控的参数，按参数粒度排除，避免过度禁用睡眠写入。
+   * @param activeParams 动作遮罩层的活跃参数集合。
+   * @returns 冲突参数的交集。
+   */
+  private intersectSleepManagedParams(activeParams: Set<string>): Set<string> {
+    const intersection = new Set<string>()
+    for (const paramId of activeParams) {
+      if (Live2DManager.SLEEP_MANAGED_PARAM_IDS.has(paramId)) {
+        intersection.add(paramId)
+      }
+    }
+    return intersection
+  }
+
+  /**
+   * 应用动作帧参数。
+   *
+   * 睡眠模式下会自动为眼部参数设置释放目标为闭眼（0），
+   * 确保动作结束后眼睛恢复睡眠闭合状态而非默认睁眼。
+   *
    * @param parameters Live2D 参数键值对
+   * @param options 动作帧播放选项
    */
   public applyMotionFrame(parameters: Record<string, number>, options?: MotionFrameOptions): void {
     if (!this.model) return
+
+    // 睡眠模式下，眼部参数释放目标应为闭眼状态
+    const sleepExclusiveOptions = this.buildSleepAwareMotionOptions(parameters, options)
+
     this.motionOverlayController.applyMotionFrame(
       parameters,
       this.model.internalModel.coreModel,
       this.speechController.isSpeaking(),
-      options
+      sleepExclusiveOptions
     )
+  }
+
+  /**
+   * 睡眠模式下为动作帧选项注入眼部参数的闭眼释放目标。
+   * @param parameters 动作帧参数键值对。
+   * @param options 原始播放选项。
+   * @returns 注入睡眠感知释放目标后的选项副本。
+   */
+  private buildSleepAwareMotionOptions(
+    parameters: Record<string, number>,
+    options?: MotionFrameOptions
+  ): MotionFrameOptions | undefined {
+    if (!this.sleepModel) return options
+
+    const hasEyeLOpen = 'ParamEyeLOpen' in parameters
+    const hasEyeROpen = 'ParamEyeROpen' in parameters
+
+    if (!hasEyeLOpen && !hasEyeROpen) return options
+
+    const mergedOptions: MotionFrameOptions = options ? { ...options } : {}
+    mergedOptions.releaseTargetParams = {
+      ...mergedOptions.releaseTargetParams,
+      ParamEyeLOpen: 0,
+      ParamEyeROpen: 0
+    }
+
+    return mergedOptions
   }
 
   /**
@@ -527,11 +615,6 @@ export class Live2DManager {
    */
   public applyExpression(expressionName: string): void {
     if (!this.model?.internalModel) return
-
-    // if (this.model.internalModel.motionManager.expressionManager) {
-    //   void this.model.expression(expressionName)
-    //   return
-    // }
 
     const expression = this.expressionMap.get(expressionName)
     if (!expression) {
@@ -583,10 +666,6 @@ export class Live2DManager {
       expressions.map((item) => item.expression.parameters)
     )
 
-    // console.log(
-    //   `[Live2DManager] 应用组合表情: ${expressions.map((item) => item.name).join(', ')}, 参数帧:`,
-    //   expressionFrame
-    // )
     if (!expressionFrame) {
       console.warn('[Live2DManager] 组合表情无有效参数')
       return
@@ -599,7 +678,12 @@ export class Live2DManager {
   }
 
   /**
-   * 清除当前的动作帧覆盖，平滑恢复模型参数到正常状态
+   * 清除当前的动作帧覆盖，平滑恢复模型参数到正常状态。
+   *
+   * 睡眠模式下不在此处立即清除排除集，交由 handleAfterMotionUpdate 根据
+   * 遮罩层的实际活跃状态逐帧动态管理。否则在 clearMotionFrame 到下一次
+   * handleAfterMotionUpdate 之间，rAF 睡眠循环会因排除集已被清除而覆盖
+   * 遮罩层正在释放的过渡值。
    */
   public clearMotionFrame(): void {
     this.motionOverlayController.clearMotionFrame(Boolean(this.model))
@@ -640,6 +724,80 @@ export class Live2DManager {
   }
 
   /**
+   * 使用 SDK 原生 CubismMotion 播放曲线数据（fire-and-forget）。
+   *
+   * 将等间隔采样的曲线数据构建为 motion3.json 缓冲区，
+   * 通过 CubismMotion.create() + queueManager.startMotion() 提交到队列。
+   * SDK 原生机制自动处理 fadeIn 过渡。
+   *
+   * 此方法不等待动作播放完毕，外部队列通过曲线自带的 durationMs + fadeInMs
+   * 使用 setTimeout 确定播放完成时刻，可靠性高于 SDK 回调。
+   *
+   * @param curves 参数 ID → 等间隔采样数值数组
+   * @param fps 曲线源帧率
+   * @param durationMs 动作总时长（ms）
+   * @param fadeInMs 淡入时长（ms），默认 500
+   */
+  public playMotionCurves(
+    curves: Record<string, number[]>,
+    fps: number,
+    durationMs: number,
+    fadeInMs: number = 500
+  ): void {
+    if (!this.model?.internalModel) return
+
+    const internalModel = this.model.internalModel as unknown as Record<string, unknown>
+    const motionManager = internalModel.motionManager as Record<string, unknown> | undefined
+    if (!motionManager || typeof motionManager.createMotion !== 'function') {
+      console.warn('[Live2DManager] motionManager 不可用，无法播放动作曲线')
+      return
+    }
+
+    const buffer = buildMotion3JsonFromCurves(curves, fps, durationMs, fadeInMs, 0)
+    if (!buffer) return
+
+    try {
+      const definition: Record<string, unknown> = {
+        FadeInTime: fadeInMs / 1000,
+        FadeOutTime: 0,
+        File: ''
+      }
+      const createMotionFn = motionManager.createMotion as (
+        data: ArrayBuffer,
+        group: string,
+        def: Record<string, unknown>
+      ) => Record<string, unknown> | null
+      const motion = createMotionFn.call(motionManager, buffer, 'custom', definition)
+      if (!motion) {
+        console.warn('[Live2DManager] createMotion 返回 null')
+        return
+      }
+      const startMotionFn = motionManager._startMotion as
+        | ((motion: Record<string, unknown>, onFinish?: unknown, ignoreParamIds?: unknown) => void)
+        | undefined
+      if (startMotionFn) {
+        startMotionFn.call(motionManager, motion)
+      }
+    } catch (e) {
+      console.error('[Live2DManager] 播放动作曲线失败:', e)
+    }
+  }
+
+  /**
+   * 停止当前正在播放的 SDK 动作。
+   * 此方法会立即停止所有动作，不会触发淡出。
+   */
+  public stopMotionCurve(): void {
+    if (!this.model?.internalModel) return
+    const internalModel = this.model.internalModel as unknown as Record<string, unknown>
+    const motionManager = internalModel.motionManager as Record<string, unknown> | undefined
+    if (motionManager && typeof motionManager.stopAllMotions === 'function') {
+      const stopFn = motionManager.stopAllMotions as () => void
+      stopFn.call(motionManager)
+    }
+  }
+
+  /**
    * 进入睡眠待机状态
    * 先停止所有原生动画（包括当前空闲动画），再清除动作帧覆盖，
    * 然后禁用模型自动动作、眨眼和注视，眼睛保持闭合
@@ -647,9 +805,7 @@ export class Live2DManager {
   public enterSleepMode(): void {
     if (!this.model?.internalModel) return
 
-    // 清空覆盖层
     this.clearMotionFrame()
-    // // 禁用待机动画
     this.setMotionIdleEnabled(false)
 
     this.model.internalModel.motionManager.stopAllMotions()
@@ -720,10 +876,19 @@ export class Live2DManager {
   /**
    * 设置眨眼是否启用。
    * 动作帧播放时如需控制眼部参数，可临时禁用原生眨眼，播放完毕后恢复。
+   *
+   * 睡眠模式下忽略"启用"调用，因为睡眠已禁用原生眨眼并由睡眠控制器接管眼部表现。
+   * 但"禁用"调用始终生效，确保动作序列中不因睡眠状态而遗留原生眨眼干扰。
    */
   public setEyeBlinkEnabled(enabled: boolean): void {
     if (!this.model?.internalModel) {
       console.warn('[Live2D] setEyeBlinkEnabled: model 或 internalModel 不存在')
+      return
+    }
+
+    // 睡眠模式下不允许恢复原生眨眼，因为睡眠已禁用眨眼并自行管理眼部参数
+    if (enabled && this.sleepModel) {
+      console.log('[Live2D] 睡眠模式中，跳过恢复原生眨眼')
       return
     }
 
@@ -849,4 +1014,96 @@ export class Live2DManager {
 
     return value
   }
+}
+
+/**
+ * 将等间隔采样的曲线数据构建为 motion3.json 格式的 ArrayBuffer。
+ *
+ * motion3.json 格式（Cubism 5）：
+ * - Meta 段定义 Duration、Fps、CurveCount、TotalSegmentCount、TotalPointCount
+ * - Curves 段定义每条参数的 Segment 数组
+ * - 每个 Segment 使用 Linear 类型（值为 0），
+ *   格式为：[baseTime, baseValue, segType, endTime, endValue, segType, endTime, endValue, ...]
+ *   - 首个 base segment 占 2 个元素 (time, value)
+ *   - 每个 Linear segment 占 3 个元素 (segType=0, endTime, endValue)
+ *   总元素数 = 2 + 3 * (sampleCount - 1)
+ *
+ * SDK 的 CubismMotion.parse() 会解析此 JSON，设置 _fadeInSeconds / _fadeOutSeconds，
+ * 再通过 CubismMotion.doUpdateParameters() 逐帧求值，使用 getEasingSine 实现缓动过渡。
+ *
+ * @param curves 参数 ID → 等间隔采样数值数组（每个数组长度必须 >= 2）
+ * @param fps 曲线源帧率
+ * @param durationMs 动作总时长（ms）
+ * @param fadeInMs 淡入时长（ms）
+ * @param fadeOutMs 淡出时长（ms）
+ * @returns motion3.json 的 ArrayBuffer，可用于 CubismMotion.create()
+ */
+function buildMotion3JsonFromCurves(
+  curves: Record<string, number[]>,
+  fps: number,
+  durationMs: number,
+  fadeInMs: number,
+  fadeOutMs: number
+): ArrayBuffer | null {
+  const curveKeys = Object.keys(curves)
+  if (curveKeys.length === 0) return null
+
+  let totalSegmentCount = 0
+  let totalPointCount = 0
+  const validCurves: Array<{ id: string; samples: number[] }> = []
+
+  for (const key of curveKeys) {
+    const samples = curves[key]
+    if (!Array.isArray(samples) || samples.length < 2) continue
+    validCurves.push({ id: key, samples })
+    totalSegmentCount += samples.length - 1
+    totalPointCount += samples.length
+  }
+
+  if (validCurves.length === 0) return null
+
+  const durationSeconds = durationMs / 1000
+
+  const segmentsList: number[][] = []
+
+  for (const { samples } of validCurves) {
+    const seg: number[] = []
+    // base point
+    seg.push(0)
+    seg.push(samples[0])
+    // linear segments for each subsequent sample
+    for (let i = 1; i < samples.length; i++) {
+      const time = i / fps
+      seg.push(0)
+      seg.push(time)
+      seg.push(samples[i])
+    }
+    segmentsList.push(seg)
+  }
+
+  const meta: Record<string, unknown> = {
+    Duration: durationSeconds,
+    Fps: fps,
+    Loop: false,
+    CurveCount: validCurves.length,
+    TotalSegmentCount: totalSegmentCount,
+    TotalPointCount: totalPointCount,
+    AreBeziersRestricted: 0,
+    FadeInTime: Math.max(0, fadeInMs / 1000),
+    FadeOutTime: Math.max(0, fadeOutMs / 1000)
+  }
+
+  const motionJson: Record<string, unknown> = {
+    Version: 3,
+    Meta: meta,
+    Curves: validCurves.map(({ id }, index) => ({
+      Target: 'Parameter',
+      Id: id,
+      Segments: segmentsList[index]
+    }))
+  }
+
+  const jsonStr = JSON.stringify(motionJson)
+  const encoder = new TextEncoder()
+  return encoder.encode(jsonStr).buffer as ArrayBuffer
 }

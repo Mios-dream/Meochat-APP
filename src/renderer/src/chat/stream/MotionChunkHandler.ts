@@ -4,17 +4,13 @@ import type { Live2DMotionStep, SentenceAssemblyContext } from '../ChatStreamPro
 /**
  * 动作消息处理器。
  *
- * 负责清洗后端 Live2D 参数数据，支持新旧两种接口格式：
- * - 新曲线方案（motion.curves 存在）：透传完整参数时间序列给播放层逐帧播放。
- * - 旧关键帧方案（motion.parameters 存在）：保留备用，映射参数 ID 到目标值。
- * 两种方案可共存于同一 sequence 中。
+ * 负责清洗后端 Live2D 参数曲线数据，透传完整参数时间序列给播放层。
  */
 export class MotionChunkHandler {
   public constructor(private readonly context: SentenceAssemblyContext) {}
 
   /**
    * 规范化并合并动作帧到对应 sentence_id 的同步状态。
-   * 根据后端返回数据自动选择旧关键帧方案或新曲线方案。
    * @param data - chat:motion 消息对象
    */
   public handle(data: ChatMotionMessage): void {
@@ -41,18 +37,8 @@ function normalizeMotionFrame(motions: ChatMotionItem[]): Live2DMotionStep[] {
   for (const motion of motions) {
     if (!motion) continue
 
-    // 新曲线方案：motion 包含 curves 字段
     if (motion.curves && Object.keys(motion.curves).length > 0) {
       const step = normalizeCurveMotion(motion)
-      if (step) {
-        normalized.push(step)
-      }
-      continue
-    }
-
-    // 旧关键帧方案：motion 包含 parameters 字段（保留备用）
-    if (motion.parameters && Object.keys(motion.parameters).length > 0) {
-      const step = normalizeKeyframeMotion(motion)
       if (step) {
         normalized.push(step)
       }
@@ -63,7 +49,7 @@ function normalizeMotionFrame(motions: ChatMotionItem[]): Live2DMotionStep[] {
 }
 
 /**
- * 规范化新曲线方案的动作数据。
+ * 规范化动作曲线数据。
  * 直接透传 curves 数据和 fps 给播放层，由播放层负责帧率匹配和插值。
  */
 function normalizeCurveMotion(motion: ChatMotionItem): Live2DMotionStep | null {
@@ -102,29 +88,6 @@ function normalizeCurveMotion(motion: ChatMotionItem): Live2DMotionStep | null {
     durationMs,
     curves: cleanedCurves,
     fps,
-    expression: motion.expression
-  }
-}
-
-/**
- * 规范化旧关键帧方案的动作数据（保留备用）。
- * 将 parameters 映射转换为播放层可消费的 Live2DMotionStep。
- */
-function normalizeKeyframeMotion(motion: ChatMotionItem): Live2DMotionStep | null {
-  if (!motion.parameters) return null
-
-  const params: Record<string, number> = {}
-
-  for (const [paramId, rawValue] of Object.entries(motion.parameters)) {
-    if (typeof rawValue !== 'number' || Number.isNaN(rawValue)) continue
-    params[paramId] = rawValue
-  }
-
-  if (Object.keys(params).length === 0) return null
-
-  return {
-    durationMs: clampMotionDuration(motion.duration),
-    parameters: params,
     expression: motion.expression
   }
 }

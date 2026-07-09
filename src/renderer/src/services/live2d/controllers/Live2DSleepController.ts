@@ -18,6 +18,12 @@ export class Live2DSleepController {
   private transitionMs = 500
   private currentParameters: Record<string, number> = createClosedSleepParameters()
   private targetParameters: Record<string, number> = createClosedSleepParameters()
+  /**
+   * 被动作遮罩层管理的参数 ID 集合。
+   * 当遮罩层正在写入眼部参数时，睡眠循环应暂停对这些参数的干预，
+   * 避免帧级拉锯导致眼部闪烁或动作被睡眠覆盖。
+   */
+  private excludedParamIds: Set<string> = new Set()
 
   /**
    * 当前是否处于睡眠模式。
@@ -158,6 +164,7 @@ export class Live2DSleepController {
     this.sleeping = false
     this.drowsyTalking = false
     this.drowsyLingering = false
+    this.excludedParamIds = new Set()
     this.stopSleepMicroMotion()
     this.clearDrowsyTimers()
     this.stopSleepParameterLoop()
@@ -166,12 +173,39 @@ export class Live2DSleepController {
 
   /**
    * 立即写入当前睡眠参数。
+   * 被排除的参数（由动作遮罩层管理）不会被写入，避免与动作遮罩产生帧级拉锯。
    * Live2D 运行时每帧更新后调用一次，确保睡眠眼部状态拥有最终覆盖权。
    */
   flushSleepParameters(): void {
     if (!this.sleeping || !this.sleepParameterWriter) return
 
-    this.sleepParameterWriter(this.currentParameters)
+    // 构建过滤后的参数集合，排除被动作遮罩层管理的参数
+    const filtered: Record<string, number> = {}
+    for (const [paramId, value] of Object.entries(this.currentParameters)) {
+      if (!this.excludedParamIds.has(paramId)) {
+        filtered[paramId] = value
+      }
+    }
+
+    if (Object.keys(filtered).length > 0) {
+      this.sleepParameterWriter(filtered)
+    }
+  }
+
+  /**
+   * 设置需要被睡眠写入跳过的参数 ID 集合。
+   * 当动作遮罩层正在管理眼部参数时调用，防止睡眠覆盖动作帧。
+   * @param paramIds 需要排除写入的参数 ID 集合
+   */
+  setExcludedParameters(paramIds: Set<string>): void {
+    this.excludedParamIds = new Set(paramIds)
+  }
+
+  /**
+   * 清除所有排除参数限制，恢复睡眠对所有参数的完整写入。
+   */
+  clearExcludedParameters(): void {
+    this.excludedParamIds = new Set()
   }
 
   /**
@@ -193,6 +227,9 @@ export class Live2DSleepController {
       const easedProgress = 1 - Math.pow(1 - progress, 3)
 
       for (const [paramId, targetValue] of Object.entries(this.targetParameters)) {
+        // 被动作遮罩层管理的参数不参与睡眠插值，避免产生跳变
+        if (this.excludedParamIds.has(paramId)) continue
+
         const currentValue = this.currentParameters[paramId] ?? 0
         this.currentParameters[paramId] =
           currentValue + (targetValue - currentValue) * easedProgress

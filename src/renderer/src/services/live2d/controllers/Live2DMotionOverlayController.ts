@@ -151,23 +151,24 @@ export class Live2DMotionOverlayController {
       }
 
       targetParams[paramId] = rawValue
-      if (!(paramId in this.motionCurrentParams)) {
-        this.motionCurrentParams[paramId] = modelValue
-      }
+      // 始终从模型当前真实值出发，避免因残留释放阶段或外部系统修改导致起始值不同步。
+      this.motionCurrentParams[paramId] = modelValue
     }
     // console.log('[Live2DMotionOverlayController] 处理动作帧参数:', targetParams)
 
     if (Object.keys(targetParams).length === 0) return
 
     const transitionMs = options?.transitionMs
-    // 允许调用方覆盖参数过渡时长，统一裁剪到合理范围。
+    // 允许调用方覆盖参数过渡时长。
+    // 最小值设为 0，支持曲线逐帧播放时的瞬时写入模式。
     this.motionTransitionMs =
       typeof transitionMs === 'number' && Number.isFinite(transitionMs)
-        ? this.clampDuration(transitionMs, 60, 2000)
+        ? this.clampDuration(transitionMs, 0, 2000)
         : null
 
     // 保持时长到期后进入释放阶段，回落到 releaseTarget。
-    const holdDuration = this.clampDuration(options?.holdMs ?? this.overlayDurationMs, 300, 10000)
+    // 最小值设为曲线播放帧间隔，保证逐帧模式每次写入在下一帧前不会被释放。
+    const holdDuration = this.clampDuration(options?.holdMs ?? this.overlayDurationMs, 16, 10000)
     this.motionTargetParams = targetParams
     this.motionReleaseTargetParams = options?.releaseTargetParams ?? {}
     this.motionHoldUntil = performance.now() + holdDuration
@@ -203,21 +204,21 @@ export class Live2DMotionOverlayController {
       }
 
       targetParams[paramId] = rawValue
-      if (!(paramId in this.expressionCurrentParams)) {
-        this.expressionCurrentParams[paramId] = modelValue
-      }
+      // 始终从模型当前真实值出发，避免因残留释放阶段或外部系统修改导致起始值不同步。
+      this.expressionCurrentParams[paramId] = modelValue
     }
 
     if (Object.keys(targetParams).length === 0) return
 
     const transitionMs = options?.transitionMs
     // 表情层过渡时长与动作层解耦，避免互相影响。
+    // 最小值统一为 0，与动作层保持一致。
     this.expressionTransitionMs =
       typeof transitionMs === 'number' && Number.isFinite(transitionMs)
-        ? this.clampDuration(transitionMs, 60, 2000)
+        ? this.clampDuration(transitionMs, 0, 2000)
         : null
 
-    const holdDuration = this.clampDuration(options?.holdMs ?? this.overlayDurationMs, 300, 10000)
+    const holdDuration = this.clampDuration(options?.holdMs ?? this.overlayDurationMs, 16, 10000)
     this.expressionTargetParams = targetParams
     this.expressionReleaseTargetParams = options?.releaseTargetParams ?? {}
     this.expressionHoldUntil = performance.now() + holdDuration
@@ -225,6 +226,10 @@ export class Live2DMotionOverlayController {
 
   /**
    * 清除当前动作帧覆盖，保留释放阶段的平滑恢复。
+   *
+   * 不再清理 releaseTargetParams，保持其原有的释放目标，
+   * 避免因恢复默认值而在睡眠模式下眼睛错误睁开。
+   *
    * @param hasModel 当前模型是否存在；如果模型已销毁则直接重置全部状态。
    */
   clearMotionFrame(hasModel: boolean): void {
@@ -235,13 +240,14 @@ export class Live2DMotionOverlayController {
 
     // 保留当前值用于释放阶段的平滑回落。
     this.motionTargetParams = {}
-    this.motionReleaseTargetParams = {}
     this.motionHoldUntil = 0
     this.motionTransitionMs = null
   }
 
   /**
    * 清除当前表情帧覆盖，保留释放阶段的平滑恢复。
+   *
+   * 不再清理 releaseTargetParams，保持其原有的释放目标。
    */
   clearExpressionFrame(hasModel: boolean): void {
     if (!hasModel) {
@@ -251,9 +257,22 @@ export class Live2DMotionOverlayController {
 
     // 保留当前值用于释放阶段的平滑回落。
     this.expressionTargetParams = {}
-    this.expressionReleaseTargetParams = {}
     this.expressionHoldUntil = 0
     this.expressionTransitionMs = null
+  }
+
+  /**
+   * 返回当前被动作层或表情层管理的所有参数 ID 集合。
+   * 包含正在进行进入过渡、保持中和释放阶段的参数。
+   * @returns 活跃参数 ID 集合。
+   */
+  getActiveParameterIds(): Set<string> {
+    const ids = new Set<string>()
+    for (const key of Object.keys(this.motionCurrentParams)) ids.add(key)
+    for (const key of Object.keys(this.motionTargetParams)) ids.add(key)
+    for (const key of Object.keys(this.expressionCurrentParams)) ids.add(key)
+    for (const key of Object.keys(this.expressionTargetParams)) ids.add(key)
+    return ids
   }
 
   /**
@@ -357,12 +376,11 @@ export class Live2DMotionOverlayController {
     }
 
     // 释放阶段结束后清空目标集合，等待下一次覆盖。
+    // 注意：不清理 overlayReleaseTargetParams，因为释放过程可能持续多帧，
+    // 中途清空会导致后续帧回退到配置默认释放目标，造成中途逆转。
     if (!isHolding) {
       for (const key of Object.keys(overlayTargetParams)) {
         delete overlayTargetParams[key]
-      }
-      for (const key of Object.keys(overlayReleaseTargetParams)) {
-        delete overlayReleaseTargetParams[key]
       }
     }
   }
