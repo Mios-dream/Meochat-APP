@@ -209,6 +209,19 @@ export class Live2DSleepController {
   }
 
   /**
+   * 由 Live2DManager 每帧调用，将指定参数的 currentParameters 同步到模型当前实际值。
+   * 当参数被排除时 rAF 循环跳过了该参数的插值，此方法确保解除排除时 currentParameters
+   * 持有的是模型最新值（而非排除前的残留旧值），避免从 overlay 释放到睡眠接管之间出现跳变。
+   * @param paramId 参数 ID
+   * @param value 模型当前实际值
+   */
+  syncCurrentParameter(paramId: string, value: number): void {
+    if (this.excludedParamIds.has(paramId) && paramId in this.currentParameters) {
+      this.currentParameters[paramId] = value
+    }
+  }
+
+  /**
    * 启动睡眠参数逐帧写入循环。
    */
   private startSleepParameterLoop(): void {

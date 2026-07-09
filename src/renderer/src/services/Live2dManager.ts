@@ -516,6 +516,9 @@ export class Live2DManager {
    * 写入顺序：先写睡眠参数（冲突项被排除），再写动作遮罩参数覆盖在上层。
    */
   private handleAfterMotionUpdate(): void {
+    const coreModel = this.model?.internalModel?.coreModel
+    if (!coreModel) return
+
     if (this.sleepModel) {
       const activeParams = this.motionOverlayController.getActiveParameterIds()
       const conflictingParams = this.intersectSleepManagedParams(activeParams)
@@ -525,12 +528,22 @@ export class Live2DManager {
       } else {
         this.sleepController.clearExcludedParameters()
       }
+
+      // 每帧将睡眠管理参数同步到模型当前实际值。
+      // 排除期间 rAF 循环跳过插值，此同步确保 currentParameters
+      // 始终反映模型最新值，解除排除时不会因残留旧值发生跳变。
+      for (const paramId of Live2DManager.SLEEP_MANAGED_PARAM_IDS) {
+        const value = getModelParameterValue(coreModel, paramId)
+        if (value !== null) {
+          this.sleepController.syncCurrentParameter(paramId, value)
+        }
+      }
     }
 
     // 先写入睡眠参数（冲突项被排除），再写入动作遮罩参数。
     // 这样动作遮罩的写入拥有更高优先级。
     this.sleepController.flushSleepParameters()
-    this.motionOverlayController.tick(performance.now(), this.model?.internalModel.coreModel)
+    this.motionOverlayController.tick(performance.now(), coreModel)
 
     // 最后写入口型，确保语音驱动不被动作覆盖。
     if (this.speechController.isSpeaking()) {
