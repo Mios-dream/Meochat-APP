@@ -12,10 +12,16 @@ export const chatBoxWindowConfig: WindowConfig = {
   options: {
     transparent: true,
     frame: false,
-    alwaysOnTop: true,
-    resizable: false,
+    // alwaysOnTop: true,
+    resizable: true,
     skipTaskbar: true,
     autoHideMenuBar: true,
-    hasShadow: false
+    hasShadow: false,
+    width: 350,
+    height: 170,
+    maxWidth: 900,
+    maxHeight: 500,
+    minWidth: 350,
+    minHeight: 170
   }
 }

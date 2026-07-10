@@ -10,7 +10,6 @@ import { checkAssistantWindowVisibility } from '../utils/windowVisibility'
 import dragAddon from 'electron-click-drag-plugin'
 import robot from '@jitsi/robotjs'
 import { uIOhook } from 'uiohook-napi'
-
 import log from '../utils/logger'
 
 let mouseTrackingInterval: NodeJS.Timeout | null = null
@@ -59,26 +58,28 @@ function initUiohook(): void {
 }
 
 function setupChatBoxIPC(): void {
+  // 切换聊天框窗口置顶状态
+  ipcMain.handle('chat-box:toggle-pin', () => {
+    const chatBoxWin = windowRegistry.getWindowByType('chatBox')
+    if (chatBoxWin && !chatBoxWin.isDestroyed()) {
+      const pinned = !chatBoxWin.isAlwaysOnTop()
+      chatBoxWin.setAlwaysOnTop(pinned, 'screen-saver')
+      return { success: true, pinned }
+    }
+    return { success: false }
+  })
+
+  // 获取聊天框窗口当前置顶状态
+  ipcMain.handle('chat-box:get-pin-status', () => {
+    const chatBoxWin = windowRegistry.getWindowByType('chatBox')
+    if (chatBoxWin && !chatBoxWin.isDestroyed()) {
+      return { success: true, pinned: chatBoxWin.isAlwaysOnTop() }
+    }
+    return { success: false }
+  })
+
   ipcMain.on('chat-box:create', () => {
-    const primaryDisplay = screen.getPrimaryDisplay()
-    const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize
-
-    // 计算窗口尺寸和位置
-    const windowWidth = Math.floor(screenWidth / 2)
-    const windowHeight = 200
-    const x = Math.floor((screenWidth - windowWidth) / 2)
-    // 距离底部抬升
-    const targetY = screenHeight - 200 // 目标位置
-
-    createWindow(chatBoxWindowConfig, {
-      overrides: {
-        x: x,
-        y: targetY,
-        width: windowWidth,
-        height: windowHeight
-      },
-      showImmediately: true
-    })
+    createWindow(chatBoxWindowConfig)
   })
 
   ipcMain.on('chat-box:close', () => {

@@ -13,7 +13,7 @@ import { KernelManager, KernelServiceManager } from '../services/kernelManager'
 import { OnboardingStoreService } from '../services/onboardingStore'
 import { WidgetService } from '../services/widgetService'
 import { boundsStore } from '../services/boundsStore'
-import { globalShortcut, screen } from 'electron'
+import { globalShortcut } from 'electron'
 
 const assistantService = AssistantService.getInstance()
 const kernelManager = KernelManager.getInstance()
@@ -50,25 +50,7 @@ function autoRegisterChatShortcut(): void {
   // 注册快捷回复的快捷键
   const chatShortcut = getConfig('chatShortcut')
   globalShortcut.register(chatShortcut, () => {
-    const primaryDisplay = screen.getPrimaryDisplay()
-    const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize
-
-    // 计算窗口尺寸和位置
-    const windowWidth = Math.floor(screenWidth / 2)
-    const windowHeight = 200
-    const x = Math.floor((screenWidth - windowWidth) / 2)
-    // 距离底部抬升
-    const targetY = screenHeight - 200 // 目标位置
-
-    createWindow(chatBoxWindowConfig, {
-      overrides: {
-        x: x,
-        y: targetY,
-        width: windowWidth,
-        height: windowHeight
-      },
-      showImmediately: true
-    })
+    createWindow(chatBoxWindowConfig)
   })
 }
 
