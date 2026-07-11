@@ -31,7 +31,15 @@
                 : {}
             "
             @click="switchAssistant(assistant.name)"
-          ></div>
+          >
+            <!-- 切换加载覆盖层 -->
+            <div
+              v-if="isSwitchingAssistant && assistant.name === nextAssistantName"
+              class="assistant-tag-loading"
+            >
+              <div class="assistant-tag-spinner"></div>
+            </div>
+          </div>
         </div>
       </div>
       <!-- 桌宠大小 -->
@@ -158,6 +166,10 @@ const volumePercent = ref(80)
 const assistants = ref<AssistantInfo[]>([])
 /** 当前助手名称 */
 const currentAssistantName = ref('')
+/** 是否正在切换助手 */
+const isSwitchingAssistant = ref(false)
+/** 下一个待切换的助手名称（用于触发加载动画） */
+const nextAssistantName = ref('')
 
 /**
  * 关闭当前设置窗口
@@ -202,9 +214,17 @@ function onVolumeChange(): void {
  * @param name 助手名称
  */
 async function switchAssistant(name: string): Promise<void> {
-  if (name === currentAssistantName.value) return
-  await assistantManager.setCurrentAssistant(name)
-  currentAssistantName.value = name
+  // 防止重复点击或切换相同助手
+  if (name === currentAssistantName.value || isSwitchingAssistant.value) return
+  // 先记录下一个助手名称，触发加载动画
+  nextAssistantName.value = name
+  isSwitchingAssistant.value = true
+  try {
+    await assistantManager.setCurrentAssistant(name)
+    currentAssistantName.value = name
+  } finally {
+    isSwitchingAssistant.value = false
+  }
 }
 
 /**
@@ -419,6 +439,7 @@ watch(
 }
 
 .assistant-tag {
+  position: relative;
   width: 80px;
   height: 80px;
   border-radius: 14px;
@@ -427,7 +448,7 @@ watch(
   font-size: 12px;
   color: #666;
   background-color: #f5f5f5;
-  border: 2px solid transparent;
+  border: 2px solid rgba(255, 255, 255, 0.85);
   cursor: pointer;
   transition: all 0.2s;
 }
@@ -441,6 +462,38 @@ watch(
   background-color: #fb7299;
   color: white;
   border-color: #fb7299;
+}
+
+.assistant-tag-loading {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(255, 255, 255, 0.85);
+  border-radius: 14px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 10;
+}
+
+.assistant-tag-spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid #f3f3f3;
+  border-top: 2px solid #fb7299;
+  border-radius: 50%;
+  animation: assistant-tag-spin 1s linear infinite;
+}
+
+@keyframes assistant-tag-spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
 }
 
 /* 滑块控件 */

@@ -579,6 +579,9 @@ export class Live2DManager {
   public applyMotionFrame(parameters: Record<string, number>, options?: MotionFrameOptions): void {
     if (!this.model) return
 
+    // 过滤掉由覆盖层（根据说话音量）控制的 ParamMouthOpenY，确保动作方法不干扰口型
+    delete parameters.ParamMouthOpenY
+
     // 睡眠模式下，眼部参数释放目标应为闭眼状态
     const sleepExclusiveOptions = this.buildSleepAwareMotionOptions(parameters, options)
 
@@ -759,6 +762,9 @@ export class Live2DManager {
   ): void {
     if (!this.model?.internalModel) return
 
+    // 过滤掉由覆盖层控制的 ParamMouthOpenY，避免原生动作曲线干扰口型
+    delete curves.ParamMouthOpenY
+
     const internalModel = this.model.internalModel as unknown as Record<string, unknown>
     const motionManager = internalModel.motionManager as Record<string, unknown> | undefined
     if (!motionManager || typeof motionManager.createMotion !== 'function') {
@@ -837,7 +843,6 @@ export class Live2DManager {
         ParamBrowRForm: 0,
         ParamEyeLSmile: 0,
         ParamEyeRSmile: 0,
-        ParamMouthOpenY: 0,
         ParamMouthForm: 0
       },
       {
