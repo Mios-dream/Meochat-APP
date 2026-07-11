@@ -1,21 +1,16 @@
 <template>
   <div class="toolMenuContainer">
     <!-- 顶部标题栏：拖拽区域 + 窗口控制 -->
-    <div class="title-bar" @mousedown="startDrag">
+    <div class="title-bar">
       <div class="title-left">
         <div class="title-avatar" />
         <span class="title-greeting">阁下，下午好</span>
       </div>
       <div class="title-right">
-        <button
-          class="title-btn"
-          title="置顶"
-          :class="{ pinned: isPinned }"
-          @click.stop="togglePin"
-        >
+        <button class="title-btn" title="置顶" :class="{ pinned: isPinned }" @click="togglePin">
           <font-awesome-icon icon="thumbtack" />
         </button>
-        <button class="title-btn close-btn" title="关闭" @click.stop="closeChatBox">
+        <button class="title-btn close-btn" title="关闭" @click="closeChatBox">
           <font-awesome-icon icon="xmark" />
         </button>
       </div>
@@ -24,7 +19,14 @@
     <!-- 聊天消息区域：空间 > 260px 时显示历史记录，较小时自动留白 -->
     <div ref="messagesRef" class="chat-messages">
       <div class="chat-messages-body">
-        <template v-if="messages.length > 0">
+        <!-- 历史加载中 -->
+        <div v-if="historyLoading" class="history-loading">
+          <span class="loading-dot" />
+          <span class="loading-dot" />
+          <span class="loading-dot" />
+          <span class="history-loading-text">加载历史记录...</span>
+        </div>
+        <template v-else-if="messages.length > 0">
           <div
             v-for="(msg, idx) in messages"
             :key="idx"
@@ -37,9 +39,6 @@
                 msg.role === 'assistant' ? 'assistant-bubble' : 'user-bubble'
               ]"
             >
-              <span class="message-label">{{
-                msg.role === 'assistant' ? assistantName : '你'
-              }}</span>
               <MessageContent :content="msg.content" :role="msg.role" />
             </div>
           </div>
@@ -57,22 +56,46 @@
       </div>
     </div>
 
+    <!-- 工具调用状态栏 -->
+    <Transition name="tool-fade">
+      <div v-if="toolStatus.active" class="tool-status-bar">
+        <span class="tool-status-dot" />
+        <span class="tool-status-text">{{ formatToolStatusText }}</span>
+      </div>
+    </Transition>
+
     <!-- 消息输入区域：紧贴消息区底部 -->
     <div class="chat-input-area">
-      <input
+      <textarea
         ref="inputRef"
         v-model="inputText"
-        type="text"
         class="chat-input"
         placeholder="输入消息..."
         :disabled="loading"
+        rows="1"
         @keydown.enter.prevent="handleSend"
+        @input="autoResize"
       />
+      <button
+        v-if="loading"
+        class="send-btn cancel-send-btn"
+        title="取消回复"
+        @click="handleCancel"
+      >
+        <font-awesome-icon icon="stop" />
+      </button>
+      <button v-else class="send-btn" :disabled="!inputText.trim()" @click="handleSend">
+        <font-awesome-icon icon="paper-plane" />
+      </button>
     </div>
 
     <!-- 底部快捷工具栏 -->
     <div class="bottom-toolbar">
       <div class="toolbar-left">
+        <button class="tool-icon-btn" title="新建对话" @click="handleNewConversation">
+          <font-awesome-icon icon="plus" />
+        </button>
+        <div class="toolbar-divider" />
         <button class="tool-icon-btn" title="截图" @click="takeScreenshot">
           <font-awesome-icon icon="camera" />
         </button>
@@ -83,18 +106,14 @@
           <font-awesome-icon icon="image" />
         </button>
       </div>
-      <div class="toolbar-right">
-        <button class="send-btn" :disabled="!inputText.trim() || loading" @click="handleSend">
-          <font-awesome-icon icon="paper-plane" />
-        </button>
-      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import MessageContent from '../components/MessageContent.vue'
+import type { ToolStatusData } from '../chat/ChatManager'
 
 /** 单条聊天消息 */
 interface ChatMessage {
@@ -103,14 +122,27 @@ interface ChatMessage {
 }
 
 const messagesRef = ref<HTMLElement | null>(null)
+const inputRef = ref<HTMLTextAreaElement | null>(null)
 
 const messages = ref<ChatMessage[]>([])
 const historyLoading = ref(false)
 const loading = ref(false)
 const inputText = ref('')
-const assistantName = ref('助手')
 const isPinned = ref(false)
+const toolStatus = ref<ToolStatusData>({ active: false, tools: [] })
+const elapsedTick = ref(0)
 let removeStatusUpdated: () => void = () => {}
+let removeClearHistory: () => void = () => {}
+let removeToolStatus: () => void = () => {}
+let elapsedTimer: ReturnType<typeof setInterval> | null = null
+
+/** 工具状态文本格式化 */
+const formatToolStatusText = computed(() => {
+  if (toolStatus.value.tools.length === 0) return ''
+  return toolStatus.value.tools
+    .map((t) => `${t.tool_name} (${(t.elapsed + elapsedTick.value).toFixed(1)}s)`)
+    .join(', ')
+})
 
 /** 自动滚动聊天区域到底部 */
 function scrollToBottom(): void {
@@ -130,8 +162,43 @@ function handleSend(): void {
   inputText.value = ''
   scrollToBottom()
 
+  // 重置输入框高度
+  if (inputRef.value) {
+    inputRef.value.style.height = 'auto'
+  }
+
   loading.value = true
-  window.api.ipcRenderer.invoke('chat-box:send-message', text)
+  window.api.ipcRenderer.send('chat-box:send-message', { text })
+}
+
+/** 取消当前回复 */
+function handleCancel(): void {
+  loading.value = false
+  window.api.ipcRenderer.send('chat-box:cancel-message', { text: '用户取消' })
+}
+
+/** textarea 自动伸缩高度 */
+function autoResize(): void {
+  const el = inputRef.value
+  if (!el) return
+  el.style.height = 'auto'
+  el.style.height = `${Math.min(el.scrollHeight, 120)}px`
+}
+
+/** 新建对话：中断当前对话、清空本地历史并通知 Assistant 窗口同步清空 */
+function handleNewConversation(): void {
+  // 如果有进行中的回复，先取消
+  if (loading.value) {
+    window.api.ipcRenderer.send('chat-box:cancel-message', { text: '用户取消' })
+    loading.value = false
+  }
+  messages.value = []
+  window.api.ipcRenderer.send('chat-box:clear-history')
+  nextTick(() => {
+    if (inputRef.value) {
+      inputRef.value.focus()
+    }
+  })
 }
 
 /** 切换窗口置顶 */
@@ -151,38 +218,93 @@ function closeChatBox(): void {
   window.api.closeChatBox()
 }
 
-/** 截图功能（预留） */
-function takeScreenshot(): void {
-  console.log('触发截图功能')
+/** 截图：使用浏览器屏幕捕获 API 截图并复制到剪贴板 */
+async function takeScreenshot(): Promise<void> {
+  try {
+    const stream = await navigator.mediaDevices.getDisplayMedia({ video: true })
+    const video = document.createElement('video')
+    video.srcObject = stream
+    await video.play()
+
+    const canvas = document.createElement('canvas')
+    canvas.width = video.videoWidth
+    canvas.height = video.videoHeight
+    const ctx = canvas.getContext('2d')
+    if (ctx) {
+      ctx.drawImage(video, 0, 0)
+    }
+    stream.getTracks().forEach((t) => t.stop())
+
+    // 将截图复制到剪贴板
+    canvas.toBlob(async (blob) => {
+      if (blob) {
+        try {
+          await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
+          window.api.notify?.({ title: '截图已复制到剪贴板', body: '' })
+        } catch {
+          console.warn('复制截图到剪贴板失败')
+        }
+      }
+    })
+  } catch (err) {
+    console.error('截图失败:', err)
+  }
 }
 
-/** 上传文件（预留） */
-function uploadFile(): void {
-  console.log('上传文件')
+/** 文件选择结果类型 */
+interface SelectFileResult {
+  success: boolean
+  filePath?: string
+  filePaths?: string[]
+  error?: string
 }
 
-/** 上传图片（预留） */
-function uploadImage(): void {
-  console.log('上传图片')
+/** 上传文件：通过 IPC 打开系统文件选择对话框 */
+async function uploadFile(): Promise<void> {
+  try {
+    const result = (await window.api.ipcRenderer.invoke('tool:select-file', {
+      title: '选择文件',
+      filters: [{ name: '所有文件', extensions: ['*'] }]
+    })) as SelectFileResult
+    if (result?.success && result.filePath) {
+      window.api.notify?.({ title: '文件已选择', body: result.filePath })
+    }
+  } catch (err) {
+    console.error('选择文件失败:', err)
+  }
 }
 
-/** 拖拽聊天框窗口 */
-function startDrag(): void {
-  window.api.startDrag?.()
+/** 上传图片：通过 IPC 打开系统文件选择对话框（筛选图片格式） */
+async function uploadImage(): Promise<void> {
+  try {
+    const result = (await window.api.ipcRenderer.invoke('tool:select-file', {
+      title: '选择图片',
+      filters: [{ name: '图片文件', extensions: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'] }]
+    })) as SelectFileResult
+    if (result?.success && result.filePath) {
+      window.api.notify?.({ title: '图片已选择', body: result.filePath })
+    }
+  } catch (err) {
+    console.error('选择图片失败:', err)
+  }
 }
 
 onMounted(async () => {
-  // 通过 IPC 从主进程获取聊天历史
+  // 通过 IPC 从 Assistant 窗口获取聊天历史
+  historyLoading.value = true
   try {
     const history = await window.api.ipcRenderer.invoke('chat-box:get-history')
-
-    messages.value = history as ChatMessage[]
-    scrollToBottom()
+    if (Array.isArray(history) && history.length > 0) {
+      messages.value = history as ChatMessage[]
+      scrollToBottom()
+    }
   } catch (error) {
     console.warn('获取聊天历史失败:', error)
+  } finally {
+    historyLoading.value = false
   }
-  historyLoading.value = false
 
+  // 监听助手状态更新
   removeStatusUpdated = window.api.ipcRenderer.on('chat-box:status-updated', (data) => {
     const statusData = data as { loading: boolean; reply?: string }
     loading.value = statusData.loading
@@ -191,10 +313,38 @@ onMounted(async () => {
       scrollToBottom()
     }
   })
+
+  // 监听清空历史事件（由其他窗口发起）
+  removeClearHistory = window.api.ipcRenderer.on('chat-box:clear-history', () => {
+    messages.value = []
+  })
+
+  // 监听工具调用状态更新
+  removeToolStatus = window.api.ipcRenderer.on('chat-box:tool-status-updated', (data) => {
+    const toolData = data as ToolStatusData
+    toolStatus.value = toolData
+    elapsedTick.value = 0
+
+    if (elapsedTimer) {
+      clearInterval(elapsedTimer)
+      elapsedTimer = null
+    }
+    if (toolData.active) {
+      elapsedTimer = setInterval(() => {
+        elapsedTick.value++
+      }, 1000)
+    }
+  })
 })
 
 onUnmounted(() => {
   removeStatusUpdated()
+  removeClearHistory()
+  removeToolStatus()
+  if (elapsedTimer) {
+    clearInterval(elapsedTimer)
+    elapsedTimer = null
+  }
 })
 </script>
 
@@ -210,7 +360,6 @@ onUnmounted(() => {
   background: linear-gradient(155deg, rgba(255, 255, 255, 0.93) 0%, rgba(255, 255, 255, 0.78) 100%);
   backdrop-filter: blur(14px);
   border: 2px solid rgba(255, 255, 255, 0.82);
-  box-shadow: 0 8px 32px rgba(139, 30, 63, 0.12);
 }
 
 /* ───── 顶部标题栏 ───── */
@@ -223,18 +372,17 @@ onUnmounted(() => {
   justify-content: space-between;
   padding: 0 12px;
   cursor: grab;
-  -webkit-app-region: drag;
-  app-region: drag;
   flex-shrink: 0;
   border-bottom: 1px solid rgba(139, 30, 63, 0.06);
+  -webkit-app-region: drag;
+  app-region: drag;
 }
 
 .title-left {
   display: flex;
   align-items: center;
   gap: 10px;
-  -webkit-app-region: drag;
-  app-region: drag;
+  cursor: grab;
 }
 
 .title-avatar {
@@ -259,8 +407,6 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 4px;
-  -webkit-app-region: no-drag;
-  app-region: no-drag;
 }
 
 .title-btn {
@@ -276,6 +422,8 @@ onUnmounted(() => {
   justify-content: center;
   font-size: 14px;
   transition: all 0.2s ease;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
 }
 
 .title-btn:hover {
@@ -391,7 +539,7 @@ onUnmounted(() => {
   display: flex;
   gap: 8px;
   align-items: flex-start;
-  max-width: 100%;
+  max-width: 80%;
 }
 
 .assistant-row {
@@ -424,34 +572,37 @@ onUnmounted(() => {
   font-size: 13px;
   line-height: 1.5;
   word-break: break-word;
-  max-width: 85%;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
 }
 
 .assistant-bubble {
-  background: rgba(255, 255, 255, 0.65);
-  border: 1px solid rgba(139, 30, 63, 0.06);
-  backdrop-filter: blur(8px);
+  background: #fff5f7;
+  border: 1px solid rgba(249, 130, 166, 0.15);
   color: #6f2b43;
   border-top-left-radius: 4px;
 }
 
 .user-bubble {
-  background: linear-gradient(
-    135deg,
-    var(--theme-color-light, #fca5b9),
-    var(--theme-color, #fc8ead)
-  );
-  color: white;
+  background: #f0f0f0;
+  border: 1px solid rgba(0, 0, 0, 0.04);
+  color: #555;
   border-bottom-right-radius: 4px;
 }
 
-.message-label {
-  font-size: 11px;
-  color: #9a6275;
-  display: block;
-  margin-bottom: 2px;
-  font-weight: 500;
+/* ───── 历史加载中 ───── */
+.history-loading {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 20px;
+}
+
+.history-loading-text {
+  font-size: 12px;
+  color: #c0a0ae;
+  margin-left: 4px;
 }
 
 /* ───── 输入中动画 ───── */
@@ -492,28 +643,34 @@ onUnmounted(() => {
 .chat-input-area {
   display: flex;
   flex-shrink: 0;
+  align-items: flex-end;
+  gap: 8px;
   padding: 0 12px 8px;
 }
 
 .chat-input {
-  width: 100%;
-  height: 36px;
-  padding: 0 16px;
+  flex: 1;
+  min-height: 36px;
+  max-height: 120px;
+  padding: 8px 14px;
   border: 1.5px solid rgba(139, 30, 63, 0.1);
-  background: rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.55);
   backdrop-filter: blur(4px);
   font-size: 13px;
+  line-height: 1.5;
   color: #6f2b43;
   outline: none;
   transition: all 0.25s ease;
   box-sizing: border-box;
   font-family: inherit;
-  border-radius: 999px;
+  border-radius: 12px;
+  resize: none;
+  overflow-y: hidden;
 }
 
 .chat-input:focus {
   border-color: var(--theme-color-light, #fca5b9);
-  background: rgba(255, 255, 255, 0.6);
+  background: rgba(255, 255, 255, 0.7);
   box-shadow: 0 0 12px rgba(252, 142, 173, 0.15);
 }
 
@@ -564,14 +721,19 @@ onUnmounted(() => {
   background: rgba(252, 142, 173, 0.1);
 }
 
-.toolbar-right {
-  display: flex;
-  align-items: center;
+/* 工具栏分隔线 */
+.toolbar-divider {
+  width: 1px;
+  height: 18px;
+  background: rgba(139, 30, 63, 0.1);
+  margin: 0 4px;
+  flex-shrink: 0;
 }
 
 .send-btn {
-  width: 32px;
-  height: 32px;
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
   border: none;
   background: var(--theme-color, #fc8ead);
   color: white;
@@ -580,7 +742,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 15px;
+  font-size: 14px;
   box-shadow: 0 2px 8px rgba(251, 114, 153, 0.25);
   transition: all 0.25s ease;
 }
@@ -595,5 +757,71 @@ onUnmounted(() => {
   cursor: not-allowed;
   transform: none;
   box-shadow: none;
+}
+
+/* 取消发送按钮：加载中替换发送按钮 */
+.cancel-send-btn {
+  background: #e97168;
+  box-shadow: 0 2px 8px rgba(233, 113, 104, 0.3);
+}
+
+.cancel-send-btn:hover {
+  background: #d46057;
+  box-shadow: 0 4px 14px rgba(233, 113, 104, 0.4);
+  transform: scale(1.05);
+}
+
+/* ───── 工具调用状态栏 ───── */
+.tool-status-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  margin: 0 12px 4px;
+  background: rgba(255, 192, 214, 0.12);
+  border: 1px solid rgba(255, 192, 214, 0.3);
+  border-radius: 8px;
+  font-size: 12px;
+  color: #c06a8a;
+  flex-shrink: 0;
+}
+
+.tool-status-dot {
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #ffa0c0;
+  animation: tool-dot-pulse 1.2s ease-in-out infinite;
+}
+
+.tool-status-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@keyframes tool-dot-pulse {
+  0%,
+  100% {
+    opacity: 0.4;
+    transform: scale(0.8);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.2);
+  }
+}
+
+/* 工具状态栏过渡 */
+.tool-fade-enter-active,
+.tool-fade-leave-active {
+  transition: all 0.3s ease;
+}
+
+.tool-fade-enter-from,
+.tool-fade-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
 }
 </style>

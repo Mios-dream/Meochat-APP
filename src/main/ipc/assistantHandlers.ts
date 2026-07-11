@@ -1,4 +1,4 @@
-﻿import { screen, BrowserWindow, app } from 'electron'
+﻿import { screen, BrowserWindow, app, ipcMain } from 'electron'
 import { CHANNELS } from '@shared/ipc/channels'
 import { registerHandle, registerOn } from '../utils/registerIpcHandler'
 import {
@@ -127,6 +127,39 @@ function setupChatBoxIPC(): void {
   registerOn(CHANNELS.CHATBOX_UPDATE_TOOL_STATUS, (_event, data) => {
     BrowserWindow.getAllWindows().forEach((win) => {
       win.webContents.send(CHANNELS.CHATBOX_TOOL_STATUS_UPDATED_EVENT, data)
+    })
+  })
+
+  // 获取聊天历史：ChatBox 窗口 → 主进程 → Assistant 窗口 → 返回历史
+  registerHandle(CHANNELS.CHATBOX_GET_HISTORY, async () => {
+    const assistantWin = windowRegistry.getWindowByType('assistant')
+    if (!assistantWin || assistantWin.isDestroyed()) {
+      return []
+    }
+
+    return new Promise((resolve) => {
+      const responseChannel = `chat-box:get-history-response:${Date.now()}`
+      const timeout = setTimeout(() => {
+        ipcMain.removeAllListeners(responseChannel)
+        resolve([])
+      }, 5000)
+
+      ipcMain.on(responseChannel, (_event, history) => {
+        clearTimeout(timeout)
+        ipcMain.removeAllListeners(responseChannel)
+        resolve(Array.isArray(history) ? history : [])
+      })
+
+      assistantWin.webContents.send(CHANNELS.CHATBOX_GET_HISTORY, responseChannel)
+    })
+  })
+
+  // 清空聊天历史：广播到所有窗口
+  registerOn(CHANNELS.CHATBOX_CLEAR_HISTORY, () => {
+    BrowserWindow.getAllWindows().forEach((win) => {
+      if (!win.isDestroyed()) {
+        win.webContents.send(CHANNELS.CHATBOX_CLEAR_HISTORY)
+      }
     })
   })
 }

@@ -357,9 +357,13 @@ function installChatBoxListener(): void {
       const isSleepMode = interactionSystem.isSleepMode()
       await chatService.chat(chatData.text, isSleepMode)
     } finally {
-      // 发送状态更新给 ChatBox
+      // 从 ChatManager 获取最新的助手回复，同步回 ChatBox 窗口
+      const history = chatService.getChatHistory()
+      const lastMsg = history.length > 0 ? history[history.length - 1] : null
+      const reply = lastMsg?.role === 'assistant' ? lastMsg.content : undefined
       window.api.ipcRenderer.send('chat-box:update-status', {
-        loading: false
+        loading: false,
+        reply
       })
     }
   })
@@ -367,6 +371,18 @@ function installChatBoxListener(): void {
   // 监听来自ChatBox的取消消息
   window.api.ipcRenderer.on('chat-box:cancel-message', () => {
     chatService.interruptCurrentPlayback()
+  })
+
+  // 响应 ChatBox 窗口的历史记录请求
+  window.api.ipcRenderer.on('chat-box:get-history', (responseChannel: unknown) => {
+    const channel = responseChannel as string
+    const history = chatService.getChatHistory()
+    window.api.ipcRenderer.send(channel, history)
+  })
+
+  // 响应 ChatBox 窗口的清空历史请求
+  window.api.ipcRenderer.on('chat-box:clear-history', () => {
+    chatService.clearChatHistory()
   })
 
   // 订阅工具状态变更，通过 IPC 广播给 ChatBox 窗口以展示当前工具调用状态
@@ -492,6 +508,8 @@ onUnmounted(() => {
   }
   window.api.ipcRenderer.removeAllListeners('chat-box:send-message')
   window.api.ipcRenderer.removeAllListeners('chat-box:cancel-message')
+  window.api.ipcRenderer.removeAllListeners('chat-box:get-history')
+  window.api.ipcRenderer.removeAllListeners('chat-box:clear-history')
   live2DManager.destroy()
   // 清除Tips更新定时器
   if (tipsUpdateInterval) {
