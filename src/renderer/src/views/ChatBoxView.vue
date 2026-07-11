@@ -110,6 +110,7 @@ const loading = ref(false)
 const inputText = ref('')
 const assistantName = ref('助手')
 const isPinned = ref(false)
+let removeStatusUpdated: () => void = () => {}
 
 /** 自动滚动聊天区域到底部 */
 function scrollToBottom(): void {
@@ -130,15 +131,15 @@ function handleSend(): void {
   scrollToBottom()
 
   loading.value = true
-  window.api.sendMessage(text)
+  window.api.ipcRenderer.invoke('chat-box:send-message', text)
 }
 
 /** 切换窗口置顶 */
 async function togglePin(): Promise<void> {
   try {
-    const result = await window.api.ipcRenderer.invoke('chat-box:toggle-pin')
-    if (result?.success) {
-      isPinned.value = result.pinned
+    const result = await window.api.togglePin()
+    if (result.success) {
+      isPinned.value = result.pinned ?? false
     }
   } catch (err) {
     console.error('切换置顶失败:', err)
@@ -173,7 +174,7 @@ function startDrag(): void {
 onMounted(async () => {
   // 通过 IPC 从主进程获取聊天历史
   try {
-    const history = await window.api.getChatHistory()
+    const history = await window.api.ipcRenderer.invoke('chat-box:get-history')
 
     messages.value = history as ChatMessage[]
     scrollToBottom()
@@ -182,17 +183,18 @@ onMounted(async () => {
   }
   historyLoading.value = false
 
-  window.api.ipcRenderer.on('chat-box:status-updated', (_, data) => {
-    loading.value = data.loading
-    if (!data.loading && data.reply) {
-      messages.value.push({ role: 'assistant', content: data.reply })
+  removeStatusUpdated = window.api.ipcRenderer.on('chat-box:status-updated', (data) => {
+    const statusData = data as { loading: boolean; reply?: string }
+    loading.value = statusData.loading
+    if (!statusData.loading && statusData.reply) {
+      messages.value.push({ role: 'assistant', content: statusData.reply })
       scrollToBottom()
     }
   })
 })
 
 onUnmounted(() => {
-  window.api.ipcRenderer.removeAllListeners('chat-box:status-updated')
+  removeStatusUpdated()
 })
 </script>
 

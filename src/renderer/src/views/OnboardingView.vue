@@ -1032,17 +1032,17 @@ async function acceptContract(): Promise<void> {
 // ─── IPC listeners ──────────────────────────────────────────────────────────
 
 function onAssistantDownloadProgress(
-  _event: unknown,
-  payload: { status: string; assistantName?: string; progress?: number }
+  payload: unknown
 ): void {
-  if (payload.status === 'completed' || payload.status === 'idle') {
+  const progressData = payload as { status: string; assistantName?: string; progress?: number }
+  if (progressData.status === 'completed' || progressData.status === 'idle') {
     assistantProgress.value = 100
     if (assistantDownloadResolve) {
       assistantDownloadResolve()
       assistantDownloadResolve = null
     }
-  } else if (payload.progress !== undefined) {
-    assistantProgress.value = Math.max(0, Math.min(100, payload.progress))
+  } else if (progressData.progress !== undefined) {
+    assistantProgress.value = Math.max(0, Math.min(100, progressData.progress))
   }
 }
 

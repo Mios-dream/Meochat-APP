@@ -32,7 +32,10 @@ export const useWidgetStore = defineStore('widget', () => {
    */
   async function loadConfig(): Promise<void> {
     try {
-      const result = await window.api.ipcRenderer.invoke('widget:config:get-all')
+      const result = (await window.api.widgetApi.getAllConfigs()) as {
+        success: boolean
+        data?: { instances: WidgetInstance[]; globalSettings: WidgetGlobalSettings }
+      }
       if (result.success && result.data) {
         instances.value = result.data.instances || []
         globalSettings.value = result.data.globalSettings || {
@@ -56,7 +59,9 @@ export const useWidgetStore = defineStore('widget', () => {
         instances: JSON.parse(JSON.stringify(instances.value)),
         globalSettings: JSON.parse(JSON.stringify(globalSettings.value))
       }
-      const result = await window.api.ipcRenderer.invoke('widget:config:save', config)
+      const result = (await window.api.widgetApi.saveConfig(config)) as {
+        success: boolean
+      }
       return result.success
     } catch (error) {
       console.error('保存小组件配置失败:', error)
@@ -71,7 +76,9 @@ export const useWidgetStore = defineStore('widget', () => {
     try {
       // 创建纯对象，避免 Pinia 响应式代理导致的序列化问题
       const plainInstance = JSON.parse(JSON.stringify(instance))
-      const result = await window.api.ipcRenderer.invoke('widget:instance:add', plainInstance)
+      const result = (await window.api.ipcRenderer.invoke('widget:instance:add', plainInstance)) as {
+        success: boolean
+      }
       if (result.success) {
         // 更新本地状态
         const existingIndex = instances.value.findIndex((i) => i.id === instance.id)
@@ -99,10 +106,9 @@ export const useWidgetStore = defineStore('widget', () => {
     try {
       // 创建纯对象，避免 Pinia 响应式代理导致的序列化问题
       const plainUpdates = JSON.parse(JSON.stringify(updates))
-      const result = await window.api.ipcRenderer.invoke('widget:instance:update', {
-        instanceId,
-        updates: plainUpdates
-      })
+      const result = (await window.api.widgetApi.updateInstance(instanceId, plainUpdates)) as {
+        success: boolean
+      }
       if (result.success) {
         // 更新本地状态
         const index = instances.value.findIndex((i) => i.id === instanceId)
@@ -123,7 +129,9 @@ export const useWidgetStore = defineStore('widget', () => {
    */
   async function deleteInstance(instanceId: string): Promise<boolean> {
     try {
-      const result = await window.api.ipcRenderer.invoke('widget:instance:delete', instanceId)
+      const result = (await window.api.widgetApi.deleteInstance(instanceId)) as {
+        success: boolean
+      }
       if (result.success) {
         // 更新本地状态
         instances.value = instances.value.filter((i) => i.id !== instanceId)
@@ -148,10 +156,9 @@ export const useWidgetStore = defineStore('widget', () => {
    */
   async function togglePinned(instanceId: string, pinned: boolean): Promise<boolean> {
     try {
-      const result = await window.api.ipcRenderer.invoke('widget:window:toggle-pin', {
-        instanceId,
-        pinned
-      })
+      const result = (await window.api.widgetApi.togglePin(instanceId, pinned)) as {
+        success: boolean
+      }
       if (result.success) {
         return updateInstance(instanceId, { pinned })
       }
@@ -168,7 +175,9 @@ export const useWidgetStore = defineStore('widget', () => {
   async function createWindow(instanceId: string): Promise<boolean> {
     try {
       console.log('调用创建窗口 IPC:', instanceId)
-      const result = await window.api.ipcRenderer.invoke('widget:window:create', instanceId)
+      const result = (await window.api.ipcRenderer.invoke('widget:window:create', instanceId)) as {
+        success: boolean
+      }
       console.log('创建窗口结果:', result)
       return result.success
     } catch (error) {
@@ -182,7 +191,9 @@ export const useWidgetStore = defineStore('widget', () => {
    */
   async function closeWindow(instanceId: string): Promise<boolean> {
     try {
-      const result = await window.api.ipcRenderer.invoke('widget:window:close', instanceId)
+      const result = (await window.api.widgetApi.closeWindow(instanceId)) as {
+        success: boolean
+      }
       return result.success
     } catch (error) {
       console.error('关闭小组件窗口失败:', error)
@@ -195,7 +206,9 @@ export const useWidgetStore = defineStore('widget', () => {
    */
   async function updateGlobalSettings(settings: Partial<WidgetGlobalSettings>): Promise<boolean> {
     try {
-      const result = await window.api.ipcRenderer.invoke('widget:settings:update', settings)
+      const result = (await window.api.ipcRenderer.invoke('widget:settings:update', settings)) as {
+        success: boolean
+      }
       if (result.success) {
         globalSettings.value = { ...globalSettings.value, ...settings }
         return true
@@ -211,9 +224,10 @@ export const useWidgetStore = defineStore('widget', () => {
    * 监听配置变更
    */
   function listenForChanges(): void {
-    window.api.ipcRenderer.on('widget:config:changed', (_event, config: WidgetConfigFile) => {
-      instances.value = config.instances || []
-      globalSettings.value = config.globalSettings || {
+    window.api.widgetApi.onConfigChanged((config) => {
+      const changedConfig = config as WidgetConfigFile
+      instances.value = changedConfig.instances || []
+      globalSettings.value = changedConfig.globalSettings || {
         snapToGrid: true,
         gridSize: 20,
         showOnDesktop: true
@@ -226,12 +240,12 @@ export const useWidgetStore = defineStore('widget', () => {
    */
   async function sendData(fromId: string, toId: string, type: string, payload): Promise<boolean> {
     try {
-      const result = await window.api.ipcRenderer.invoke('widget:data:send', {
+      const result = (await window.api.widgetApi.sendData({
         fromId,
         toId,
         type,
         payload
-      })
+      })) as { success: boolean }
       return result.success
     } catch (error) {
       console.error('发送小组件数据失败:', error)
@@ -248,11 +262,11 @@ export const useWidgetStore = defineStore('widget', () => {
    */
   async function broadcastData(fromId: string, type: string, payload: unknown): Promise<boolean> {
     try {
-      const result = await window.api.ipcRenderer.invoke('widget:data:broadcast', {
+      const result = (await window.api.widgetApi.broadcastData({
         fromId,
         type,
         payload
-      })
+      })) as { success: boolean }
       return result.success
     } catch (error) {
       console.error('广播小组件数据失败:', error)

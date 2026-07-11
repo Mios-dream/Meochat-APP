@@ -9,18 +9,20 @@ import { ipcRenderer } from 'electron'
 /**
  * IPC 工具对象
  *
- * on 方法透传原始 ipcRenderer.on 参数，不剥离 event 对象。
- * 调用方可使用 (_event, data) 双参数风格或 (data) 单参数风格，
- * 兼容两种写法。
+ * on 方法自动剥离 ipcRenderer.on 的第一个 event 参数，
+ * 调用方只需关注实际数据参数。
  */
 export const ipc = {
   send: (channel: string, data?: unknown) => ipcRenderer.send(channel, data),
   invoke: <T = unknown>(channel: string, data?: unknown) =>
     ipcRenderer.invoke(channel, data) as Promise<T>,
   on: (channel: string, listener: (...args: any[]) => void) => {
-    ipcRenderer.on(channel, listener)
+    const wrapper = (_event: Electron.IpcRendererEvent, ...args: any[]): void => {
+      listener(...args)
+    }
+    ipcRenderer.on(channel, wrapper)
     return () => {
-      ipcRenderer.removeListener(channel, listener)
+      ipcRenderer.removeListener(channel, wrapper)
     }
   },
   removeAllListeners: (channel: string) => ipcRenderer.removeAllListeners(channel)

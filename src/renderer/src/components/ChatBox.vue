@@ -188,9 +188,10 @@ onMounted(() => {
     }
   })
   // 监听来自AssistantView的状态更新
-  window.api.ipcRenderer.on('chat-box:status-updated', (_, data) => {
+  window.api.ipcRenderer.on('chat-box:status-updated', (data) => {
+    const statusData = data as { loading: boolean }
     const oldLoading = loading.value
-    loading.value = data.loading
+    loading.value = statusData.loading
     inputValue.value = '' // 立即清空输入框
 
     // 如果加载状态从true变为false，并且当前是语音聊天模式，则自动开始下一次录音
@@ -211,13 +212,14 @@ onMounted(() => {
     }
   })
   // 监听语音唤醒事件
-  window.api.ipcRenderer.on('chat-box:wakeword-detected', (_, wakeword) => {
-    loading.value = true // 设置加载状态
-    window.api.ipcRenderer.send('chat-box:send-message', { text: wakeword })
+  window.api.ipcRenderer.on('chat-box:wakeword-detected', (wakeword) => {
+    loading.value = true
+    window.api.ipcRenderer.send('chat-box:send-message', { text: wakeword as string })
   })
   // 监听工具状态更新事件（由 Assistant 窗口通过 IPC 广播）
-  window.api.ipcRenderer.on('chat-box:tool-status-updated', (_, data: ToolStatusData) => {
-    toolStatus.value = data
+  window.api.ipcRenderer.on('chat-box:tool-status-updated', (data) => {
+    const toolData = data as ToolStatusData
+    toolStatus.value = toolData
     elapsedTick.value = 0
 
     // 根据活跃状态启停本地计时器，驱动耗时文本每秒刷新
@@ -225,7 +227,7 @@ onMounted(() => {
       clearInterval(elapsedTimer)
       elapsedTimer = null
     }
-    if (data.active) {
+    if (toolData.active) {
       elapsedTimer = setInterval(() => {
         elapsedTick.value++
       }, 1000)

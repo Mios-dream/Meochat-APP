@@ -166,7 +166,7 @@ function applyRouteTab(tab: unknown): void {
 
 // 检查云端版本
 async function checkCloudVersion(): Promise<void> {
-  const result = await window.api.checkCloudVersion()
+  const result = await window.api.appUpdate.checkCloudVersion()
   if (result.success) {
     if (result.fullVersionMatch) {
       console.log(`版本完全匹配: 当前版本 ${result.currentVersion}`)

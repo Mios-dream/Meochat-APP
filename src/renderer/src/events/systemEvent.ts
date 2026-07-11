@@ -5,14 +5,6 @@ import { EventModule } from '@renderer/core/interaction/types/eventModules'
 import { InteractionEventPayload } from '@renderer/chat/ChatManager'
 import { InteractionEffect } from '@renderer/core/interaction/types/InteractionEffect'
 
-interface BatteryPayload {
-  percent: number
-  isCharging: boolean
-  isLow: boolean
-  threshold: number
-  timestamp: number
-}
-
 export class SystemEventModule extends EventModule {
   private isListening = false
   private lowBatteryNotified = false
@@ -22,30 +14,39 @@ export class SystemEventModule extends EventModule {
       return
     }
 
-    window.api.ipcRenderer.on('assistantEvent:on-ac', (_event, payload) => {
+    window.api.ipcRenderer.on('assistantEvent:on-ac', (payload) => {
+      const data = payload as { timestamp: number } | undefined
       this.eventCenter.emit('system.charging', {
         systemPowerStatus: {
           state: 'charging',
-          timestamp: payload?.timestamp || Date.now()
+          timestamp: data?.timestamp || Date.now()
         }
       })
     })
 
-    window.api.ipcRenderer.on('assistantEvent:on-battery', (_event, payload) => {
+    window.api.ipcRenderer.on('assistantEvent:on-battery', (payload) => {
+      const data = payload as { timestamp: number } | undefined
       this.eventCenter.emit('system.discharging', {
         systemPowerStatus: {
           state: 'battery',
-          timestamp: payload?.timestamp || Date.now()
+          timestamp: data?.timestamp || Date.now()
         }
       })
     })
 
-    window.api.ipcRenderer.on('assistantEvent:battery-level', (_event, payload: BatteryPayload) => {
-      const percent = Number(payload?.percent || 0)
-      const isCharging = Boolean(payload?.isCharging)
-      const isLow = Boolean(payload?.isLow)
-      const threshold = Number(payload?.threshold || 20)
-      const timestamp = payload?.timestamp || Date.now()
+    window.api.ipcRenderer.on('assistantEvent:battery-level', (payload) => {
+      const batteryData = payload as {
+        percent: number
+        isCharging: boolean
+        isLow: boolean
+        threshold: number
+        timestamp: number
+      }
+      const percent = Number(batteryData?.percent || 0)
+      const isCharging = Boolean(batteryData?.isCharging)
+      const isLow = Boolean(batteryData?.isLow)
+      const threshold = Number(batteryData?.threshold || 20)
+      const timestamp = batteryData?.timestamp || Date.now()
 
       this.eventCenter.emit('system.battery-level', {
         batteryStatus: {

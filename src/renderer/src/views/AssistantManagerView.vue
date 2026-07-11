@@ -334,6 +334,10 @@ const isSwitchingAssistant = ref(false)
 // 每个助手的资源同步进度（key: 助手名称, value: 0-100 进度百分比，-1 表示已完成）
 const assistantSyncProgress = ref<Map<string, number>>(new Map())
 
+// 事件监听清理函数
+let removeUploadProgress: () => void = () => {}
+let removeDataUpdated: () => void = () => {}
+
 // 检查助手是否正在同步
 function isAssistantSyncing(assistantName: string): boolean {
   return assistantSyncProgress.value.has(assistantName)
@@ -602,7 +606,6 @@ async function handleImportZipPackage(): Promise<void> {
 
 // 处理助手资源下载进度事件
 function handleDownloadProgress(
-  _event: unknown,
   payload: { assistantName: string; progress: number }
 ): void {
   // console.log('助手资源下载进度', payload)
@@ -625,7 +628,6 @@ function handleDownloadProgress(
 
 // 处理助手数据更新事件（后台云端同步完成后触发）
 function handleAssistantDataUpdated(
-  _event: unknown,
   payload: { assistants: AssistantInfo[]; currentAssistant: AssistantInfo | null }
 ): void {
   // console.log('助手数据已更新', payload)
@@ -639,17 +641,17 @@ function handleAssistantDataUpdated(
 
 // 当组件挂载时，获取助手状态
 onMounted(() => {
-  window.api.getAssistantStatus().then((status: boolean) => {
+  window.api.assistant.getAssistantStatus().then((status: boolean) => {
     isAssistantOpen.value = status
   })
 
   getAssistants()
 
   // 监听助手资源下载进度事件
-  window.api.ipcRenderer.on('assistant:download-progress', handleDownloadProgress)
+  removeUploadProgress = window.api.assistant.onUploadProgress(handleDownloadProgress)
 
   // 监听助手数据更新事件
-  window.api.ipcRenderer.on('assistant:data-updated', handleAssistantDataUpdated)
+  removeDataUpdated = window.api.assistant.onAssistantDataUpdated(handleAssistantDataUpdated)
 
   // 添加事件监听
   document.addEventListener('click', handleClickOutside)
@@ -664,9 +666,9 @@ onUnmounted(() => {
   // 移除事件监听
   document.removeEventListener('click', handleClickOutside)
   // 移除助手资源下载进度监听
-  window.api.ipcRenderer.removeAllListeners('assistant:download-progress')
+  removeUploadProgress()
   // 移除助手数据更新监听
-  window.api.ipcRenderer.removeAllListeners('assistant:data-updated')
+  removeDataUpdated()
 })
 </script>
 

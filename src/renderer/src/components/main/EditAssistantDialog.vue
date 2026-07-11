@@ -1098,7 +1098,7 @@ const uploadVoiceResources = async (): Promise<boolean> => {
 
     if (selectedGptModelFile.value) {
       const buffer = await readFileAsBuffer(selectedGptModelFile.value)
-      const saveResult = await window.api.saveAssistantResourceFile({
+      const saveResult = await window.api.assistant.saveAssistantResourceFile({
         fileData: buffer,
         assistantName,
         subDir: 'models',
@@ -1115,7 +1115,7 @@ const uploadVoiceResources = async (): Promise<boolean> => {
 
     if (selectedSovitsModelFile.value) {
       const buffer = await readFileAsBuffer(selectedSovitsModelFile.value)
-      const saveResult = await window.api.saveAssistantResourceFile({
+      const saveResult = await window.api.assistant.saveAssistantResourceFile({
         fileData: buffer,
         assistantName,
         subDir: 'models',
@@ -1134,7 +1134,7 @@ const uploadVoiceResources = async (): Promise<boolean> => {
       const buffer = await readFileAsBuffer(selectedRefAudioFile.value)
       const extension = getFileExtension(selectedRefAudioFile.value.name)
       const targetAudioFileName = `audio${extension}`
-      const saveResult = await window.api.saveAssistantResourceFile({
+      const saveResult = await window.api.assistant.saveAssistantResourceFile({
         fileData: buffer,
         assistantName,
         subDir: 'audio',
@@ -1301,7 +1301,7 @@ const uploadAvatar = async (): Promise<boolean> => {
     const fileBuffer = await readFileAsBuffer(selectedFile.value)
 
     // 调用IPC保存文件
-    const saveResult = await window.api.saveAssistantImageFile(
+    const saveResult = await window.api.assistant.saveAssistantImageFile(
       fileBuffer,
       formData.value.name,
       'avatar.png'
@@ -1334,7 +1334,7 @@ const uploadCharacterImages = async (): Promise<boolean> => {
       const arrayBuffer = await readFileAsBuffer(file)
       const fileName = `illustration`
 
-      const result = await window.api.saveAssistantImageFile(
+      const result = await window.api.assistant.saveAssistantImageFile(
         arrayBuffer,
         formData.value.name,
         fileName
@@ -1367,13 +1367,13 @@ const uploadLive2dModel = async (): Promise<boolean> => {
     const arrayBuffer = await readFileAsBuffer(file)
 
     // 设置进度监听
-    window.api.ipcRenderer.on('assistant:live2d-extract-progress', (progress: number) => {
-      live2dModelInfo.value.progress = progress
+    window.api.ipcRenderer.on('assistant:live2d-extract-progress', (progress) => {
+      live2dModelInfo.value.progress = (progress as number) ?? 0
     })
 
     try {
       // 上传并解压模型
-      const result = await window.api.saveAndExtractLive2DModel(
+      const result = await window.api.assistant.saveAndExtractLive2DModel(
         arrayBuffer,
         formData.value.name || assistantAssets.value.assistantName
       )
@@ -1428,7 +1428,7 @@ async function handleCharacterCardFileSelected(event: Event): Promise<void> {
     const file = input.files[0]
 
     // 调用API从图片中提取信息
-    const importResult = await window.api.importAssistantFromCard(await file.arrayBuffer())
+    const importResult = await window.api.assistant.importAssistantFromCard(await file.arrayBuffer())
 
     if (importResult.success) {
       const importData = importResult.data

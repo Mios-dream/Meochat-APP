@@ -232,7 +232,7 @@ function handleColorChange(event: Event): void {
 }
 
 onMounted(async () => {
-  currentVersion.value = await window.api.getCurrentVersion()
+  currentVersion.value = await window.api.appUpdate.getCurrentVersion()
 })
 
 async function openServerConfigDialog(): Promise<void> {
@@ -299,7 +299,7 @@ const openSupportPage = (): void => {
 }
 
 // 监听更新状态
-const removeUpdateStatusListener = window.api.onStatus((msg) => {
+const removeUpdateStatusListener = window.api.appUpdate.onStatus((msg) => {
   console.log('状态更新:', msg)
   notificationService.info({
     title: '状态更新',
@@ -308,7 +308,7 @@ const removeUpdateStatusListener = window.api.onStatus((msg) => {
 })
 
 // 监听下载进度
-const removeUpdateProgressListener = window.api.onProgress((percent) => {
+const removeUpdateProgressListener = window.api.appUpdate.onProgress((percent) => {
   downloadProgress.value = percent
   console.log('下载进度:', percent)
 })
@@ -321,7 +321,7 @@ onUnmounted(() => {
 async function checkForUpdatesAndConfirm(): Promise<void> {
   isCheckingUpdate.value = true
   try {
-    const result = await window.api.checkForUpdate()
+    const result = await window.api.appUpdate.checkForUpdate()
 
     console.log('检查结果:', result)
 
@@ -339,7 +339,7 @@ async function checkForUpdatesAndConfirm(): Promise<void> {
 async function confirmUpdate(): Promise<void> {
   showDownloadProgress.value = true
   try {
-    await window.api.confirmUpdate()
+    await window.api.appUpdate.confirmUpdate()
   } catch (error) {
     console.error('更新失败:', error)
   }

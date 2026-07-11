@@ -54,7 +54,7 @@ onMounted(() => {
     )
 
     // 通知主进程提示窗口已准备好
-    window.api.tipsApi.ready()
+    window.api.ipcRenderer.send('tips:ready')
   }
 })
 

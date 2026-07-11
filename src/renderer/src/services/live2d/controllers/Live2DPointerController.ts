@@ -74,8 +74,15 @@ export class Live2DPointerController {
 
     if (options.isPetMode) {
       window.api.ipcRenderer.removeAllListeners('assistant:mouse-position')
-      window.api.ipcRenderer.on('assistant:mouse-position', (_event, data) => {
-        if (data.isMouseDown) {
+      window.api.ipcRenderer.on('assistant:mouse-position', (data) => {
+        const mouseData = data as {
+          isMouseDown: boolean
+          screenX: number
+          screenY: number
+          windowX: number
+          windowY: number
+        }
+        if (mouseData.isMouseDown) {
           this.enableFocusTemporarily(ports)
         }
 
@@ -83,10 +90,10 @@ export class Live2DPointerController {
           ports,
           model,
           app,
-          data.screenX,
-          data.screenY,
-          data.windowX,
-          data.windowY
+          mouseData.screenX,
+          mouseData.screenY,
+          mouseData.windowX,
+          mouseData.windowY
         )
       })
 

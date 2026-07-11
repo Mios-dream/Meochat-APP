@@ -67,7 +67,7 @@ const emit = defineEmits<Emits>()
 const isUpdating = ref(false)
 const downloadProgress = ref(0)
 
-const removeUpdateProgressListener = window.api.onProgress((percent: number) => {
+const removeUpdateProgressListener = window.api.appUpdate.onProgress((percent: number) => {
   downloadProgress.value = percent
 })
 

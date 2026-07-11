@@ -28,14 +28,15 @@ export class MouseEventModule extends EventModule {
 
     window.api.ipcRenderer.on(
       'assistantEvent:mouse-resumed',
-      (_event, payload: MouseResumePayload) => {
+      (payload) => {
+        const resumeData = payload as MouseResumePayload
         this.eventCenter.emit('mouse.resume', {
           isBusy: false,
           lastInteraction: Date.now(),
           mouseEventStatus: {
-            idleDurationMs: payload?.idleDurationMs || 0,
+            idleDurationMs: resumeData?.idleDurationMs || 0,
             isIdle: false,
-            timestamp: payload?.timestamp || Date.now()
+            timestamp: resumeData?.timestamp || Date.now()
           }
         })
       }
@@ -43,8 +44,9 @@ export class MouseEventModule extends EventModule {
 
     window.api.ipcRenderer.on(
       'assistantEvent:mouse-activity',
-      (_event, payload: MouseActivityPayload) => {
-        const nextIdle = Boolean(payload?.isIdle)
+      (payload) => {
+        const activityData = payload as MouseActivityPayload
+        const nextIdle = Boolean(activityData?.isIdle)
 
         if (this.lastIdleState === null || this.lastIdleState !== nextIdle) {
           this.lastIdleState = nextIdle
@@ -52,9 +54,9 @@ export class MouseEventModule extends EventModule {
             isBusy: !nextIdle,
             lastInteraction: Date.now(),
             mouseEventStatus: {
-              idleDurationMs: payload?.idleDurationMs || 0,
+              idleDurationMs: activityData?.idleDurationMs || 0,
               isIdle: nextIdle,
-              timestamp: payload?.timestamp || Date.now()
+              timestamp: activityData?.timestamp || Date.now()
             }
           })
         }

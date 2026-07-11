@@ -86,7 +86,7 @@ export class ApplicationEventModule extends EventModule {
 
     this.isPolling = true
     try {
-      const payload = (await window.api.getForegroundAppUsage()) as AppUsagePayload | null
+      const payload = (await window.api.system.getForegroundAppUsage()) as AppUsagePayload | null
       if (!payload) {
         return
       }

@@ -41,11 +41,13 @@ export class IdleEventModule extends EventModule {
   }
 
   private initEventListeners(): void {
-    window.api.ipcRenderer.on('assistantEvent:idle.taskComplete', (_event, context) => {
-      this.triggerTaskCompleteEvent(context.taskName, context.success)
+    window.api.ipcRenderer.on('assistantEvent:idle.taskComplete', (context) => {
+      const taskData = context as { taskName: string; success: boolean }
+      this.triggerTaskCompleteEvent(taskData.taskName, taskData.success)
     })
-    window.api.ipcRenderer.on('assistantEvent:idle.systemEvent', (_event, context) => {
-      this.triggerSystemEvent(context.eventName, context.description)
+    window.api.ipcRenderer.on('assistantEvent:idle.systemEvent', (context) => {
+      const sysData = context as { eventName: string; description: string }
+      this.triggerSystemEvent(sysData.eventName, sysData.description)
     })
   }
 

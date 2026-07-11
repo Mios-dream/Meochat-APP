@@ -185,7 +185,7 @@ function onSizeChange(): void {
   const scale = petSizePercent.value / 100
   const width = Math.round(BASE_WIDTH * scale)
   const height = Math.round(BASE_HEIGHT * scale)
-  window.api.ipcRenderer.send('assistant:resize', { width, height })
+  window.api.resizeAssistant(width, height)
   saveLocalSize()
 }
 
@@ -255,12 +255,13 @@ onMounted(async () => {
   window.api.assistant.loadAssistantData()
 
   // 监听助手数据更新事件：后台同步完成后会携带完整的助手列表和当前助手
-  window.api.ipcRenderer.on('assistant:data-updated', (_event, data) => {
-    if (data?.assistants) {
-      assistants.value = data.assistants
+  window.api.ipcRenderer.on('assistant:data-updated', (data) => {
+    const updateData = data as { assistants?: AssistantInfo[]; currentAssistant?: AssistantInfo }
+    if (updateData?.assistants) {
+      assistants.value = updateData.assistants
     }
-    if (data?.currentAssistant) {
-      currentAssistantName.value = data.currentAssistant.name
+    if (updateData?.currentAssistant) {
+      currentAssistantName.value = updateData.currentAssistant.name
     }
   })
 
