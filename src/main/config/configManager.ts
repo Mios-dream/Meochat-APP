@@ -1,5 +1,7 @@
-import Store, { Schema } from 'electron-store'
-import { ipcMain, BrowserWindow, app } from 'electron'
+﻿import Store, { Schema } from 'electron-store'
+import { BrowserWindow, app } from 'electron'
+import { CHANNELS } from '@shared/ipc/channels'
+import { registerHandle } from '../utils/registerIpcHandler'
 
 import { AppConfig } from '@shared/types/appConfig'
 import { resolveAppDataDir } from '../utils/pathResolve'
@@ -63,19 +65,19 @@ function setupConfigIPC(): void {
   store.onDidAnyChange(() => {
     setBaseUrl(getConfig('baseUrl'))
     BrowserWindow.getAllWindows().forEach((win) => {
-      win.webContents.send('config:changed', store.store)
+      win.webContents.send(CHANNELS.CONFIG_CHANGED_EVENT, store.store)
     })
   })
   // 提供 IPC 接口
-  ipcMain.handle('config:get', (_, key) => {
+  registerHandle(CHANNELS.CONFIG_GET, (_, key) => {
     return key ? store.get(key) : store.store
   })
-  ipcMain.handle('config:set', (_, key, value) => {
+  registerHandle(CHANNELS.CONFIG_SET, (_, key, value) => {
     store.set(key, value)
   })
 
   // 保留原有的开机启动逻辑
-  ipcMain.handle('set-auto-start-on-boot', (_, value) => {
+  registerHandle(CHANNELS.CONFIG_AUTO_START, (_, value) => {
     app.setLoginItemSettings({
       openAtLogin: value,
       openAsHidden: false,

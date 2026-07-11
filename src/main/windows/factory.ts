@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 窗口工厂
  * 提供统一的窗口创建接口，封装创建细节
  *
@@ -16,6 +16,7 @@ import { loadWindowContent, getPreloadPath } from './urlResolver'
 import { windowRegistry } from './registry'
 import { getConfig } from '../config/configManager'
 import { boundsStore } from '../services/boundsStore'
+import { CHANNELS } from '@shared/ipc/channels'
 import log from '../utils/logger'
 
 /** 检查是否是开机自启 */
@@ -96,6 +97,7 @@ export async function createWindow(
     webPreferences: {
       ...config.options.webPreferences,
       preload: getPreloadPath(config.preload),
+      additionalArguments: [`--window-type=${config.type}`],
       contextIsolation: true,
       sandbox: false,
       nodeIntegration: false
@@ -138,7 +140,7 @@ export async function createWindow(
 
       // 发送实例数据（如果有）
       if (instanceId || query) {
-        window.webContents.send('window:instance-data', {
+        window.webContents.send(CHANNELS.WINDOW_INSTANCE_DATA_EVENT, {
           instanceId,
           ...query
         })

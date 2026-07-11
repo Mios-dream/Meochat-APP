@@ -185,7 +185,7 @@ onMounted(() => {
   loadNote()
 
   // ── 小组件动作协议监听 ──
-  window.widgetApi?.onAction((request) => {
+  window.api.widgetApi?.onAction((request) => {
     if (request.widget_type !== 'note') return
 
     const { action_id, action, params } = request
@@ -197,7 +197,7 @@ onMounted(() => {
         title.value = newTitle
         content.value = newContent
         debounceSave()
-        window.widgetApi.sendActionResult({
+        window.api.widgetApi.sendActionResult({
           action_id,
           success: true,
           result: { title: title.value, content: content.value, char_count: content.value.length }
@@ -205,7 +205,7 @@ onMounted(() => {
         break
       }
       case 'get_content': {
-        window.widgetApi.sendActionResult({
+        window.api.widgetApi.sendActionResult({
           action_id,
           success: true,
           result: { title: title.value, content: content.value, char_count: content.value.length }
@@ -214,7 +214,7 @@ onMounted(() => {
       }
       case 'clear': {
         clearNote()
-        window.widgetApi.sendActionResult({
+        window.api.widgetApi.sendActionResult({
           action_id,
           success: true,
           result: { cleared: true }
@@ -222,7 +222,7 @@ onMounted(() => {
         break
       }
       default:
-        window.widgetApi.sendActionResult({
+        window.api.widgetApi.sendActionResult({
           action_id,
           success: false,
           error: `未知动作: ${action}`

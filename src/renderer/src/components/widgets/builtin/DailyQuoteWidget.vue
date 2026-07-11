@@ -130,7 +130,7 @@ onMounted(() => {
   currentQuote.value = getRandomQuote()
 
   // ── 小组件动作协议监听 ──
-  window.widgetApi?.onAction((request) => {
+  window.api.widgetApi?.onAction((request) => {
     if (request.widget_type !== 'daily-quote') return
 
     const { action_id, action } = request
@@ -138,7 +138,7 @@ onMounted(() => {
     switch (action) {
       case 'get_current': {
         const quote = currentQuote.value
-        window.widgetApi.sendActionResult({
+        window.api.widgetApi.sendActionResult({
           action_id,
           success: true,
           result: { text: quote.text, author: quote.author, source: quote.source ?? '' }
@@ -148,7 +148,7 @@ onMounted(() => {
       case 'refresh': {
         refreshQuote()
         const newQuote = currentQuote.value
-        window.widgetApi.sendActionResult({
+        window.api.widgetApi.sendActionResult({
           action_id,
           success: true,
           result: { text: newQuote.text, author: newQuote.author, source: newQuote.source ?? '' }
@@ -156,7 +156,7 @@ onMounted(() => {
         break
       }
       default:
-        window.widgetApi.sendActionResult({
+        window.api.widgetApi.sendActionResult({
           action_id,
           success: false,
           error: `未知动作: ${action}`

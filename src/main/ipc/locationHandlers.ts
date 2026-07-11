@@ -1,4 +1,5 @@
-import { ipcMain } from 'electron'
+import { CHANNELS } from '@shared/ipc/channels'
+import { registerHandle } from '../utils/registerIpcHandler'
 import axios from 'axios'
 import log from '../utils/logger'
 
@@ -7,7 +8,7 @@ import log from '../utils/logger'
  * 提供基于IP的位置信息，以便在不依赖系统定位权限的情况下获取城市名
  */
 export function setupLocationIPC(): void {
-  ipcMain.handle('location:get', async () => {
+  registerHandle(CHANNELS.LOCATION_GET, async () => {
     try {
       log.info('[LocationIPC] 收到位置请求，使用 IP 定位')
       // 使用免费 IP 定位服务 ip-api.com，返回 city, regionName, country, lat, lon
@@ -39,6 +40,4 @@ export function setupLocationIPC(): void {
       return { success: false, error: msg }
     }
   })
-
-  log.info('[LocationIPC] 位置IPC处理器已注册')
 }

@@ -374,7 +374,7 @@ onMounted(() => {
   loadTodos()
 
   // ── 小组件动作协议监听 ──
-  window.widgetApi?.onAction((request) => {
+  window.api.widgetApi?.onAction((request) => {
     if (request.widget_type !== 'todo') return
 
     const { action_id, action, params } = request
@@ -383,7 +383,7 @@ onMounted(() => {
       case 'add_item': {
         const text = typeof params.text === 'string' ? params.text.trim() : ''
         if (!text) {
-          window.widgetApi.sendActionResult({ action_id, success: false, error: 'text 参数为空' })
+          window.api.widgetApi.sendActionResult({ action_id, success: false, error: 'text 参数为空' })
           return
         }
         const todo: TodoItem = {
@@ -394,7 +394,7 @@ onMounted(() => {
         }
         todos.value.push(todo)
         saveTodos()
-        window.widgetApi.sendActionResult({
+        window.api.widgetApi.sendActionResult({
           action_id,
           success: true,
           result: { id: todo.id, text: todo.text, created: true }
@@ -403,7 +403,7 @@ onMounted(() => {
       }
       case 'get_items': {
         const list = getTodos()
-        window.widgetApi.sendActionResult({
+        window.api.widgetApi.sendActionResult({
           action_id,
           success: true,
           result: {
@@ -417,12 +417,12 @@ onMounted(() => {
       case 'toggle_item': {
         const id = typeof params.id === 'string' ? params.id.trim() : ''
         if (!id) {
-          window.widgetApi.sendActionResult({ action_id, success: false, error: 'id 参数为空' })
+          window.api.widgetApi.sendActionResult({ action_id, success: false, error: 'id 参数为空' })
           return
         }
         const todo = todos.value.find((t) => t.id === id)
         if (!todo) {
-          window.widgetApi.sendActionResult({
+          window.api.widgetApi.sendActionResult({
             action_id,
             success: false,
             error: `待办事项不存在: ${id}`
@@ -431,7 +431,7 @@ onMounted(() => {
         }
         todo.completed = !todo.completed
         saveTodos()
-        window.widgetApi.sendActionResult({
+        window.api.widgetApi.sendActionResult({
           action_id,
           success: true,
           result: { id, completed: todo.completed }
@@ -441,12 +441,12 @@ onMounted(() => {
       case 'delete_item': {
         const id = typeof params.id === 'string' ? params.id.trim() : ''
         if (!id) {
-          window.widgetApi.sendActionResult({ action_id, success: false, error: 'id 参数为空' })
+          window.api.widgetApi.sendActionResult({ action_id, success: false, error: 'id 参数为空' })
           return
         }
         const existed = todos.value.find((t) => t.id === id)
         if (!existed) {
-          window.widgetApi.sendActionResult({
+          window.api.widgetApi.sendActionResult({
             action_id,
             success: false,
             error: `待办事项不存在: ${id}`
@@ -455,7 +455,7 @@ onMounted(() => {
         }
         todos.value = todos.value.filter((t) => t.id !== id)
         saveTodos()
-        window.widgetApi.sendActionResult({
+        window.api.widgetApi.sendActionResult({
           action_id,
           success: true,
           result: { id, deleted: true }
@@ -465,7 +465,7 @@ onMounted(() => {
       case 'clear_completed': {
         const cleared = completedCount.value
         clearCompleted()
-        window.widgetApi.sendActionResult({
+        window.api.widgetApi.sendActionResult({
           action_id,
           success: true,
           result: { cleared_count: cleared }
@@ -473,7 +473,7 @@ onMounted(() => {
         break
       }
       default:
-        window.widgetApi.sendActionResult({
+        window.api.widgetApi.sendActionResult({
           action_id,
           success: false,
           error: `未知动作: ${action}`

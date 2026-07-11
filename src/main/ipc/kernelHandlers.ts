@@ -1,4 +1,6 @@
-import { ipcMain, shell } from 'electron'
+import { shell } from 'electron'
+import { CHANNELS } from '@shared/ipc/channels'
+import { registerHandle } from '../utils/registerIpcHandler'
 import { KernelManager, KernelServiceManager } from '../services/kernelManager'
 import log from '../utils/logger'
 import pathLib from 'path'
@@ -15,22 +17,22 @@ function setupKernelIPC(): void {
   // ─── 状态查询 ────────────────────────────────────
 
   /** 获取内核完整状态 */
-  ipcMain.handle('kernel:get-state', () => {
+  registerHandle(CHANNELS.KERNEL_GET_STATE, () => {
     return kernelManager.getState()
   })
 
   /** 获取当前内核版本 */
-  ipcMain.handle('kernel:get-current-version', () => {
+  registerHandle(CHANNELS.KERNEL_GET_CURRENT_VERSION, () => {
     return kernelManager.getCurrentVersion()
   })
 
   /** 获取当前激活内核的路径 */
-  ipcMain.handle('kernel:get-active-path', async () => {
+  registerHandle(CHANNELS.KERNEL_GET_ACTIVE_PATH, async () => {
     return kernelManager.getActiveKernelPath()
   })
 
   /** 获取当前激活内核的 Python 配置（venv路径、工作目录等） */
-  ipcMain.handle('kernel:get-python-config', async () => {
+  registerHandle(CHANNELS.KERNEL_GET_PYTHON_CONFIG, async () => {
     const kernelPath = await kernelManager.getActiveKernelPath()
     if (!kernelPath) {
       return { success: false, error: '没有激活的内核' }
@@ -54,7 +56,7 @@ function setupKernelIPC(): void {
   // ─── 更新操作 ────────────────────────────────────
 
   /** 检查内核更新 */
-  ipcMain.handle('kernel:check-update', async () => {
+  registerHandle(CHANNELS.KERNEL_CHECK_UPDATE, async () => {
     try {
       const state = await kernelManager.checkForUpdates()
       return { success: true, data: state }
@@ -66,7 +68,7 @@ function setupKernelIPC(): void {
   })
 
   /** 更新到最新版本内核（下载、解压、安装依赖，保留数据） */
-  ipcMain.handle('kernel:update-to-latest', async () => {
+  registerHandle(CHANNELS.KERNEL_UPDATE_TO_LATEST, async () => {
     try {
       const success = await kernelManager.downloadAndInstall()
       return { success }
@@ -80,7 +82,7 @@ function setupKernelIPC(): void {
   // ─── 环境检查 ────────────────────────────────────
 
   /** 检查内核运行环境 */
-  ipcMain.handle('kernel:check-environment', async () => {
+  registerHandle(CHANNELS.KERNEL_CHECK_ENVIRONMENT, async () => {
     try {
       const result = await kernelManager.checkEnvironment()
       return { success: true, data: result }
@@ -92,7 +94,7 @@ function setupKernelIPC(): void {
   })
 
   /** 设置内核运行环境（运行 uv sync） */
-  ipcMain.handle('kernel:setup-environment', async () => {
+  registerHandle(CHANNELS.KERNEL_SETUP_ENVIRONMENT, async () => {
     try {
       const result = await kernelManager.setupKernelEnvironment()
       return result
@@ -104,7 +106,7 @@ function setupKernelIPC(): void {
   })
 
   /** 下载 AI 模型（运行 download.py） */
-  ipcMain.handle('kernel:download-models', async () => {
+  registerHandle(CHANNELS.KERNEL_DOWNLOAD_MODELS, async () => {
     try {
       const result = await kernelManager.downloadModels()
       return result
@@ -116,7 +118,7 @@ function setupKernelIPC(): void {
   })
 
   /** 获取操作流日志（uv sync、模型下载等） */
-  ipcMain.handle('kernel:get-operation-logs', () => {
+  registerHandle(CHANNELS.KERNEL_GET_OPERATION_LOGS, () => {
     try {
       const logs = kernelManager.getOperationLogs()
       return logs
@@ -130,21 +132,21 @@ function setupKernelIPC(): void {
   // ─── 事件监听（供渲染进程注册） ─────────────────
 
   /** 注册内核状态监听 */
-  ipcMain.handle('kernel:listen-state', (event) => {
+  registerHandle(CHANNELS.KERNEL_LISTEN_STATE, (event) => {
     const state = kernelManager.getState()
     event.sender.send('kernel:state-update', state)
     return { success: true }
   })
 
   /** 注册内核日志监听（接收主进程 logger 输出的日志） */
-  ipcMain.handle('kernel:listen-logs', () => {
+  registerHandle(CHANNELS.KERNEL_LISTEN_LOGS, () => {
     return { success: true }
   })
 
   // ─── 后端服务管理 ─────────────────────────────────
 
   /** 启动后端服务 */
-  ipcMain.handle('kernel:start-backend', async () => {
+  registerHandle(CHANNELS.KERNEL_START_BACKEND, async () => {
     try {
       const result = await kernelServiceManager.startBackend()
       return result
@@ -156,7 +158,7 @@ function setupKernelIPC(): void {
   })
 
   /** 停止后端服务 */
-  ipcMain.handle('kernel:stop-backend', async () => {
+  registerHandle(CHANNELS.KERNEL_STOP_BACKEND, async () => {
     try {
       const result = await kernelServiceManager.stopBackend()
       return result
@@ -168,7 +170,7 @@ function setupKernelIPC(): void {
   })
 
   /** 重启后端服务 */
-  ipcMain.handle('kernel:restart-backend', async () => {
+  registerHandle(CHANNELS.KERNEL_RESTART_BACKEND, async () => {
     try {
       const result = await kernelServiceManager.restartBackend()
       return result
@@ -180,12 +182,12 @@ function setupKernelIPC(): void {
   })
 
   /** 获取后端服务状态 */
-  ipcMain.handle('kernel:get-backend-status', () => {
+  registerHandle(CHANNELS.KERNEL_GET_BACKEND_STATUS, () => {
     return kernelServiceManager.getBackendStatus()
   })
 
   /** 获取后端服务日志*/
-  ipcMain.handle('kernel:get-backend-logs', () => {
+  registerHandle(CHANNELS.KERNEL_GET_BACKEND_LOGS, () => {
     const logs = kernelServiceManager.getBackendLogs()
     return logs
   })
@@ -193,13 +195,13 @@ function setupKernelIPC(): void {
   // ─── 状态重置 ────────────────────────────────────
 
   /** 重置内核状态到默认（idle） */
-  ipcMain.handle('kernel:reset-state', () => {
+  registerHandle(CHANNELS.KERNEL_RESET_STATE, () => {
     kernelManager.resetState()
     return { success: true }
   })
 
   /** 检查后端健康状态 */
-  ipcMain.handle('kernel:check-backend-health', async () => {
+  registerHandle(CHANNELS.KERNEL_CHECK_BACKEND_HEALTH, async () => {
     try {
       const result = await kernelServiceManager.checkBackendHealth()
       return { success: true, ...result }
@@ -210,7 +212,7 @@ function setupKernelIPC(): void {
   })
 
   /** 打开日志存储目录 */
-  ipcMain.handle('kernel:open-log-dir', async () => {
+  registerHandle(CHANNELS.KERNEL_OPEN_LOG_DIR, async () => {
     try {
       const logDir = resolveLogDir()
       const err = await shell.openPath(logDir)
@@ -225,7 +227,7 @@ function setupKernelIPC(): void {
   })
 
   /** 检查API健康状态（用于API模式） */
-  ipcMain.handle('kernel:check-api-health', async () => {
+  registerHandle(CHANNELS.KERNEL_CHECK_API_HEALTH, async () => {
     try {
       const healthy = await request
         .get('/api/health', { signal: AbortSignal.timeout(5000) })

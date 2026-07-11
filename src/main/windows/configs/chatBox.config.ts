@@ -7,7 +7,7 @@ import type { WindowConfig } from '../types'
 export const chatBoxWindowConfig: WindowConfig = {
   type: 'chatBox',
   htmlFile: 'chatbox.html',
-  preload: 'chatBoxPreload',
+  preload: 'unifiedPreload',
   singleton: true,
   options: {
     transparent: true,

@@ -1,4 +1,6 @@
-import { ipcMain, screen, BrowserWindow, app } from 'electron'
+﻿import { screen, BrowserWindow, app } from 'electron'
+import { CHANNELS } from '@shared/ipc/channels'
+import { registerHandle, registerOn } from '../utils/registerIpcHandler'
 import {
   windowRegistry,
   createWindow,
@@ -59,7 +61,7 @@ function initUiohook(): void {
 
 function setupChatBoxIPC(): void {
   // 切换聊天框窗口置顶状态
-  ipcMain.handle('chat-box:toggle-pin', () => {
+  registerHandle(CHANNELS.CHATBOX_TOGGLE_PIN, () => {
     const chatBoxWin = windowRegistry.getWindowByType('chatBox')
     if (chatBoxWin && !chatBoxWin.isDestroyed()) {
       const pinned = !chatBoxWin.isAlwaysOnTop()
@@ -70,7 +72,7 @@ function setupChatBoxIPC(): void {
   })
 
   // 获取聊天框窗口当前置顶状态
-  ipcMain.handle('chat-box:get-pin-status', () => {
+  registerHandle(CHANNELS.CHATBOX_GET_PIN_STATUS, () => {
     const chatBoxWin = windowRegistry.getWindowByType('chatBox')
     if (chatBoxWin && !chatBoxWin.isDestroyed()) {
       return { success: true, pinned: chatBoxWin.isAlwaysOnTop() }
@@ -78,53 +80,53 @@ function setupChatBoxIPC(): void {
     return { success: false }
   })
 
-  ipcMain.on('chat-box:create', () => {
+  registerOn(CHANNELS.CHATBOX_CREATE, () => {
     createWindow(chatBoxWindowConfig)
   })
 
-  ipcMain.on('chat-box:close', () => {
+  registerOn(CHANNELS.CHATBOX_CLOSE, () => {
     const chatBoxWin = windowRegistry.getWindowByType('chatBox')
     if (chatBoxWin) chatBoxWin.close()
   })
 
-  ipcMain.on('chat-box:hide', () => {
+  registerOn(CHANNELS.CHATBOX_HIDE, () => {
     const chatBoxWin = windowRegistry.getWindowByType('chatBox')
     if (chatBoxWin) chatBoxWin.hide()
   })
 
-  ipcMain.on('chat-box:show', () => {
+  registerOn(CHANNELS.CHATBOX_SHOW, () => {
     const chatBoxWin = windowRegistry.getWindowByType('chatBox')
     if (chatBoxWin) chatBoxWin.show()
   })
 
-  ipcMain.on('chat-box:send-message', (_event, data) => {
+  registerOn(CHANNELS.CHATBOX_SEND_MESSAGE, (_event, data) => {
     BrowserWindow.getAllWindows().forEach((win) => {
-      win.webContents.send('chat-box:send-message', data)
+      win.webContents.send(CHANNELS.CHATBOX_SEND_MESSAGE_EVENT, data)
     })
   })
 
-  ipcMain.on('chat-box:cancel-message', () => {
+  registerOn(CHANNELS.CHATBOX_CANCEL_MESSAGE, () => {
     BrowserWindow.getAllWindows().forEach((win) => {
-      win.webContents.send('chat-box:cancel-message')
+      win.webContents.send(CHANNELS.CHATBOX_CANCEL_MESSAGE_EVENT)
     })
   })
 
-  ipcMain.on('chat-box:update-status', (_event, data) => {
+  registerOn(CHANNELS.CHATBOX_UPDATE_STATUS, (_event, data) => {
     BrowserWindow.getAllWindows().forEach((win) => {
-      win.webContents.send('chat-box:status-updated', data)
+      win.webContents.send(CHANNELS.CHATBOX_STATUS_UPDATED_EVENT, data)
     })
   })
 
-  ipcMain.on('chat-box:wakeword-detected', (_event, data) => {
+  registerOn(CHANNELS.CHATBOX_WAKEWORD_DETECTED, (_event, data) => {
     BrowserWindow.getAllWindows().forEach((win) => {
-      win.webContents.send('chat-box:wakeword-detected', data)
+      win.webContents.send(CHANNELS.CHATBOX_WAKEWORD_DETECTED_EVENT, data)
     })
   })
 
   // 工具状态广播：Assistant 窗口 → 主进程 → ChatBox 窗口
-  ipcMain.on('chat-box:update-tool-status', (_event, data) => {
+  registerOn(CHANNELS.CHATBOX_UPDATE_TOOL_STATUS, (_event, data) => {
     BrowserWindow.getAllWindows().forEach((win) => {
-      win.webContents.send('chat-box:tool-status-updated', data)
+      win.webContents.send(CHANNELS.CHATBOX_TOOL_STATUS_UPDATED_EVENT, data)
     })
   })
 }
@@ -133,26 +135,26 @@ function setupAssistantIPC(): void {
   // 初始化 uiohook
   initUiohook()
 
-  ipcMain.on('assistant:create', () => {
+  registerOn(CHANNELS.ASSISTANT_CREATE, () => {
     createWindow(assistantWindowConfig, { showImmediately: true })
   })
 
-  ipcMain.on('assistant:close', () => {
+  registerOn(CHANNELS.ASSISTANT_CLOSE, () => {
     const assistantWin = windowRegistry.getWindowByType('assistant')
     if (assistantWin) assistantWin.close()
   })
 
-  ipcMain.on('assistant:hide', () => {
+  registerOn(CHANNELS.ASSISTANT_HIDE, () => {
     const assistantWin = windowRegistry.getWindowByType('assistant')
     if (assistantWin) assistantWin.hide()
   })
 
-  ipcMain.on('assistant:show', () => {
+  registerOn(CHANNELS.ASSISTANT_SHOW, () => {
     const assistantWin = windowRegistry.getWindowByType('assistant')
     if (assistantWin) assistantWin.show()
   })
 
-  ipcMain.handle('assistant:get-screen-size', async () => {
+  registerHandle(CHANNELS.ASSISTANT_GET_SCREEN_SIZE, async () => {
     const primaryDisplay = screen.getPrimaryDisplay()
     return {
       width: primaryDisplay.workAreaSize.width,
@@ -161,12 +163,12 @@ function setupAssistantIPC(): void {
   })
 
   // 获取助手当前状态
-  ipcMain.handle('assistant:get-status', async () => {
+  registerHandle(CHANNELS.ASSISTANT_GET_STATUS, async () => {
     const assistantWin = windowRegistry.getWindowByType('assistant')
     return !!assistantWin
   })
 
-  ipcMain.on('assistant:start-drag', () => {
+  registerOn(CHANNELS.ASSISTANT_START_DRAG, () => {
     try {
       const assistantWin = windowRegistry.getWindowByType('assistant')
       if (!assistantWin) return
@@ -181,7 +183,7 @@ function setupAssistantIPC(): void {
   })
 
   // 开始鼠标轨迹监控 - 使用 uiohook 检测鼠标按下状态
-  ipcMain.on('assistant:start-mouse-tracking', () => {
+  registerOn(CHANNELS.ASSISTANT_START_MOUSE_TRACKING, () => {
     const assistantWin = windowRegistry.getWindowByType('assistant')
     if (!assistantWin) return
 
@@ -210,7 +212,7 @@ function setupAssistantIPC(): void {
           const idleDurationMs = now - lastMouseMoveAt
           if (idleDurationMs >= idleThresholdMs) {
             BrowserWindow.getAllWindows().forEach((win) => {
-              win.webContents.send('assistantEvent:mouse-resumed', {
+              win.webContents.send(CHANNELS.ASSISTANT_EVENT_MOUSE_RESUMED, {
                 idleDurationMs,
                 timestamp: now
               })
@@ -231,7 +233,7 @@ function setupAssistantIPC(): void {
           }
 
           BrowserWindow.getAllWindows().forEach((win) => {
-            win.webContents.send('assistantEvent:mouse-activity', payload)
+            win.webContents.send(CHANNELS.ASSISTANT_EVENT_MOUSE_ACTIVITY, payload)
           })
 
           lastMouseActivityEmitAt = now
@@ -239,7 +241,7 @@ function setupAssistantIPC(): void {
 
         const windowBounds = assistantWin.getBounds()
 
-        assistantWin.webContents.send('assistant:mouse-position', {
+        assistantWin.webContents.send(CHANNELS.ASSISTANT_MOUSE_POSITION_EVENT, {
           screenX: mousePos.x,
           screenY: mousePos.y,
           windowX: windowBounds.x,
@@ -253,23 +255,23 @@ function setupAssistantIPC(): void {
   })
 
   // 停止鼠标轨迹监控
-  ipcMain.on('assistant:stop-mouse-tracking', () => {
+  registerOn(CHANNELS.ASSISTANT_STOP_MOUSE_TRACKING, () => {
     if (mouseTrackingInterval) {
       cleanupMouseTracking()
     }
   })
 
-  ipcMain.on('assistant:set-ignore-mouse', (_event, ignore) => {
+  registerOn(CHANNELS.ASSISTANT_SET_IGNORE_MOUSE, (_event, ignore) => {
     const assistantWin = windowRegistry.getWindowByType('assistant')
     assistantWin?.setIgnoreMouseEvents(ignore, { forward: true })
   })
 
   // Tips窗口相关IPC
-  ipcMain.on('tips:show-message', async (_event, data: { message: string; avatarUrl?: string }) => {
+  registerOn(CHANNELS.TIPS_SHOW, async (_event, data: { message: string; avatarUrl?: string }) => {
     const tipsWin = windowRegistry.getWindowByType('tips')
     if (tipsWin && !tipsWin.isDestroyed()) {
       tipsWin.show()
-      tipsWin.webContents.send('tips:show', data)
+      tipsWin.webContents.send(CHANNELS.TIPS_SHOW_EVENT, data)
     } else {
       const primaryDisplay = screen.getPrimaryDisplay()
       const { width: screenWidth } = primaryDisplay.workArea
@@ -282,22 +284,22 @@ function setupAssistantIPC(): void {
         overrides: { x, y, width: windowWidth, height: windowHeight },
         showImmediately: true
       }).then((win) => {
-        win.webContents.send('tips:show', data)
+        win.webContents.send(CHANNELS.TIPS_SHOW_EVENT, data)
       })
     }
   })
 
-  ipcMain.on('tips:update-message', (_event, data: { message: string; avatarUrl?: string }) => {
+  registerOn(CHANNELS.TIPS_UPDATE, (_event, data: { message: string; avatarUrl?: string }) => {
     const tipsWin = windowRegistry.getWindowByType('tips')
     if (tipsWin && !tipsWin.isDestroyed()) {
-      tipsWin.webContents.send('tips:message', data)
+      tipsWin.webContents.send(CHANNELS.TIPS_MESSAGE_EVENT, data)
     }
   })
 
-  ipcMain.on('tips:hide-message', () => {
+  registerOn(CHANNELS.TIPS_HIDE, () => {
     const tipsWin = windowRegistry.getWindowByType('tips')
     if (tipsWin && !tipsWin.isDestroyed()) {
-      tipsWin.webContents.send('tips:hide')
+      tipsWin.webContents.send(CHANNELS.TIPS_HIDE_EVENT)
       setTimeout(() => {
         if (tipsWin && !tipsWin.isDestroyed()) {
           tipsWin.hide()
@@ -306,7 +308,7 @@ function setupAssistantIPC(): void {
     }
   })
 
-  ipcMain.handle('assistant:check-visible', async () => {
+  registerHandle(CHANNELS.ASSISTANT_CHECK_VISIBLE, async () => {
     const assistantWin = windowRegistry.getWindowByType('assistant')
     const result = await checkAssistantWindowVisibility(assistantWin)
     console.log('检查助手窗口可见性:', result)

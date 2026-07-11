@@ -1,4 +1,5 @@
-import { ipcMain } from 'electron'
+import { CHANNELS } from '@shared/ipc/channels'
+import { registerHandle } from '../utils/registerIpcHandler'
 import { WsService } from '../services/wsService'
 import type { ClientMessage } from '@shared/types/ws'
 
@@ -23,7 +24,7 @@ export function setupWsIPC(): void {
    *
    * 渲染进程 ChatManager 通过 window.api.ws.send() 调用。
    */
-  ipcMain.handle('ws:send', (_event, msg: ClientMessage): void => {
+  registerHandle(CHANNELS.WS_SEND, (_event, msg: ClientMessage): void => {
     wsService.send(msg)
   })
 
@@ -32,7 +33,7 @@ export function setupWsIPC(): void {
    *
    * 通常在应用启动时由 ChatManager.start() 调用。
    */
-  ipcMain.handle('ws:connect', (): void => {
+  registerHandle(CHANNELS.WS_CONNECT, (): void => {
     wsService.connect()
   })
 
@@ -41,7 +42,7 @@ export function setupWsIPC(): void {
    *
    * 通常在应用退出时由 ChatManager.stop() 调用。
    */
-  ipcMain.handle('ws:disconnect', (): void => {
+  registerHandle(CHANNELS.WS_DISCONNECT, (): void => {
     wsService.disconnect()
   })
 
@@ -50,7 +51,7 @@ export function setupWsIPC(): void {
    *
    * @returns true 表示已连接
    */
-  ipcMain.handle('ws:status', (): boolean => {
+  registerHandle(CHANNELS.WS_STATUS, (): boolean => {
     return wsService.isConnected()
   })
 }

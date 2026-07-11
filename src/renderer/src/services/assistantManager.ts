@@ -24,7 +24,7 @@ class AssistantManager {
    * @returns 当前助手信息，没有则返回 null
    */
   public async getCurrentAssistant(): Promise<AssistantInfo | null> {
-    const response = await window.api.getCurrentAssistant()
+    const response = await window.api.assistant.getCurrentAssistant()
     if (response.success && response.data) {
       return response.data
     }
@@ -36,7 +36,7 @@ class AssistantManager {
    * @returns 助手信息数组
    */
   public async getAssistants(): Promise<AssistantInfo[]> {
-    const result = await window.api.getAllAssistants()
+    const result = await window.api.assistant.getAllAssistants()
     if (result?.success && result.data) {
       return result.data
     }
@@ -58,7 +58,7 @@ class AssistantManager {
    * @param name 助手名称
    */
   public async setCurrentAssistant(name: string): Promise<void> {
-    const result = await window.api.switchAssistant(name)
+    const result = await window.api.assistant.switchAssistant(name)
     if (!result.success) {
       console.error('同步助手失败:', result.error)
     }
@@ -74,7 +74,7 @@ class AssistantManager {
     assistant: AssistantInfo,
     options?: { assetTypes?: string[] }
   ): Promise<boolean> {
-    const status = await window.api.addAssistant(assistant, options)
+    const status = await window.api.assistant.addAssistant(assistant, options)
     if (status.success) {
       return true
     } else {
@@ -91,7 +91,7 @@ class AssistantManager {
   public onUploadProgress(
     callback: (data: { assistantName: string; progress: number }) => void
   ): () => void {
-    return window.api.onUploadProgress(callback)
+    return window.api.assistant.onUploadProgress(callback)
   }
 
   /**
@@ -100,7 +100,7 @@ class AssistantManager {
    * @returns 删除结果
    */
   public async deleteAssistant(name: string): Promise<{ success: boolean; message?: string }> {
-    return await window.api.deleteAssistant(name)
+    return await window.api.assistant.deleteAssistant(name)
   }
 
   /**
@@ -113,7 +113,7 @@ class AssistantManager {
     assistant: AssistantInfo,
     options?: { uploadAssets?: boolean; assetTypes?: string[] }
   ): Promise<{ success: boolean; error?: string }> {
-    return await window.api.updateAssistant(assistant, options)
+    return await window.api.assistant.updateAssistant(assistant, options)
   }
 
   /**
@@ -121,7 +121,7 @@ class AssistantManager {
    * @returns 刷新后的助手信息，失败返回 null
    */
   public async refreshCurrentAssistant(): Promise<AssistantInfo | null> {
-    const result = await window.api.refreshCurrentAssistant()
+    const result = await window.api.assistant.refreshCurrentAssistant()
     if (result.success && result.data) {
       return result.data
     }
@@ -144,7 +144,7 @@ class AssistantManager {
     assetTypes: string[] = []
   ): Promise<void> {
     try {
-      await window.api.downloadAssistantAsset({
+      await window.api.assistant.downloadAssistantAsset({
         assistantName,
         assetTypes,
         onProgress
@@ -176,7 +176,7 @@ class AssistantManager {
    * @returns 助手资产配置，失败返回 null
    */
   public async getAssistantAssetsByName(assistantName: string): Promise<AssistantAssets | null> {
-    const response = await window.api.getAssistantAssets(assistantName)
+    const response = await window.api.assistant.getAssistantAssets(assistantName)
     if (response.success) {
       return response.data
     } else {
@@ -191,7 +191,7 @@ class AssistantManager {
    * @returns 是否保存成功
    */
   public async saveAssistantAssets(assets: AssistantAssets): Promise<boolean> {
-    const response = await window.api.saveAssistantAssets(assets)
+    const response = await window.api.assistant.saveAssistantAssets(assets)
     if (response.success) {
       return true
     } else {
@@ -207,7 +207,7 @@ class AssistantManager {
   public async importAssistantFromZip(
     zipPath: string
   ): Promise<{ success: true; data: AssistantInfo } | { success: false; error: string }> {
-    return await window.api.importAssistantFromZip(zipPath)
+    return await window.api.assistant.importAssistantFromZip(zipPath)
   }
 }
 

@@ -1,4 +1,6 @@
-import { BrowserWindow, powerMonitor, app, ipcMain } from 'electron'
+import { BrowserWindow, powerMonitor, app } from 'electron'
+import { CHANNELS } from '@shared/ipc/channels'
+import { registerHandle } from '../utils/registerIpcHandler'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
 import { ForegroundAppMonitor, ForegroundAppUsagePayload } from '../services/foregroundAppMonitor'
@@ -84,7 +86,7 @@ async function broadcastBatteryStatus(): Promise<void> {
   }
 
   const threshold = 20
-  broadcast('assistantEvent:battery-level', {
+  broadcast(CHANNELS.ASSISTANT_EVENT_BATTERY_LEVEL, {
     percent: battery.percent,
     isCharging: battery.isCharging,
     isLow: !battery.isCharging && battery.percent <= threshold,
@@ -115,16 +117,16 @@ function setupSystemEventIPC(): void {
 
   // 监听电源状态变化
   powerMonitor.on('on-ac', () => {
-    broadcast('assistantEvent:on-ac', { timestamp: Date.now() })
+    broadcast(CHANNELS.ASSISTANT_EVENT_ON_AC, { timestamp: Date.now() })
     broadcastBatteryStatus()
   })
 
   powerMonitor.on('on-battery', () => {
-    broadcast('assistantEvent:on-battery', { timestamp: Date.now() })
+    broadcast(CHANNELS.ASSISTANT_EVENT_ON_BATTERY, { timestamp: Date.now() })
     broadcastBatteryStatus()
   })
 
-  ipcMain.handle('assistant:get-foreground-app-usage', async () => {
+  registerHandle(CHANNELS.ASSISTANT_GET_FOREGROUND_APP_USAGE, async () => {
     return await queryForegroundAppUsage()
   })
 

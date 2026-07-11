@@ -7,7 +7,7 @@ import type { WindowConfig } from '../types'
 export const assistantWindowConfig: WindowConfig = {
   type: 'assistant',
   htmlFile: 'assistant.html',
-  preload: 'assistantPreload',
+  preload: 'unifiedPreload',
   singleton: true,
   boundsKey: 'assistantWindowBounds',
   options: {

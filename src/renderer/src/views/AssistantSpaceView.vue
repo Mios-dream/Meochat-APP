@@ -445,7 +445,7 @@ onMounted(async () => {
   chatShortcut.value = config.value.chatShortcut
 
   // 当前窗口显示时隐藏助手窗口
-  window.api.closeAssistant()
+  window.api.assistant.closeAssistant()
 
   loadLive2DModel().then(async (code) => {
     // 模型加载成功后再发送欢迎语并启动交互系统，确保欢迎语的动作和语音能够正常播放
@@ -497,7 +497,7 @@ onUnmounted(() => {
   const tabs = document.getElementById('tabs-container')
   tabs!.style.opacity = '1'
   if (configStore.config.assistantEnabled) {
-    window.api.openAssistant()
+    window.api.assistant.openAssistant()
   }
   interactionSystem.stop()
   live2DManager.destroy()

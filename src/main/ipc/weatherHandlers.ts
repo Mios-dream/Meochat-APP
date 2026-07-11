@@ -7,7 +7,8 @@
  * - weather:clearCache - 清除天气缓存
  */
 
-import { ipcMain } from 'electron'
+import { CHANNELS } from '@shared/ipc/channels'
+import { registerHandle } from '../utils/registerIpcHandler'
 import { WeatherService, WeatherFetchResult } from '../services/weatherService'
 import log from '../utils/logger'
 
@@ -19,15 +20,8 @@ import log from '../utils/logger'
 export function setupWeatherIPC(): void {
   const weatherService = WeatherService.getInstance()
 
-  /**
-   * 获取天气数据
-   *
-   * 通道: weather:fetch
-   * 参数: { location: string } - 城市名称或经纬度路径
-   * 返回: WeatherFetchResult - { success, data?, error? }
-   */
-  ipcMain.handle(
-    'weather:fetch',
+  registerHandle(
+    CHANNELS.WEATHER_FETCH,
     async (_event, params: { location?: string; city?: string }): Promise<WeatherFetchResult> => {
       const location = params?.location ?? params?.city
       if (!location || !location.trim()) {
@@ -38,17 +32,8 @@ export function setupWeatherIPC(): void {
     }
   )
 
-  /**
-   * 清除天气缓存
-   *
-   * 通道: weather:clear-cache
-   * 无参数
-   * 返回: { success: boolean }
-   */
-  ipcMain.handle('weather:clear-cache', async () => {
+  registerHandle(CHANNELS.WEATHER_CLEAR_CACHE, async () => {
     weatherService.clearCache()
     return { success: true }
   })
-
-  log.info('[WeatherIPC] 天气IPC处理器已注册')
 }

@@ -252,7 +252,7 @@ onMounted(async () => {
   syncVolumeFromConfig()
 
   // 触发助手数据加载（主进程后台同步完成后会广播 assistant:data-updated）
-  window.api.loadAssistantData()
+  window.api.assistant.loadAssistantData()
 
   // 监听助手数据更新事件：后台同步完成后会携带完整的助手列表和当前助手
   window.api.ipcRenderer.on('assistant:data-updated', (_event, data) => {
@@ -266,7 +266,7 @@ onMounted(async () => {
 
   // 同时主动拉取一次内存中的缓存数据（避免等后台同步太久）
   try {
-    const result = await window.api.getAllAssistants()
+    const result = await window.api.assistant.getAllAssistants()
     if (result?.data?.length) {
       assistants.value = result.data
     }

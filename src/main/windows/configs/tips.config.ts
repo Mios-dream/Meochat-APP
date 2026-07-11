@@ -7,7 +7,7 @@ import type { WindowConfig } from '../types'
 export const tipsWindowConfig: WindowConfig = {
   type: 'tips',
   htmlFile: 'assistantTips.html',
-  preload: 'tipsPreload',
+  preload: 'unifiedPreload',
   singleton: true,
   hideOnClose: true, // 提示窗口隐藏而非关闭
   options: {

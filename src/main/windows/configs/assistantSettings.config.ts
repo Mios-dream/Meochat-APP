@@ -11,7 +11,7 @@ import type { WindowConfig } from '../types'
 export const assistantSettingsWindowConfig: WindowConfig = {
   type: 'assistantSettings',
   htmlFile: 'assistantSettings.html',
-  preload: 'assistantSettingsPreload',
+  preload: 'unifiedPreload',
   singleton: true,
   options: {
     width: 340,

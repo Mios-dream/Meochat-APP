@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 小组件数据服务
  * 负责小组件配置的持久化存储和管理
  */
@@ -8,6 +8,7 @@ import fs from 'fs'
 import path from 'path'
 import { resolveAppDataDir } from '../utils/pathResolve'
 import log from '../utils/logger'
+import { CHANNELS } from '@shared/ipc/channels'
 import type { WidgetInstance, WidgetConfigFile, WidgetGlobalSettings } from '@shared/types/widget'
 
 /** 默认配置 */
@@ -89,7 +90,7 @@ export class WidgetService {
   private broadcastConfigChange(): void {
     BrowserWindow.getAllWindows().forEach((win) => {
       if (!win.isDestroyed()) {
-        win.webContents.send('widget:config:changed', this.config)
+        win.webContents.send(CHANNELS.WIDGET_CONFIG_CHANGED_EVENT, this.config)
       }
     })
   }

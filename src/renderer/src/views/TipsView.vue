@@ -27,9 +27,9 @@ const cleanups: (() => void)[] = []
 
 onMounted(() => {
   // 使用 tipsApi 监听事件
-  if (window.tipsApi) {
+  if (window.api.tipsApi) {
     cleanups.push(
-      window.tipsApi.onShow((data) => {
+      window.api.tipsApi.onShow((data) => {
         isLeaving.value = false
         isVisible.value = true
         if (data?.message) {
@@ -39,14 +39,14 @@ onMounted(() => {
     )
 
     cleanups.push(
-      window.tipsApi.onHide(() => {
+      window.api.tipsApi.onHide(() => {
         isLeaving.value = true
         isVisible.value = false
       })
     )
 
     cleanups.push(
-      window.tipsApi.onMessage((data) => {
+      window.api.tipsApi.onMessage((data) => {
         if (data.message) {
           displayMessage.value = data.message
         }
@@ -54,7 +54,7 @@ onMounted(() => {
     )
 
     // 通知主进程提示窗口已准备好
-    window.tipsApi.ready()
+    window.api.tipsApi.ready()
   }
 })
 

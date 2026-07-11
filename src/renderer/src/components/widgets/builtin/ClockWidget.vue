@@ -203,7 +203,7 @@ onMounted(() => {
   timer = setInterval(updateTime, 1000)
 
   // ── 小组件动作协议监听 ──
-  window.widgetApi?.onAction((request) => {
+  window.api.widgetApi?.onAction((request) => {
     if (request.widget_type !== 'clock') return
 
     const { action_id, action, params } = request
@@ -212,7 +212,7 @@ onMounted(() => {
       case 'set_format': {
         const is24h = typeof params.is_24h === 'boolean' ? params.is_24h : true
         is24Hour.value = is24h
-        window.widgetApi.sendActionResult({
+        window.api.widgetApi.sendActionResult({
           action_id,
           success: true,
           result: { is_24h: is24h, current_format: is24h ? '24小时制' : '12小时制' }
@@ -220,7 +220,7 @@ onMounted(() => {
         break
       }
       default:
-        window.widgetApi.sendActionResult({
+        window.api.widgetApi.sendActionResult({
           action_id,
           success: false,
           error: `未知动作: ${action}`

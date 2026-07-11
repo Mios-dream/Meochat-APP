@@ -97,12 +97,12 @@ function hideControls(): void {
 // 切换置顶
 async function togglePin(): Promise<void> {
   isPinned.value = !isPinned.value
-  await window.widgetApi.togglePin(instanceId.value, isPinned.value)
+  await window.api.widgetApi.togglePin(instanceId.value, isPinned.value)
 }
 
 // 关闭小组件（删除实例并关闭窗口）
 async function deleteWidget(): Promise<void> {
-  await window.widgetApi.deleteInstance(instanceId.value)
+  await window.api.widgetApi.deleteInstance(instanceId.value)
 }
 
 // 监听实例数据
@@ -166,7 +166,7 @@ onMounted(() => {
   ])
 
   // 监听实例数据
-  removeInstanceDataListener = window.widgetApi.onInstanceData((data) => {
+  removeInstanceDataListener = window.api.widgetApi.onInstanceData((data) => {
     instanceConfig.value = data.config || {}
     isPinned.value = data.pinned || false
   })

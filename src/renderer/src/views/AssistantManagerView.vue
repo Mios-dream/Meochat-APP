@@ -528,13 +528,13 @@ function formatBirthday(birthday?: string): string {
 }
 // 打开助手窗口
 function openAssistant(): void {
-  window.api.openAssistant()
+  window.api.assistant.openAssistant()
   isAssistantOpen.value = true
 }
 
 // 关闭助手窗口
 function closeAssistant(): void {
-  window.api.closeAssistant()
+  window.api.assistant.closeAssistant()
   isAssistantOpen.value = false
 }
 
@@ -567,7 +567,7 @@ function handleImportCharacterCard(): void {
 // 处理导入 zip 角色包
 async function handleImportZipPackage(): Promise<void> {
   isVisibleSelectMethodDialog.value = false
-  const selectResult = await window.api.fileSelectAPI.selectFile({
+  const selectResult = await window.api.system.selectFile({
     title: '选择zip角色包',
     buttonLabel: '导入',
     filters: [{ name: '角色压缩包', extensions: ['zip'] }]

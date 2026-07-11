@@ -28,6 +28,9 @@ class WindowRegistry {
   /** 类型索引：WindowType -> Set<key> */
   private typeIndex: Map<WindowType, Set<string>> = new Map()
 
+  /** webContents.id -> key 反向索引，用于 IPC handler 窗口类型校验 */
+  private webContentsIndex: Map<number, string> = new Map()
+
   /**
    * 获取注册表单例
    */
@@ -79,6 +82,9 @@ class WindowRegistry {
     }
     this.typeIndex.get(type)!.add(key)
 
+    // 建立 webContents 反向索引
+    this.webContentsIndex.set(window.webContents.id, key)
+
     log.info(`窗口已注册: ${key}`)
     return key
   }
@@ -96,6 +102,12 @@ class WindowRegistry {
       if (typeSet && typeSet.size === 0) {
         this.typeIndex.delete(meta.type)
       }
+    }
+
+    // 清除 webContents 反向索引
+    const win = this.windows.get(key)
+    if (win && !win.isDestroyed()) {
+      this.webContentsIndex.delete(win.webContents.id)
     }
 
     this.windows.delete(key)
@@ -211,6 +223,18 @@ class WindowRegistry {
    */
   hasWindowOfType(type: WindowType): boolean {
     return this.getWindowsByType(type).length > 0
+  }
+
+  /**
+   * 根据 webContents.id 获取窗口类型（用于 IPC handler 权限校验）
+   * @param webContentsId webContents.id
+   * @returns 窗口类型，未找到返回 null
+   */
+  getWindowTypeByWebContentsId(webContentsId: number): WindowType | null {
+    const key = this.webContentsIndex.get(webContentsId)
+    if (!key) return null
+    const meta = this.metas.get(key)
+    return meta?.type ?? null
   }
 
   /**

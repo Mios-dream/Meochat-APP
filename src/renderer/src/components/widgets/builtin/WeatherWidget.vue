@@ -107,7 +107,7 @@ async function fetchRealWeather(): Promise<void> {
   error.value = ''
 
   try {
-    const result = await window.widgetApi.fetchWeather(weatherQuery.value)
+    const result = await window.api.widgetApi.fetchWeather(weatherQuery.value)
     if (result.success && result.data) {
       weatherData.location = result.data.location
       weatherData.condition = result.data.condition
@@ -162,7 +162,7 @@ function stopAutoRefresh(): void {
 onMounted(async () => {
   // 组件挂载时尝试获取位置信息，优先使用系统坐标直接请求天气
   try {
-    const locResult = await window.widgetApi.getLocation()
+    const locResult = await window.api.widgetApi.getLocation()
     if (locResult && locResult.success && locResult.data) {
       const { lat, lon } = locResult.data
       if (typeof lat === 'number' && typeof lon === 'number') {
@@ -179,7 +179,7 @@ onMounted(async () => {
 
   // ── 小组件动作协议监听 ──
   // 处理来自 LLM 工具调用的 remote action 指令
-  window.widgetApi?.onAction((request) => {
+  window.api.widgetApi?.onAction((request) => {
     if (request.widget_type !== 'weather') return
 
     const { action_id, action, params } = request
@@ -188,21 +188,21 @@ onMounted(async () => {
       case 'set_location': {
         const city = typeof params.city === 'string' ? params.city.trim() : ''
         if (!city) {
-          window.widgetApi.sendActionResult({ action_id, success: false, error: 'city 参数为空' })
+          window.api.widgetApi.sendActionResult({ action_id, success: false, error: 'city 参数为空' })
           return
         }
         weatherQuery.value = city
         weatherData.location = city
         fetchRealWeather()
           .then(() => {
-            window.widgetApi.sendActionResult({
+            window.api.widgetApi.sendActionResult({
               action_id,
               success: true,
               result: { location: city, updated: true }
             })
           })
           .catch((err) => {
-            window.widgetApi.sendActionResult({
+            window.api.widgetApi.sendActionResult({
               action_id,
               success: false,
               error: (err as Error).message
@@ -211,7 +211,7 @@ onMounted(async () => {
         break
       }
       case 'get_weather': {
-        window.widgetApi.sendActionResult({
+        window.api.widgetApi.sendActionResult({
           action_id,
           success: true,
           result: {
@@ -223,7 +223,7 @@ onMounted(async () => {
         break
       }
       default:
-        window.widgetApi.sendActionResult({
+        window.api.widgetApi.sendActionResult({
           action_id,
           success: false,
           error: `未知动作: ${action}`

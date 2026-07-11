@@ -956,11 +956,11 @@ const normalizeVoicePathForStorage = (inputPath: string): string => {
 }
 
 const checkLocalPathExists = async (targetPath: string): Promise<boolean | null> => {
-  if (typeof window.api.fileSelectAPI?.pathExists !== 'function') {
+  if (typeof window.api.system?.pathExists !== 'function') {
     return null
   }
 
-  const result = await window.api.fileSelectAPI.pathExists(targetPath)
+  const result = await window.api.system.pathExists(targetPath)
   if (!result.success) {
     console.warn('检查本地路径失败:', result.error)
     return null

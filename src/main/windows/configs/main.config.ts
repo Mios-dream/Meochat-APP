@@ -7,7 +7,7 @@ import type { WindowConfig } from '../types'
 export const mainWindowConfig: WindowConfig = {
   type: 'main',
   htmlFile: 'index.html',
-  preload: 'mainPreload',
+  preload: 'unifiedPreload',
   singleton: true,
   options: {
     width: 1200,

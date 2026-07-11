@@ -1,4 +1,4 @@
-import fs from 'fs'
+﻿import fs from 'fs'
 import FormData from 'form-data'
 import AdmZip from 'adm-zip'
 import StreamZip from 'node-stream-zip'
@@ -22,6 +22,7 @@ import { createWindow, chatBoxWindowConfig } from '../windows'
 import ImageMetadataExtractor from '../utils/imageMetadataExtractor'
 import { resolveAppDataDir } from '../utils/pathResolve'
 import { detectZipNameEncoding } from '../utils/zipUtils'
+import { CHANNELS } from '@shared/ipc/channels'
 
 /**
  * 助手服务 - 管理助手的生命周期、资产和云端同步
@@ -240,7 +241,7 @@ class AssistantService {
 
         // 4. 通知前端数据已更新
         BrowserWindow.getAllWindows().forEach((win) => {
-          win.webContents.send('assistant:data-updated', {
+          win.webContents.send(CHANNELS.ASSISTANT_DATA_UPDATED_EVENT, {
             assistants: this.getAssistants(),
             currentAssistant: this.getCurrentAssistant()
           })
@@ -435,7 +436,7 @@ class AssistantService {
 
       // 通知前端当前助手已清空
       BrowserWindow.getAllWindows().forEach((win) => {
-        win.webContents.send('assistant:switched', null)
+        win.webContents.send(CHANNELS.ASSISTANT_SWITCHED_EVENT, null)
       })
     }
   }
@@ -506,7 +507,7 @@ class AssistantService {
     )
 
     windows.forEach((win) => {
-      win.webContents.send('assistant:download-progress', {
+      win.webContents.send(CHANNELS.ASSISTANT_DOWNLOAD_PROGRESS_EVENT, {
         status,
         assistantName,
         progress
@@ -652,7 +653,7 @@ class AssistantService {
       setConfig('currentAssistant', name)
 
       BrowserWindow.getAllWindows().forEach((win) => {
-        win.webContents.send('assistant:switched', assistant)
+        win.webContents.send(CHANNELS.ASSISTANT_SWITCHED_EVENT, assistant)
       })
 
       return { success: true, data: assistant }
@@ -1256,7 +1257,7 @@ class AssistantService {
       )
 
       // 上传到云端
-          const maxRetry = 1
+      const maxRetry = 1
 
       for (let attempt = 0; attempt <= maxRetry; attempt++) {
         try {

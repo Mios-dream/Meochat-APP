@@ -1,4 +1,6 @@
-import { ipcMain, shell } from 'electron'
+import { shell } from 'electron'
+import { CHANNELS } from '@shared/ipc/channels'
+import { registerOn } from '../utils/registerIpcHandler'
 import log from '../utils/logger'
 import { resolveLogDir } from '../utils/pathResolve'
 
@@ -6,9 +8,8 @@ import { resolveLogDir } from '../utils/pathResolve'
  * 设置日志相关IPC处理
  */
 export function setupLoggerIPC(): void {
-  // 处理从渲染进程和preload发来的日志消息
-  ipcMain.on(
-    'logger:log',
+  registerOn(
+    CHANNELS.LOGGER_LOG,
     (
       _event,
       {
@@ -41,8 +42,7 @@ export function setupLoggerIPC(): void {
     }
   )
 
-  // 打开日志目录
-  ipcMain.on('logger:open-log-dir', () => {
+  registerOn(CHANNELS.LOGGER_OPEN_LOG_DIR, () => {
     try {
       shell.openPath(resolveLogDir())
     } catch (error) {

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 统一中心调度器 —— DispatchCenter
  *
  * 提供跨窗口的定向消息分发能力，避免为每个跨窗口功能创建独立的 IPC 通道。
@@ -20,6 +20,8 @@
  */
 
 import { ipcMain, BrowserWindow } from 'electron'
+import { CHANNELS } from '@shared/ipc/channels'
+import { registerHandle, registerOn } from '../utils/registerIpcHandler'
 import type { WindowType } from '../windows/types'
 import { windowRegistry } from '../windows/registry'
 import log from '../utils/logger'
@@ -106,7 +108,7 @@ class DispatchCenter {
     if (target === 'all') {
       BrowserWindow.getAllWindows().forEach((win) => {
         if (!win.isDestroyed()) {
-          win.webContents.send('dispatch:action', message)
+          win.webContents.send(CHANNELS.DISPATCH_ACTION_EVENT, message)
         }
       })
       return
@@ -115,7 +117,7 @@ class DispatchCenter {
     const windows = windowRegistry.getWindowsByType(target)
     windows.forEach((win) => {
       if (!win.isDestroyed()) {
-        win.webContents.send('dispatch:action', message)
+        win.webContents.send(CHANNELS.DISPATCH_ACTION_EVENT, message)
       }
     })
   }
@@ -129,7 +131,7 @@ class DispatchCenter {
   broadcast(action: string, payload?: unknown): void {
     BrowserWindow.getAllWindows().forEach((win) => {
       if (!win.isDestroyed()) {
-        win.webContents.send('dispatch:action', { action, payload })
+        win.webContents.send(CHANNELS.DISPATCH_ACTION_EVENT, { action, payload })
       }
     })
   }
@@ -161,14 +163,14 @@ class DispatchCenter {
    */
   setupIPC(): void {
     // —— 单向发送：renderer → main → 目标窗口 ——
-    ipcMain.on('dispatch:send-to', (_event, request: DispatchRequest) => {
+    registerOn(CHANNELS.DISPATCH_SEND_TO, (_event, request: DispatchRequest) => {
       const { target, action, payload } = request
       log.debug(`[DispatchCenter] send-to: ${action} → ${target}`)
       this.sendTo(target, action, payload)
     })
 
     // —— invoke 请求-响应模式：renderer → main → 目标窗口 → main → renderer ——
-    ipcMain.handle('dispatch:invoke', async (_event, request: DispatchInvokeRequest) => {
+    registerHandle(CHANNELS.DISPATCH_INVOKE, async (_event, request: DispatchInvokeRequest) => {
       const { actionId, target, action, payload } = request
       log.debug(`[DispatchCenter] invoke: ${action} → ${target} (${actionId})`)
 
@@ -228,14 +230,14 @@ class DispatchCenter {
         if (target === 'all') {
           BrowserWindow.getAllWindows().forEach((win) => {
             if (!win.isDestroyed()) {
-              win.webContents.send('dispatch:invoke', dispatchMessage)
+              win.webContents.send(CHANNELS.DISPATCH_INVOKE_EVENT, dispatchMessage)
             }
           })
         } else {
           const windows = windowRegistry.getWindowsByType(target)
           windows.forEach((win) => {
             if (!win.isDestroyed()) {
-              win.webContents.send('dispatch:invoke', dispatchMessage)
+              win.webContents.send(CHANNELS.DISPATCH_INVOKE_EVENT, dispatchMessage)
             }
           })
         }

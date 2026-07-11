@@ -288,7 +288,7 @@ export class Live2DManager {
    * 扫描 live2d 目录构建表情文件构建表情与参数映射
    */
   private async initExpressionMap(): Promise<void> {
-    this.expressionMap = await window.api.scanLive2dExpressions()
+    this.expressionMap = await window.api.assistant.scanLive2dExpressions()
 
     console.log(`[Live2DManager] 表情文件扫描完成: ${this.expressionMap.size} 个文件, `)
   }

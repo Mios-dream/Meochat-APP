@@ -1,4 +1,5 @@
-import { ipcMain } from 'electron'
+import { CHANNELS } from '@shared/ipc/channels'
+import { registerHandle } from '../utils/registerIpcHandler'
 import fs from 'fs'
 import path from 'path'
 import { AssistantService } from '../services/assistantService'
@@ -40,43 +41,43 @@ export function setupAssistantServerIPC(): void {
    *
    * 快速返回本地缓存数据，后台异步执行云端同步和资源检查。
    */
-  ipcMain.handle('assistant:load-data', async (event) => {
+  registerHandle(CHANNELS.ASSISTANT_LOAD_DATA, async (event) => {
     return await assistantService.loadAssistants((assistantName, progress) => {
-      event.sender.send('assistant:download-progress', { assistantName, progress })
+      event.sender.send(CHANNELS.ASSISTANT_DOWNLOAD_PROGRESS_EVENT, { assistantName, progress })
     })
   })
 
   /**
    * 获取所有助手列表（直接从内存返回，不触发同步）
    */
-  ipcMain.handle('assistant:get-all', async () => {
+  registerHandle(CHANNELS.ASSISTANT_GET_ALL, async () => {
     return {
       success: true,
       data: assistantService.getAssistants()
     }
   })
 
-  ipcMain.handle('assistant:switch', async (_event, name) => {
+  registerHandle(CHANNELS.ASSISTANT_SWITCH, async (_event, name) => {
     return await assistantService.setCurrentAssistant(name)
   })
 
   /**
    * 注册聊天框快捷键
    */
-  ipcMain.handle('assistant:register-chat-shortcut', async (_event, shortcut: string) => {
+  registerHandle(CHANNELS.ASSISTANT_REGISTER_CHAT_SHORTCUT, async (_event, shortcut: string) => {
     return assistantService.registerChatShortcut(shortcut)
   })
 
   /**
    * 添加助手
    */
-  ipcMain.handle(
-    'assistant:add-assistant',
+  registerHandle(
+    CHANNELS.ASSISTANT_ADD,
     async (event, assistantData, options?: { assetTypes?: string[] }) => {
       return await assistantService.addAssistant(
         assistantData,
         (progress) => {
-          event.sender.send('assistant:upload-progress', {
+          event.sender.send(CHANNELS.ASSISTANT_UPLOAD_PROGRESS_EVENT, {
             assistantName: assistantData.name,
             progress
           })
@@ -89,14 +90,14 @@ export function setupAssistantServerIPC(): void {
   /**
    * 更新助手信息
    */
-  ipcMain.handle(
-    'assistant:update-assistant',
+  registerHandle(
+    CHANNELS.ASSISTANT_UPDATE,
     async (event, assistantData, options?: { uploadAssets?: boolean; assetTypes?: string[] }) => {
       return await assistantService.updateAssistant(
         assistantData,
         options?.uploadAssets !== false,
         (progress) => {
-          event.sender.send('assistant:upload-progress', {
+          event.sender.send(CHANNELS.ASSISTANT_UPLOAD_PROGRESS_EVENT, {
             assistantName: assistantData.name,
             progress
           })
@@ -109,7 +110,7 @@ export function setupAssistantServerIPC(): void {
   /**
    * 删除助手
    */
-  ipcMain.handle('assistant:delete-assistant', async (_, name) => {
+  registerHandle(CHANNELS.ASSISTANT_DELETE, async (_, name) => {
     return await assistantService.deleteAssistant(name)
   })
 
@@ -119,8 +120,8 @@ export function setupAssistantServerIPC(): void {
    * 支持保存任意类型的资源文件（图片、音频、Live2D等）。
    * 通过 subDir 参数指定资源子目录，如 "images"、"audio"、"live2d" 等。
    */
-  ipcMain.handle(
-    'assistant:save-resource-file',
+  registerHandle(
+    CHANNELS.ASSISTANT_SAVE_RESOURCE_FILE,
     async (
       _event,
       payload: {
@@ -144,7 +145,7 @@ export function setupAssistantServerIPC(): void {
   /**
    * 获取助手资产配置
    */
-  ipcMain.handle('assistant:get-assets', async (_event, assistantName: string) => {
+  registerHandle(CHANNELS.ASSISTANT_GET_ASSETS, async (_event, assistantName: string) => {
     const cachedAssets = assistantService.getAssistantAssets(assistantName)
     if (cachedAssets) {
       return { success: true, data: cachedAssets }
@@ -155,15 +156,15 @@ export function setupAssistantServerIPC(): void {
   /**
    * 保存助手资产配置文件
    */
-  ipcMain.handle('assistant:save-assets', async (_event, assets: AssistantAssets) => {
+  registerHandle(CHANNELS.ASSISTANT_SAVE_ASSETS, async (_event, assets: AssistantAssets) => {
     return await assistantService.saveAssistantAssets(assets)
   })
 
   /**
    * 上传并解压Live2D模型
    */
-  ipcMain.handle(
-    'assistant:save-extract-live2d',
+  registerHandle(
+    CHANNELS.ASSISTANT_SAVE_EXTRACT_LIVE2D,
     async (
       _event,
       fileData: Buffer | ArrayBuffer,
@@ -179,8 +180,8 @@ export function setupAssistantServerIPC(): void {
    * 支持按资源类型选择性下载：传入 assetTypes 数组时仅下载指定类型的资源，
    * 不传或传空数组则下载全部资源。
    */
-  ipcMain.handle(
-    'assistant:download-asset',
+  registerHandle(
+    CHANNELS.ASSISTANT_DOWNLOAD_ASSET,
     async (
       event,
       { assistantName, assetTypes }: { assistantName: string; assetTypes?: string[] }
@@ -188,7 +189,7 @@ export function setupAssistantServerIPC(): void {
       return await assistantService.downloadAssistantAssets(
         assistantName,
         (progress) => {
-          event.sender.send('assistant:download-progress', { assistantName, progress })
+          event.sender.send(CHANNELS.ASSISTANT_DOWNLOAD_PROGRESS_EVENT, { assistantName, progress })
         },
         assetTypes ?? []
       )
@@ -198,14 +199,14 @@ export function setupAssistantServerIPC(): void {
   /**
    * 获取当前正在下载资源的助手列表
    */
-  ipcMain.handle('assistant:get-downloading', async () => {
+  registerHandle(CHANNELS.ASSISTANT_GET_DOWNLOADING, async () => {
     return assistantService.getDownloadingAssets()
   })
 
   /**
    * 获取当前助手信息
    */
-  ipcMain.handle('assistant:get-current', async () => {
+  registerHandle(CHANNELS.ASSISTANT_GET_CURRENT, async () => {
     const assistant = assistantService.getCurrentAssistant()
     if (!assistant) {
       return { success: false, error: '当前没有选中助手' }
@@ -216,7 +217,7 @@ export function setupAssistantServerIPC(): void {
   /**
    * 从云端刷新当前助手数据（好感度等）
    */
-  ipcMain.handle('assistant:refresh-current', async () => {
+  registerHandle(CHANNELS.ASSISTANT_REFRESH_CURRENT, async () => {
     const assistant = await assistantService.refreshCurrentAssistant()
     if (!assistant) {
       return { success: false, error: '刷新当前助手数据失败' }
@@ -227,7 +228,7 @@ export function setupAssistantServerIPC(): void {
   /**
    * 从角色卡片导入助手信息
    */
-  ipcMain.handle('assistant:import-from-card', async (_event, imageData: ArrayBuffer) => {
+  registerHandle(CHANNELS.ASSISTANT_IMPORT_FROM_CARD, async (_event, imageData: ArrayBuffer) => {
     try {
       const extractedInfo = await assistantService.extractHiddenInfo(Buffer.from(imageData))
       return { success: true, data: extractedInfo }
@@ -239,7 +240,7 @@ export function setupAssistantServerIPC(): void {
   /**
    * 从 zip 角色压缩包导入助手目录与资源
    */
-  ipcMain.handle('assistant:import-from-zip', async (_event, zipPath: string) => {
+  registerHandle(CHANNELS.ASSISTANT_IMPORT_FROM_ZIP, async (_event, zipPath: string) => {
     return await assistantService.importAssistantFromZip(zipPath)
   })
 
@@ -248,7 +249,7 @@ export function setupAssistantServerIPC(): void {
    *
    * 扫描当前助手的 Live2D 模型目录下的所有 .exp3.json 表情文件。
    */
-  ipcMain.handle('assistant:scan-live2d-expressions', async () => {
+  registerHandle(CHANNELS.ASSISTANT_SCAN_LIVE2D_EXPRESSIONS, async () => {
     try {
       const assistant = assistantService.getCurrentAssistant()
       if (!assistant) return new Map()

@@ -1,6 +1,7 @@
-import WebSocket from 'ws'
+﻿import WebSocket from 'ws'
 import { BrowserWindow } from 'electron'
 import { getBaseUrl } from '@shared/api/request'
+import { CHANNELS } from '@shared/ipc/channels'
 import type { ServerMessage, ClientMessage } from '@shared/types/ws'
 
 /**
@@ -94,7 +95,7 @@ export class WsService {
       console.log('[WsService] 连接已建立')
       this.connected = true
       this.startHeartbeat()
-      this.broadcastToAll('ws:status-change', true)
+      this.broadcastToAll(CHANNELS.WS_STATUS_CHANGE_EVENT, true)
     })
 
     this.ws.on('message', (data: WebSocket.Data) => {
@@ -113,7 +114,7 @@ export class WsService {
       console.log('[WsService] 连接已关闭')
       this.connected = false
       this.stopHeartbeat()
-      this.broadcastToAll('ws:status-change', false)
+      this.broadcastToAll(CHANNELS.WS_STATUS_CHANGE_EVENT, false)
 
       if (this.disposed) {
         return
@@ -141,7 +142,7 @@ export class WsService {
       this.ws = null
     }
     this.connected = false
-    this.broadcastToAll('ws:status-change', false)
+    this.broadcastToAll(CHANNELS.WS_STATUS_CHANGE_EVENT, false)
   }
 
   /**
@@ -176,7 +177,7 @@ export class WsService {
    */
   public syncStatusToWindow(window: BrowserWindow): void {
     if (!window.isDestroyed()) {
-      window.webContents.send('ws:status-change', this.connected)
+      window.webContents.send(CHANNELS.WS_STATUS_CHANGE_EVENT, this.connected)
     }
   }
 

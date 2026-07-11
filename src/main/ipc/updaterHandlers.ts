@@ -1,4 +1,6 @@
-import { ipcMain, app, dialog, BrowserWindow } from 'electron'
+﻿import { app, dialog, BrowserWindow } from 'electron'
+import { CHANNELS } from '@shared/ipc/channels'
+import { registerHandle } from '../utils/registerIpcHandler'
 import { getAutoUpdater } from '../utils/appUpdater'
 import log from '../utils/logger'
 import { request } from '@shared/api/request'
@@ -10,28 +12,28 @@ const autoUpdater = getAutoUpdater()
  */
 function setupUpdaterIPC(): void {
   // 获取当前版本
-  ipcMain.handle('updater:get-current-version', () => {
+  registerHandle(CHANNELS.UPDATER_GET_CURRENT_VERSION, () => {
     return app.getVersion()
   })
 
   // 检测更新
-  ipcMain.handle('updater:check-for-update', async () => {
+  registerHandle(CHANNELS.UPDATER_CHECK_FOR_UPDATE, async () => {
     const win = BrowserWindow.getFocusedWindow()
 
     if (!win) return
 
-    win.webContents.send('updater:update-status', '正在检查更新...')
+    win.webContents.send(CHANNELS.UPDATER_UPDATE_STATUS_EVENT, '正在检查更新...')
 
     try {
       const result = await autoUpdater.checkForUpdates()
 
       if (!result) {
-        win.webContents.send('updater:update-status', '更新程序不可用。')
+        win.webContents.send(CHANNELS.UPDATER_UPDATE_STATUS_EVENT, '更新程序不可用。')
         return { updateAvailable: false }
       }
 
       if (!result.updateInfo || !result.updateInfo.version) {
-        win.webContents.send('updater:update-status', '当前已是最新版本。')
+        win.webContents.send(CHANNELS.UPDATER_UPDATE_STATUS_EVENT, '当前已是最新版本。')
         return { updateAvailable: false }
       }
 
@@ -39,12 +41,12 @@ function setupUpdaterIPC(): void {
       const latestVersion = result.updateInfo.version
 
       if (latestVersion === currentVersion) {
-        win.webContents.send('updater:update-status', '已是最新版本。')
+        win.webContents.send(CHANNELS.UPDATER_UPDATE_STATUS_EVENT, '已是最新版本。')
         return { updateAvailable: false }
       }
 
       // 有新版本，显示提示
-      win.webContents.send('updater:update-status', `发现新版本 v${latestVersion}，是否更新？`)
+      win.webContents.send(CHANNELS.UPDATER_UPDATE_STATUS_EVENT, `发现新版本 v${latestVersion}，是否更新？`)
       return {
         updateAvailable: true,
         version: latestVersion,
@@ -53,7 +55,7 @@ function setupUpdaterIPC(): void {
     } catch (error) {
       const errorObj = error as Error
       win.webContents.send(
-        'updater:update-status',
+        CHANNELS.UPDATER_UPDATE_STATUS_EVENT,
         `检查更新失败,请到项目仓库查看更新或者使用代理重试。${errorObj.message}`
       )
       log.error(error)
@@ -62,15 +64,15 @@ function setupUpdaterIPC(): void {
   })
 
   // 确认更新
-  ipcMain.handle('updater:confirm-update', async () => {
+  registerHandle(CHANNELS.UPDATER_CONFIRM_UPDATE, async () => {
     const win = BrowserWindow.getFocusedWindow()
 
     if (!win) return
 
-    win.webContents.send('updater:update-status', '正在下载更新...')
+    win.webContents.send(CHANNELS.UPDATER_UPDATE_STATUS_EVENT, '正在下载更新...')
 
     autoUpdater.on('download-progress', (progress) => {
-      win.webContents.send('updater:update-progress', Math.round(progress.percent))
+      win.webContents.send(CHANNELS.UPDATER_UPDATE_PROGRESS_EVENT, Math.round(progress.percent))
     })
 
     autoUpdater.on('update-downloaded', () => {
@@ -84,7 +86,7 @@ function setupUpdaterIPC(): void {
       if (choice === 0) {
         autoUpdater.quitAndInstall()
       } else {
-        win.webContents.send('updater:update-status', '更新已下载，可稍后安装。')
+        win.webContents.send(CHANNELS.UPDATER_UPDATE_STATUS_EVENT, '更新已下载，可稍后安装。')
       }
     })
 
@@ -92,7 +94,7 @@ function setupUpdaterIPC(): void {
   })
 
   // 检查云端版本与客户端版本匹配
-  ipcMain.handle('updater:check-cloud-version', async () => {
+  registerHandle(CHANNELS.UPDATER_CHECK_CLOUD_VERSION, async () => {
     const currentVersion = app.getVersion()
     try {
       // 调用云端健康检查API

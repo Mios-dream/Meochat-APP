@@ -806,7 +806,7 @@ async function loadAssistant(): Promise<void> {
   assistantLoadError.value = ''
   assistantProgress.value = 5
 
-  const result = await window.api.loadAssistantData()
+  const result = await window.api.assistant.loadAssistantData()
   if (!result.success) {
     assistantLoadError.value = `助手数据加载失败：${result.error || '未知错误'}`
     return

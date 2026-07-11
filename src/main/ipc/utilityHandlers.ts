@@ -1,4 +1,6 @@
-import { ipcMain, shell, Notification, dialog } from 'electron'
+import { shell, Notification, dialog } from 'electron'
+import { CHANNELS } from '@shared/ipc/channels'
+import { registerHandle, registerOn } from '../utils/registerIpcHandler'
 import fs from 'fs'
 import log from '../utils/logger'
 
@@ -6,11 +8,11 @@ import log from '../utils/logger'
  * 设置工具IPC
  */
 export function setupUtilityIPC(): void {
-  ipcMain.on('tool:open-external', (_event, url) => {
+  registerOn(CHANNELS.TOOL_OPEN_EXTERNAL, (_event, url) => {
     shell.openExternal(url)
   })
 
-  ipcMain.on('tool:notify', (_event, data) => {
+  registerOn(CHANNELS.TOOL_NOTIFY, (_event, data) => {
     if (Notification.isSupported()) {
       new Notification({
         title: data.title,
@@ -26,7 +28,7 @@ export function setupUtilityIPC(): void {
   })
 
   // 选择文件
-  ipcMain.handle('tool:select-file', async (_event, options) => {
+  registerHandle(CHANNELS.TOOL_SELECT_FILE, async (_event, options) => {
     try {
       const result = await dialog.showOpenDialog({
         title: options?.title || '选择文件',
@@ -56,7 +58,7 @@ export function setupUtilityIPC(): void {
   })
 
   // 选择文件夹
-  ipcMain.handle('tool:select-folder', async (_event, options) => {
+  registerHandle(CHANNELS.TOOL_SELECT_FOLDER, async (_event, options) => {
     try {
       const result = await dialog.showOpenDialog({
         title: options?.title || '选择文件夹',
@@ -85,7 +87,7 @@ export function setupUtilityIPC(): void {
   })
 
   // 检查本地路径是否存在
-  ipcMain.handle('tool:path-exists', async (_event, targetPath: string) => {
+  registerHandle(CHANNELS.TOOL_PATH_EXISTS, async (_event, targetPath: string) => {
     try {
       if (typeof targetPath !== 'string' || !targetPath.trim()) {
         return { success: false, error: '路径不能为空' }

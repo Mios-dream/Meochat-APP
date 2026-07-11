@@ -1,9 +1,11 @@
-/**
+﻿/**
  * 小组件 IPC 处理器
  * 处理小组件相关的所有 IPC 通信
  */
 
 import { ipcMain, BrowserWindow } from 'electron'
+import { CHANNELS } from '@shared/ipc/channels'
+import { registerHandle } from '../utils/registerIpcHandler'
 import { WidgetService } from '../services/widgetService'
 import {
   createMultiInstanceWindow,
@@ -27,7 +29,7 @@ export function setupWidgetIPC(): void {
   const widgetService = WidgetService.getInstance()
 
   // 获取所有配置
-  ipcMain.handle('widget:config:get-all', () => {
+  registerHandle(CHANNELS.WIDGET_CONFIG_GET_ALL, () => {
     try {
       return { success: true, data: widgetService.getAllConfigs() }
     } catch (error) {
@@ -37,7 +39,7 @@ export function setupWidgetIPC(): void {
   })
 
   // 保存所有配置
-  ipcMain.handle('widget:config:save', (_, config) => {
+  registerHandle(CHANNELS.WIDGET_CONFIG_SAVE, (_, config) => {
     try {
       const success = widgetService.saveAllConfigs(config)
       return { success }
@@ -48,7 +50,7 @@ export function setupWidgetIPC(): void {
   })
 
   // 添加小组件实例
-  ipcMain.handle('widget:instance:add', (_, instance) => {
+  registerHandle(CHANNELS.WIDGET_INSTANCE_ADD, (_, instance) => {
     try {
       log.info(`收到添加小组件实例请求: ${JSON.stringify(instance)}`)
       const success = widgetService.addInstance(instance)
@@ -61,7 +63,7 @@ export function setupWidgetIPC(): void {
   })
 
   // 更新小组件实例
-  ipcMain.handle('widget:instance:update', (_, data) => {
+  registerHandle(CHANNELS.WIDGET_INSTANCE_UPDATE, (_, data) => {
     try {
       const { instanceId, updates } = data
       const success = widgetService.updateInstance(instanceId, updates)
@@ -73,7 +75,7 @@ export function setupWidgetIPC(): void {
   })
 
   // 删除小组件实例
-  ipcMain.handle('widget:instance:delete', (_, instanceId) => {
+  registerHandle(CHANNELS.WIDGET_INSTANCE_DELETE, (_, instanceId) => {
     try {
       // 先关闭窗口
       const win = windowRegistry.getWindow(`widget:${instanceId}`)
@@ -89,7 +91,7 @@ export function setupWidgetIPC(): void {
   })
 
   // 获取小组件实例
-  ipcMain.handle('widget:instance:get', (_, instanceId) => {
+  registerHandle(CHANNELS.WIDGET_INSTANCE_GET, (_, instanceId) => {
     try {
       const instance = widgetService.getInstance(instanceId)
       return { success: true, data: instance }
@@ -100,7 +102,7 @@ export function setupWidgetIPC(): void {
   })
 
   // 获取所有小组件实例
-  ipcMain.handle('widget:instance:get-all', () => {
+  registerHandle(CHANNELS.WIDGET_INSTANCE_GET_ALL, () => {
     try {
       const instances = widgetService.getAllInstances()
       return { success: true, data: instances }
@@ -111,7 +113,7 @@ export function setupWidgetIPC(): void {
   })
 
   // 创建小组件独立窗口
-  ipcMain.handle('widget:window:create', (_, instanceId) => {
+  registerHandle(CHANNELS.WIDGET_WINDOW_CREATE, (_, instanceId) => {
     try {
       log.info(`收到创建小组件窗口请求: ${instanceId}`)
       const instance = widgetService.getInstance(instanceId)
@@ -142,7 +144,7 @@ export function setupWidgetIPC(): void {
   })
 
   // 关闭小组件独立窗口
-  ipcMain.handle('widget:window:close', (_, instanceId) => {
+  registerHandle(CHANNELS.WIDGET_WINDOW_CLOSE, (_, instanceId) => {
     try {
       const win = windowRegistry.getWindow(`widget:${instanceId}`)
       if (win && !win.isDestroyed()) {
@@ -156,7 +158,7 @@ export function setupWidgetIPC(): void {
   })
 
   // 切换小组件窗口置顶状态
-  ipcMain.handle('widget:window:toggle-pin', (_, data) => {
+  registerHandle(CHANNELS.WIDGET_WINDOW_TOGGLE_PIN, (_, data) => {
     try {
       const { instanceId, pinned } = data
       const win = windowRegistry.getWindow(`widget:${instanceId}`)
@@ -172,13 +174,13 @@ export function setupWidgetIPC(): void {
   })
 
   // 发送数据到指定小组件
-  ipcMain.handle('widget:data:send', (_, data: WidgetDataMessage) => {
+  registerHandle(CHANNELS.WIDGET_DATA_SEND, (_, data: WidgetDataMessage) => {
     try {
       // 如果指定了目标，发送到目标窗口
       if (data.toId) {
         const win = windowRegistry.getWindow(`widget:${data.toId}`)
         if (win && !win.isDestroyed()) {
-          win.webContents.send('widget:data:received', data)
+          win.webContents.send(CHANNELS.WIDGET_DATA_RECEIVED_EVENT, data)
         }
       }
       return { success: true }
@@ -189,12 +191,12 @@ export function setupWidgetIPC(): void {
   })
 
   // 广播数据到所有小组件
-  ipcMain.handle('widget:data:broadcast', (_, data: Omit<WidgetDataMessage, 'toId'>) => {
+  registerHandle(CHANNELS.WIDGET_DATA_BROADCAST, (_, data: Omit<WidgetDataMessage, 'toId'>) => {
     try {
       // 广播到所有小组件窗口
       BrowserWindow.getAllWindows().forEach((win) => {
         if (!win.isDestroyed()) {
-          win.webContents.send('widget:data:received', data)
+          win.webContents.send(CHANNELS.WIDGET_DATA_RECEIVED_EVENT, data)
         }
       })
       return { success: true }
@@ -205,7 +207,7 @@ export function setupWidgetIPC(): void {
   })
 
   // 更新全局设置
-  ipcMain.handle('widget:settings:update', (_, settings) => {
+  registerHandle(CHANNELS.WIDGET_SETTINGS_UPDATE, (_, settings) => {
     try {
       const success = widgetService.updateGlobalSettings(settings)
       return { success }
@@ -216,7 +218,7 @@ export function setupWidgetIPC(): void {
   })
 
   // 获取全局设置
-  ipcMain.handle('widget:settings:get', () => {
+  registerHandle(CHANNELS.WIDGET_SETTINGS_GET, () => {
     try {
       const settings = widgetService.getGlobalSettings()
       return { success: true, data: settings }
@@ -234,8 +236,8 @@ export function setupWidgetIPC(): void {
    * 主渲染进程通过此 IPC 向目标类型的所有小组件窗口广播动作指令，
    * 等待首个成功响应或全部失败后返回。
    */
-  ipcMain.handle(
-    'widget:action:exec',
+  registerHandle(
+    CHANNELS.WIDGET_ACTION_EXEC,
     async (
       _,
       payload: {
@@ -282,7 +284,7 @@ export function setupWidgetIPC(): void {
         const timer = setTimeout(() => {
           if (!settled) {
             settled = true
-            ipcMain.removeListener('widget:action:result', resultHandler)
+            ipcMain.removeListener(CHANNELS.WIDGET_ACTION_RESULT, resultHandler)
             resolve({
               success: false,
               error: `小组件动作执行超时（${timeout_ms}ms），${widget_type} 未响应。`
@@ -291,12 +293,18 @@ export function setupWidgetIPC(): void {
         }, timeout_ms)
 
         const resultHandler = (_event: Electron.IpcMainEvent, result: WidgetActionResult): void => {
+          // 权限校验：只有 widget 窗口可以上报动作结果
+          const senderType = windowRegistry.getWindowTypeByWebContentsId(_event.sender.id)
+          if (senderType !== 'widget') {
+            log.warn(`[IPC] 非 widget 窗口尝试上报动作结果: ${String(senderType)}`)
+            return
+          }
           if (result.action_id !== actionId) return
           if (settled) return
 
           settled = true
           clearTimeout(timer)
-          ipcMain.removeListener('widget:action:result', resultHandler)
+          ipcMain.removeListener(CHANNELS.WIDGET_ACTION_RESULT, resultHandler)
 
           if (result.success) {
             resolve({ success: true, data: result })
@@ -305,13 +313,13 @@ export function setupWidgetIPC(): void {
           }
         }
 
-        ipcMain.on('widget:action:result', resultHandler)
+        ipcMain.on(CHANNELS.WIDGET_ACTION_RESULT, resultHandler)
 
         const request: WidgetActionRequest = { action_id: actionId, widget_type, action, params }
 
         for (const { win } of openWindows) {
           try {
-            win.webContents.send('widget:action:received', request)
+            win.webContents.send(CHANNELS.WIDGET_ACTION_RECEIVED_EVENT, request)
           } catch (err) {
             log.error(`向小组件窗口发送动作失败:`, err)
           }

@@ -1,4 +1,4 @@
-import { app, globalShortcut, BrowserWindow } from 'electron'
+﻿import { app, globalShortcut, BrowserWindow } from 'electron'
 import { createWindow, mainWindowConfig } from './windows'
 import {
   setupMainIPC,
@@ -24,6 +24,7 @@ import { KernelManager } from './services/kernelManager'
 import { WidgetService } from './services/widgetService'
 import { setupAssistantSettingsIPC } from './ipc/assistantSettingsHandlers'
 import { dispatchCenter } from './dispatch/DispatchCenter'
+import { CHANNELS } from '@shared/ipc/channels'
 import log from './utils/logger'
 
 try {
@@ -86,7 +87,7 @@ app.whenReady().then(() => {
     BrowserWindow.getAllWindows().forEach((win) => {
       if (!win.isDestroyed()) {
         win.webContents.once('dom-ready', () => {
-          win.webContents.send('kernel:state-update', { ...initialState })
+          win.webContents.send(CHANNELS.KERNEL_STATE_UPDATE_EVENT, { ...initialState })
         })
       }
     })

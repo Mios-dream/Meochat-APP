@@ -17,6 +17,7 @@
     "start": "electron-vite preview",
     "dev": "electron-vite dev",
     "test:single": "npx ts-node test/main.ts",
+    "check:ipc": "npx tsx scripts/check-ipc-bindings.ts",
     "build": "npm run typecheck && electron-vite build",
     "postinstall": "electron-builder install-app-deps",
     "build:unpack": "npm run build && electron-builder --dir",

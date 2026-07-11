@@ -23,13 +23,7 @@ export default defineConfig({
     build: {
       rollupOptions: {
         input: {
-          mainPreload: resolve(__dirname, 'src/preload/mainPreload.ts'),
-          assistantPreload: resolve(__dirname, 'src/preload/assistantPreload.ts'),
-          sharePreload: resolve(__dirname, 'src/preload/sharePreload.ts'),
-          widgetPreload: resolve(__dirname, 'src/preload/widgetPreload.ts'),
-          chatBoxPreload: resolve(__dirname, 'src/preload/chatBoxPreload.ts'),
-          tipsPreload: resolve(__dirname, 'src/preload/tipsPreload.ts'),
-          assistantSettingsPreload: resolve(__dirname, 'src/preload/assistantSettingsPreload.ts')
+          unifiedPreload: resolve(__dirname, 'src/preload/unifiedPreload.ts')
         }
       }
     }

@@ -10,7 +10,7 @@ import type { WindowConfig, CreateWindowOptions } from '../types'
 export const widgetWindowConfig: WindowConfig = {
   type: 'widget',
   htmlFile: 'widget.html',
-  preload: 'widgetPreload',
+  preload: 'unifiedPreload',
   singleton: false, // 小组件支持多实例
   boundsKey: 'widgetWindowBounds', // 小组件位置持久化
   // 不设置 route，小组件参数通过 URL 查询参数传递

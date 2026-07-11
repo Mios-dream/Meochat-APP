@@ -1,26 +1,28 @@
-import { ipcMain, app } from 'electron'
+import { app } from 'electron'
+import { CHANNELS } from '@shared/ipc/channels'
+import { registerOn } from '../utils/registerIpcHandler'
 import { windowRegistry } from '../windows'
 
 /**
  * 设置主窗口IPC
  */
 export function setupMainIPC(): void {
-  ipcMain.on('app:show', () => {
+  registerOn(CHANNELS.APP_SHOW, () => {
     const win = windowRegistry.getWindowByType('main')
     if (win) win.show()
   })
 
-  ipcMain.on('app:hide', () => {
+  registerOn(CHANNELS.APP_HIDE, () => {
     const win = windowRegistry.getWindowByType('main')
     if (win) win.hide()
   })
 
-  ipcMain.on('app:minimize', () => {
+  registerOn(CHANNELS.APP_MINIMIZE, () => {
     const win = windowRegistry.getWindowByType('main')
     if (win) win.minimize()
   })
 
-  ipcMain.on('app:maximize', () => {
+  registerOn(CHANNELS.APP_MAXIMIZE, () => {
     const win = windowRegistry.getWindowByType('main')
     if (win) {
       if (win.isMaximized()) {
@@ -33,7 +35,7 @@ export function setupMainIPC(): void {
     }
   })
 
-  ipcMain.on('app:quit', () => {
+  registerOn(CHANNELS.APP_QUIT, () => {
     app.quit()
   })
 }

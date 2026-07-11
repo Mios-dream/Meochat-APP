@@ -155,7 +155,7 @@ async function toggleQuietMode(): Promise<void> {
 
 function closeAssistant(): void {
   hideContextMenu()
-  window.api.closeAssistant()
+  window.api.assistant.closeAssistant()
 }
 
 function handleMouseDown(event: MouseEvent): void {
@@ -250,12 +250,12 @@ async function reconnectWakewordState(): Promise<void> {
 // 初始化助手模型
 async function initAssistantModel(): Promise<boolean> {
   try {
-    const response = await window.api.getCurrentAssistant()
+    const response = await window.api.assistant.getCurrentAssistant()
     if (response.success && response.data) {
       currentAssistantName = response.data.name
     }
 
-    const assetsResponse = await window.api.getAssistantAssets(currentAssistantName)
+    const assetsResponse = await window.api.assistant.getAssistantAssets(currentAssistantName)
     // 销毁当前模型
     live2DManager.destroy()
     if (assetsResponse.success && assetsResponse.data && assetsResponse.data.live2d.modelJsonPath) {
@@ -287,7 +287,7 @@ async function initAssistantModel(): Promise<boolean> {
  */
 async function switchModel(assistantName: string): Promise<boolean> {
   try {
-    const assetsResponse = await window.api.getAssistantAssets(assistantName)
+    const assetsResponse = await window.api.assistant.getAssistantAssets(assistantName)
     if (assetsResponse.success && assetsResponse.data && assetsResponse.data.live2d.modelJsonPath) {
       // 切换模型
       await live2DManager.switchModel('app-resource://' + assetsResponse.data.live2d.modelJsonPath)
@@ -389,13 +389,13 @@ function installTipsListeners(): void {
     console.log('语音开始播放，当前窗口可见:', isVisible)
     if (!isVisible) {
       // console.log('语音开始播放，显示Tips:', message)
-      window.api.showTips(message)
+      window.api.tipsApi.showTips(message)
       // 定期更新Tips消息内容
       tipsUpdateInterval = setInterval(() => {
         const currentText = chatService.getCurrentDisplayText()
         // console.log('更新Tips内容:', currentText)
         if (currentText) {
-          window.api.updateTips(currentText)
+          window.api.tipsApi.updateTips(currentText)
         }
       }, 1000)
     }
@@ -407,7 +407,7 @@ function installTipsListeners(): void {
       tipsUpdateInterval = null
     }
     setTimeout(() => {
-      window.api.hideTips()
+      window.api.tipsApi.hideTips()
     }, 2000)
   })
 }
@@ -464,7 +464,7 @@ onMounted(async () => {
       // 停止交互系统和唤醒词服务
       interactionSystem.stop()
       wakewordService.stop()
-      window.api.hideTips()
+      window.api.tipsApi.hideTips()
       return
     }
 
@@ -499,7 +499,7 @@ onUnmounted(() => {
     clearInterval(tipsUpdateInterval)
     tipsUpdateInterval = null
   }
-  window.api.hideTips()
+  window.api.tipsApi.hideTips()
 })
 
 watch(
