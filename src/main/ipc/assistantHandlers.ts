@@ -1,4 +1,4 @@
-﻿import { screen, BrowserWindow, app, ipcMain } from 'electron'
+﻿import { screen, BrowserWindow, app } from 'electron'
 import { CHANNELS } from '@shared/ipc/channels'
 import { registerHandle, registerOn } from '../utils/registerIpcHandler'
 import {
@@ -8,11 +8,22 @@ import {
   chatBoxWindowConfig,
   tipsWindowConfig
 } from '../windows'
+import { chatHistoryStore } from '../services/chatHistoryStore'
+import type { ChatMessage } from '@shared/types/chat'
 import { checkAssistantWindowVisibility } from '../utils/windowVisibility'
 import dragAddon from 'electron-click-drag-plugin'
 import robot from '@jitsi/robotjs'
 import { uIOhook } from 'uiohook-napi'
 import log from '../utils/logger'
+
+/** 广播聊天历史变更通知到所有窗口 */
+function broadcastHistoryChanged(): void {
+  BrowserWindow.getAllWindows().forEach((win) => {
+    if (!win.isDestroyed()) {
+      win.webContents.send(CHANNELS.CHATBOX_HISTORY_CHANGED_EVENT)
+    }
+  })
+}
 
 let mouseTrackingInterval: NodeJS.Timeout | null = null
 let isMousePressed = false // 追踪鼠标按下状态
@@ -130,37 +141,48 @@ function setupChatBoxIPC(): void {
     })
   })
 
-  // 获取聊天历史：ChatBox 窗口 → 主进程 → Assistant 窗口 → 返回历史
+  // 获取聊天历史：直接从主进程存储返回
   registerHandle(CHANNELS.CHATBOX_GET_HISTORY, async () => {
-    const assistantWin = windowRegistry.getWindowByType('assistant')
-    if (!assistantWin || assistantWin.isDestroyed()) {
-      return []
-    }
-
-    return new Promise((resolve) => {
-      const responseChannel = `chat-box:get-history-response:${Date.now()}`
-      const timeout = setTimeout(() => {
-        ipcMain.removeAllListeners(responseChannel)
-        resolve([])
-      }, 5000)
-
-      ipcMain.on(responseChannel, (_event, history) => {
-        clearTimeout(timeout)
-        ipcMain.removeAllListeners(responseChannel)
-        resolve(Array.isArray(history) ? history : [])
-      })
-
-      assistantWin.webContents.send(CHANNELS.CHATBOX_GET_HISTORY, responseChannel)
-    })
+    const result = chatHistoryStore.get()
+    if (!result.success) throw new Error(result.error)
+    return result.data
   })
 
-  // 清空聊天历史：广播到所有窗口
-  registerOn(CHANNELS.CHATBOX_CLEAR_HISTORY, () => {
+  // 追加一条消息到历史
+  registerHandle(CHANNELS.CHATBOX_APPEND_MESSAGE, async (_event, message: ChatMessage) => {
+    const result = chatHistoryStore.push(undefined, message)
+    if (!result.success) throw new Error(result.error)
+    broadcastHistoryChanged()
+    return result.data
+  })
+
+  // 删除最后一条消息（发送失败回滚）
+  registerHandle(CHANNELS.CHATBOX_POP_HISTORY, async () => {
+    const result = chatHistoryStore.popLast()
+    if (!result.success) throw new Error(result.error)
+    broadcastHistoryChanged()
+    return result.data
+  })
+
+  // 替换全部历史（远端同步后覆盖）
+  registerHandle(CHANNELS.CHATBOX_REPLACE_HISTORY, async (_event, messages: ChatMessage[]) => {
+    const result = chatHistoryStore.replace(undefined, messages)
+    if (!result.success) throw new Error(result.error)
+    broadcastHistoryChanged()
+    return result.data
+  })
+
+  // 清空聊天历史：同步清空主进程存储并广播到所有窗口
+  registerHandle(CHANNELS.CHATBOX_CLEAR_HISTORY, async () => {
+    const result = chatHistoryStore.clear()
+    if (!result.success) throw new Error(result.error)
+    broadcastHistoryChanged()
     BrowserWindow.getAllWindows().forEach((win) => {
       if (!win.isDestroyed()) {
         win.webContents.send(CHANNELS.CHATBOX_CLEAR_HISTORY)
       }
     })
+    return []
   })
 }
 

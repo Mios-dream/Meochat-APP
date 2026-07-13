@@ -25,5 +25,7 @@ export const eventChannels = {
   /** 取消消息推送 */
   CHATBOX_CANCEL_MESSAGE_EVENT: 'chat-box:cancel-message',
   /** 唤醒词事件 */
-  CHATBOX_WAKEWORD_DETECTED_EVENT: 'chat-box:wakeword-detected'
+  CHATBOX_WAKEWORD_DETECTED_EVENT: 'chat-box:wakeword-detected',
+  /** 聊天历史变更通知 */
+  CHATBOX_HISTORY_CHANGED_EVENT: 'chat-box:history-changed'
 } as const

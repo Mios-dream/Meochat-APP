@@ -356,15 +356,23 @@ function installChatBoxListener(): void {
       const chatData = data as { text: string }
       const isSleepMode = interactionSystem.isSleepMode()
       await chatService.chat(chatData.text, isSleepMode)
+    } catch (error) {
+      console.error('[ChatBox] 聊天请求失败:', error)
     } finally {
-      // 从 ChatManager 获取最新的助手回复，同步回 ChatBox 窗口
-      const history = chatService.getChatHistory()
-      const lastMsg = history.length > 0 ? history[history.length - 1] : null
-      const reply = lastMsg?.role === 'assistant' ? lastMsg.content : undefined
-      window.api.ipcRenderer.send('chat-box:update-status', {
-        loading: false,
-        reply
-      })
+      // 从主进程读取权威历史，同步回 ChatBox 窗口
+      try {
+        const history = await chatService.getChatHistory()
+        const lastMsg = history.length > 0 ? history[history.length - 1] : null
+        const reply = lastMsg?.role === 'assistant' ? lastMsg.content : undefined
+        window.api.ipcRenderer.send('chat-box:update-status', {
+          loading: false,
+          reply,
+          history
+        })
+      } catch (err) {
+        console.error('[ChatBox] 获取历史失败:', err)
+        window.api.ipcRenderer.send('chat-box:update-status', { loading: false })
+      }
     }
   })
 
@@ -373,16 +381,9 @@ function installChatBoxListener(): void {
     chatService.interruptCurrentPlayback()
   })
 
-  // 响应 ChatBox 窗口的历史记录请求
-  window.api.ipcRenderer.on('chat-box:get-history', (responseChannel: unknown) => {
-    const channel = responseChannel as string
-    const history = chatService.getChatHistory()
-    window.api.ipcRenderer.send(channel, history)
-  })
-
-  // 响应 ChatBox 窗口的清空历史请求
+  // 响应 ChatBox 窗口的清空历史请求（主进程已处理存储，此处仅清理本地播放状态）
   window.api.ipcRenderer.on('chat-box:clear-history', () => {
-    chatService.clearChatHistory()
+    chatService.interruptCurrentPlayback()
   })
 
   // 订阅工具状态变更，通过 IPC 广播给 ChatBox 窗口以展示当前工具调用状态
@@ -508,7 +509,6 @@ onUnmounted(() => {
   }
   window.api.ipcRenderer.removeAllListeners('chat-box:send-message')
   window.api.ipcRenderer.removeAllListeners('chat-box:cancel-message')
-  window.api.ipcRenderer.removeAllListeners('chat-box:get-history')
   window.api.ipcRenderer.removeAllListeners('chat-box:clear-history')
   live2DManager.destroy()
   // 清除Tips更新定时器

@@ -3,7 +3,7 @@ import { MessageTips } from '../services/MessageTips'
 import { Live2DManager } from '../services/Live2dManager'
 import { useConfigStore } from '../stores/useConfigStore'
 import { normalizeNumber } from '@renderer/utils/MathUtils'
-import { ChatHistoryStore, type ChatMessage } from './ChatHistoryStore'
+import type { ChatMessage, ChatHistoryApiResponse } from '@shared/types/chat'
 import {
   audioBase64ToBlob,
   ChatPlaybackController,
@@ -78,8 +78,6 @@ class ChatManager {
   private static instance: ChatManager
   /** 台词/提示气泡控制器。 */
   private readonly messageTips: MessageTips
-  /** 按助手名称管理本地聊天历史。 */
-  private readonly chatHistoryStore: ChatHistoryStore
   /** 负责台词、音频、Live2D 口型和动作播放。 */
   private readonly playbackController: ChatPlaybackController
   /** 负责 WS 消息处理和 text/audio/motion 句子同步。 */
@@ -112,7 +110,6 @@ class ChatManager {
     this.messageTips = new MessageTips()
     this.live2DManager = Live2DManager.getInstance()
     // 初始化聊天历史存储、播放控制器和流处理器
-    this.chatHistoryStore = new ChatHistoryStore()
     this.playbackController = new ChatPlaybackController(this.live2DManager, (...args) => {
       this.messageTips.showMessage(...args)
     })
@@ -177,20 +174,23 @@ class ChatManager {
     this.messageTips.setRenderCallback(renderCallback)
   }
 
-  /** 获取当前助手的本地聊天历史。 */
-  public getChatHistory(): ChatMessage[] {
-    return this.chatHistoryStore.get()
+  /** 获取当前助手的聊天历史（从主进程）。 */
+  public async getChatHistory(): Promise<ChatMessage[]> {
+    return window.api.ipcRenderer.invoke('chat-box:get-history') as Promise<ChatMessage[]>
   }
 
-  /** 从后端拉取当前助手聊天历史，并同步到本地历史缓存。 */
+  /** 从后端拉取当前助手聊天历史，并同步到主进程存储。 */
   public async fetchChatHistory(): Promise<ChatMessage[]> {
     const response = await request.get('/api/chat/history?only_assistant=false')
-    return this.chatHistoryStore.syncFromApi(response.data as never)
+    const data = response.data as ChatHistoryApiResponse
+    const messages = normalizeChatHistory(data.data)
+    await window.api.ipcRenderer.invoke('chat-box:replace-history', messages)
+    return messages
   }
 
-  /** 清空全部助手的本地聊天历史缓存。 */
-  public clearChatHistory(): void {
-    this.chatHistoryStore.clear()
+  /** 清空聊天历史。 */
+  public async clearChatHistory(): Promise<void> {
+    await window.api.ipcRenderer.invoke('chat-box:clear-history')
   }
 
   /** 获取当前是否处于语音/动作回复播放中。 */
@@ -245,7 +245,9 @@ class ChatManager {
 
     return new Promise<boolean>((resolve, reject) => {
       try {
-        this.chatHistoryStore.push({ role: 'user', content: message })
+        // 同步用户消息到主进程存储（fire-and-forget）
+        window.api.ipcRenderer.invoke('chat-box:append-message', { role: 'user', content: message })
+          .catch((err) => console.error('[Chat] 保存用户消息失败:', err))
         // 是否启用动作生成
         const useMotionGenerate = useConfigStore().config.generateMotion
         // 重置流处理器，清理上一轮未完成的播放段
@@ -261,7 +263,9 @@ class ChatManager {
         this.chatDoneReject = (reason: unknown) => {
           this.chatDoneResolve = null
           this.chatDoneReject = null
-          this.chatHistoryStore.popLast()
+          // 回滚用户消息
+          window.api.ipcRenderer.invoke('chat-box:pop-history')
+            .catch((err) => console.error('[Chat] 回滚历史失败:', err))
           reject(reason)
         }
 
@@ -272,7 +276,9 @@ class ChatManager {
           is_sleep_mode: isSleepMode
         })
       } catch (error) {
-        this.chatHistoryStore.popLast()
+        // 回滚用户消息
+        window.api.ipcRenderer.invoke('chat-box:pop-history')
+          .catch((err) => console.error('[Chat] 回滚历史失败:', err))
         this.chatDoneResolve = null
         this.chatDoneReject = null
         reject(error)
@@ -528,14 +534,14 @@ class ChatManager {
     }
   }
 
-  /** 流式回复完成后保存助手回复到本地历史。 */
+  /** 流式回复完成后保存助手回复到主进程存储。 */
   private handleStreamComplete(finalText?: string): void {
     const textToSave = (finalText || this.getCurrentDisplayText()).trim()
     if (textToSave) {
-      this.chatHistoryStore.push({
+      window.api.ipcRenderer.invoke('chat-box:append-message', {
         role: 'assistant',
         content: textToSave
-      })
+      }).catch((err) => console.error('[Chat] 保存助手回复失败:', err))
     }
   }
 
@@ -638,6 +644,15 @@ class ChatManager {
       }
     }
   }
+}
+
+/** 标准化后端聊天历史返回值，保证角色字段稳定。 */
+function normalizeChatHistory(rawMessages?: ChatHistoryApiResponse['data']): ChatMessage[] {
+  if (!Array.isArray(rawMessages)) return []
+  return rawMessages.map((item) => ({
+    role: item.role === 'assistant' ? 'assistant' : 'user',
+    content: item.content
+  }))
 }
 
 export { ChatManager }

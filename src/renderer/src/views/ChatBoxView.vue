@@ -4,7 +4,7 @@
     <div class="title-bar">
       <div class="title-left">
         <div class="title-avatar" />
-        <span class="title-greeting">阁下，下午好</span>
+        <span class="title-greeting">工具栏</span>
       </div>
       <div class="title-right">
         <button class="title-btn" title="置顶" :class="{ pinned: isPinned }" @click="togglePin">
@@ -32,7 +32,13 @@
             :key="idx"
             :class="['message-row', msg.role === 'assistant' ? 'assistant-row' : 'user-row']"
           >
-            <div v-if="msg.role === 'assistant'" class="message-avatar small-avatar" />
+            <div
+              v-if="msg.role === 'assistant'"
+              class="message-avatar small-avatar"
+              :style="{
+                backgroundImage: `url(${currentAssistant?.avatar ? 'app-resource://' + currentAssistant?.avatar : '../assets/images/assistant_avatar_small.png'})`
+              }"
+            />
             <div
               :class="[
                 'message-bubble',
@@ -111,15 +117,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick, Ref } from 'vue'
 import MessageContent from '../components/MessageContent.vue'
-import type { ToolStatusData } from '../chat/ChatManager'
-
-/** 单条聊天消息 */
-interface ChatMessage {
-  role: 'user' | 'assistant'
-  content: string
-}
+import type { ChatMessage, ToolStatusData } from '../chat/ChatManager'
+import { AssistantInfo } from '@shared/types/assistantTypes.js'
+import { AssistantManager } from '@renderer/services/assistantManager.js'
 
 const messagesRef = ref<HTMLElement | null>(null)
 const inputRef = ref<HTMLTextAreaElement | null>(null)
@@ -131,9 +133,13 @@ const inputText = ref('')
 const isPinned = ref(false)
 const toolStatus = ref<ToolStatusData>({ active: false, tools: [] })
 const elapsedTick = ref(0)
+const currentAssistant: Ref<AssistantInfo | null> = ref(null)
+const assistantManager = AssistantManager.getInstance()
+
 let removeStatusUpdated: () => void = () => {}
 let removeClearHistory: () => void = () => {}
 let removeToolStatus: () => void = () => {}
+let removeHistoryChanged: () => void = () => {}
 let elapsedTimer: ReturnType<typeof setInterval> | null = null
 
 /** 工具状态文本格式化 */
@@ -158,6 +164,7 @@ function handleSend(): void {
   const text = inputText.value.trim()
   if (!text || loading.value) return
 
+  // 乐观更新：立即显示用户消息
   messages.value.push({ role: 'user', content: text })
   inputText.value = ''
   scrollToBottom()
@@ -185,15 +192,19 @@ function autoResize(): void {
   el.style.height = `${Math.min(el.scrollHeight, 120)}px`
 }
 
-/** 新建对话：中断当前对话、清空本地历史并通知 Assistant 窗口同步清空 */
-function handleNewConversation(): void {
+/** 新建对话：中断当前对话、清空本地历史并通知主进程同步清空 */
+async function handleNewConversation(): Promise<void> {
   // 如果有进行中的回复，先取消
   if (loading.value) {
     window.api.ipcRenderer.send('chat-box:cancel-message', { text: '用户取消' })
     loading.value = false
   }
   messages.value = []
-  window.api.ipcRenderer.send('chat-box:clear-history')
+  try {
+    await window.api.ipcRenderer.invoke('chat-box:clear-history')
+  } catch (err) {
+    console.warn('清空历史失败:', err)
+  }
   nextTick(() => {
     if (inputRef.value) {
       inputRef.value.focus()
@@ -290,12 +301,13 @@ async function uploadImage(): Promise<void> {
 }
 
 onMounted(async () => {
-  // 通过 IPC 从 Assistant 窗口获取聊天历史
+  currentAssistant.value = await assistantManager.getCurrentAssistant()
+  // 从主进程获取聊天历史
   historyLoading.value = true
   try {
-    const history = await window.api.ipcRenderer.invoke('chat-box:get-history')
-    if (Array.isArray(history) && history.length > 0) {
-      messages.value = history as ChatMessage[]
+    const history = (await window.api.ipcRenderer.invoke('chat-box:get-history')) as ChatMessage[]
+    if (history.length > 0) {
+      messages.value = history
       scrollToBottom()
     }
   } catch (error) {
@@ -304,12 +316,12 @@ onMounted(async () => {
     historyLoading.value = false
   }
 
-  // 监听助手状态更新
+  // 监听助手状态更新，以 ChatManager 的完整历史为唯一数据源
   removeStatusUpdated = window.api.ipcRenderer.on('chat-box:status-updated', (data) => {
-    const statusData = data as { loading: boolean; reply?: string }
+    const statusData = data as { loading: boolean; reply?: string; history?: ChatMessage[] }
     loading.value = statusData.loading
-    if (!statusData.loading && statusData.reply) {
-      messages.value.push({ role: 'assistant', content: statusData.reply })
+    if (statusData.history) {
+      messages.value = statusData.history
       scrollToBottom()
     }
   })
@@ -317,6 +329,17 @@ onMounted(async () => {
   // 监听清空历史事件（由其他窗口发起）
   removeClearHistory = window.api.ipcRenderer.on('chat-box:clear-history', () => {
     messages.value = []
+  })
+
+  // 监听聊天历史变更，重新从主进程拉取最新数据
+  removeHistoryChanged = window.api.ipcRenderer.on('chat-box:history-changed', async () => {
+    try {
+      const history = (await window.api.ipcRenderer.invoke('chat-box:get-history')) as ChatMessage[]
+      messages.value = history
+      scrollToBottom()
+    } catch (error) {
+      console.warn('同步聊天历史失败:', error)
+    }
   })
 
   // 监听工具调用状态更新
@@ -340,6 +363,7 @@ onMounted(async () => {
 onUnmounted(() => {
   removeStatusUpdated()
   removeClearHistory()
+  removeHistoryChanged()
   removeToolStatus()
   if (elapsedTimer) {
     clearInterval(elapsedTimer)
@@ -352,14 +376,15 @@ onUnmounted(() => {
 .toolMenuContainer {
   width: 100vw;
   height: 100vh;
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   outline: none;
   border-radius: 14px;
-  background: linear-gradient(155deg, rgba(255, 255, 255, 0.93) 0%, rgba(255, 255, 255, 0.78) 100%);
+  background: linear-gradient(155deg, rgba(255, 255, 255, 0.93) 0%, rgba(255, 255, 255, 0.9) 100%);
   backdrop-filter: blur(14px);
-  border: 2px solid rgba(255, 255, 255, 0.82);
+  border: 2px solid var(--theme-color-shadow);
 }
 
 /* ───── 顶部标题栏 ───── */
@@ -381,18 +406,16 @@ onUnmounted(() => {
 .title-left {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 5px;
   cursor: grab;
 }
 
 .title-avatar {
   width: 30px;
   height: 30px;
-  border-radius: 50%;
-  background-image: url('../assets/images/助手Q版.png');
+  background-image: url('../assets/images/momona_icon.png');
   background-size: cover;
   background-position: center;
-  border: 2px solid rgba(252, 165, 185, 0.6);
   flex-shrink: 0;
 }
 
@@ -544,10 +567,12 @@ onUnmounted(() => {
 
 .assistant-row {
   align-self: flex-start;
+  margin-bottom: 20px;
 }
 
 .user-row {
   align-self: flex-end;
+  margin-bottom: 10px;
 }
 
 .message-avatar {
@@ -558,9 +583,8 @@ onUnmounted(() => {
 }
 
 .small-avatar {
-  width: 30px;
-  height: 30px;
-  background-image: url('../assets/images/助手Q版.png');
+  width: 35px;
+  height: 35px;
   background-size: cover;
   background-position: center;
   border: 2px solid var(--theme-color-light, #fca5b9);
@@ -568,25 +592,25 @@ onUnmounted(() => {
 
 .message-bubble {
   padding: 8px 14px;
-  border-radius: 14px;
+  border-radius: 10px;
   font-size: 13px;
   line-height: 1.5;
   word-break: break-word;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+  /* box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05); */
 }
 
 .assistant-bubble {
   background: #fff5f7;
   border: 1px solid rgba(249, 130, 166, 0.15);
   color: #6f2b43;
-  border-top-left-radius: 4px;
+  /* border-top-left-radius: 4px; */
 }
 
 .user-bubble {
   background: #f0f0f0;
   border: 1px solid rgba(0, 0, 0, 0.04);
   color: #555;
-  border-bottom-right-radius: 4px;
+  /* border-bottom-right-radius: 4px; */
 }
 
 /* ───── 历史加载中 ───── */
@@ -653,10 +677,10 @@ onUnmounted(() => {
   min-height: 36px;
   max-height: 120px;
   padding: 8px 14px;
-  border: 1.5px solid rgba(139, 30, 63, 0.1);
+  border: 2px solid rgba(139, 30, 63, 0.1);
   background: rgba(255, 255, 255, 0.55);
   backdrop-filter: blur(4px);
-  font-size: 13px;
+  font-size: 12px;
   line-height: 1.5;
   color: #6f2b43;
   outline: none;
@@ -669,7 +693,7 @@ onUnmounted(() => {
 }
 
 .chat-input:focus {
-  border-color: var(--theme-color-light, #fca5b9);
+  border-color: var(--theme-color-light);
   background: rgba(255, 255, 255, 0.7);
   box-shadow: 0 0 12px rgba(252, 142, 173, 0.15);
 }
@@ -761,12 +785,12 @@ onUnmounted(() => {
 
 /* 取消发送按钮：加载中替换发送按钮 */
 .cancel-send-btn {
-  background: #e97168;
+  background: var(--theme-color);
   box-shadow: 0 2px 8px rgba(233, 113, 104, 0.3);
 }
 
 .cancel-send-btn:hover {
-  background: #d46057;
+  background: var(--theme-color);
   box-shadow: 0 4px 14px rgba(233, 113, 104, 0.4);
   transform: scale(1.05);
 }

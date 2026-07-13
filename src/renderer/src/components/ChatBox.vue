@@ -282,17 +282,19 @@ onUnmounted(() => {
   width: 100%;
   height: 100%;
   background-color: rgba(255, 255, 255, 0.8);
-  border: 3px solid #ffc0d6;
+  border: 3px solid var(--theme-color-shadow);
   border-radius: 100px;
   font-size: larger;
   padding: 25px;
   padding-right: 90px;
   box-shadow: 0 0 10px #ffc0d69c;
   transition: all 0.3s ease;
+  color: #6f2b43;
 }
 
 #chatBoxInput:focus {
   background-color: white;
+  border-color: var(--theme-color-light);
   outline: none;
   box-shadow: 0 0 30px #ffc0d663;
   transition: all 0.3s ease;

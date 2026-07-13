@@ -27,6 +27,12 @@ export const chatBoxChannels = {
   CHATBOX_UPDATE_TOOL_STATUS: 'chat-box:update-tool-status',
   /** 获取聊天历史 */
   CHATBOX_GET_HISTORY: 'chat-box:get-history',
+  /** 追加一条消息到历史 */
+  CHATBOX_APPEND_MESSAGE: 'chat-box:append-message',
+  /** 删除最后一条消息（发送失败回滚） */
+  CHATBOX_POP_HISTORY: 'chat-box:pop-history',
+  /** 替换全部历史（远端同步后覆盖） */
+  CHATBOX_REPLACE_HISTORY: 'chat-box:replace-history',
   /** 清空聊天历史 */
   CHATBOX_CLEAR_HISTORY: 'chat-box:clear-history',
   /** 开始拖拽聊天框 */

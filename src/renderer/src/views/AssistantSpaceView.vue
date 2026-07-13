@@ -654,20 +654,29 @@ function closeDiaryModal(): void {
 
 /**
  * 加载聊天历史
+ *
+ * 优先展示 ChatManager 的本地缓存（保证与当前对话实时一致），
+ * 再异步从后端 API 拉取完整记录补充。
  */
 async function loadChatHistory(): Promise<void> {
   historyLoading.value = true
   historyError.value = ''
 
+  // 先展示主进程缓存，保证即时响应
+  try {
+    const localHistory = await chatService.getChatHistory()
+    chatHistory.value = buildHistoryItems(localHistory)
+  } catch {
+    // 忽略，后续远端请求会覆盖
+  }
+  historyLoading.value = false
+
+  // 异步拉取远端记录，补充来自其他会话的历史
   try {
     const remoteHistory = await chatService.fetchChatHistory()
     chatHistory.value = buildHistoryItems(remoteHistory)
   } catch (error) {
-    console.error('加载远程聊天历史失败:', error)
-    historyError.value = '聊天历史加载失败，已显示本地记录'
-    chatHistory.value = buildHistoryItems(chatService.getChatHistory())
-  } finally {
-    historyLoading.value = false
+    console.error('加载远程聊天历史失败，仅显示本地记录:', error)
   }
 }
 
@@ -1178,7 +1187,7 @@ async function saveShortcut(shortcut: string): Promise<void> {
   width: 50px;
   height: 50px;
   border-radius: 100%;
-  border: 1px solid #f982a6;
+  border: 2px solid #f982a6;
   margin-right: 10px;
   flex-shrink: 0;
 }
@@ -1216,11 +1225,15 @@ async function saveShortcut(shortcut: string): Promise<void> {
 .message-text.assistant {
   background-color: #fff3f5;
   align-self: flex-start;
+  /* border-top-left-radius: 4px; */
+  border: 1px solid rgba(249, 130, 166, 0.15);
 }
 
 .message-text.user {
   background-color: #f5f5f5;
   align-self: flex-end;
+  /* border-bottom-right-radius: 4px; */
+  border: 1px solid rgba(0, 0, 0, 0.04);
 }
 
 .message-time {

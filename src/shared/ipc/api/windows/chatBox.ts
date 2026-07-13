@@ -5,6 +5,7 @@
  * 无 handler 的已移除：sendMessage / getChatHistory / clearChatHistory 等。
  */
 
+import { AssistantApi } from '../base/assistant'
 import type { CommonApi } from '../base/common'
 
 /** 聊天框窗口暴露的 API 接口 */
@@ -15,4 +16,5 @@ export interface ChatBoxWindowApi extends CommonApi {
   showChatBox: () => void
   openChatBox: () => void
   closeChatBox: () => void
+  assistant: AssistantApi
 }
