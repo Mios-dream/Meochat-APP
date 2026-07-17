@@ -15,6 +15,8 @@ export const utilityChannels = {
   TOOL_SELECT_FOLDER: 'tool:select-folder',
   /** 检查路径是否存在 */
   TOOL_PATH_EXISTS: 'tool:path-exists',
+  /** 读取文件并返回 Base64 编码内容 */
+  TOOL_READ_FILE_BASE64: 'tool:read-file-base64',
 
   /** 发送日志 */
   LOGGER_LOG: 'logger:log',

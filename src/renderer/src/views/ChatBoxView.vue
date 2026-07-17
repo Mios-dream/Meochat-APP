@@ -183,14 +183,19 @@ function scrollToBottom(): void {
   })
 }
 
-/** 发送消息 */
+/** 发送消息（含文本和已选文件） */
 function handleSend(): void {
   const text = inputText.value.trim()
-  if (!text || loading.value) return
+  if ((!text || loading.value) && selectedFiles.value.length === 0) return
+
+  // 构建附件列表
+  const attachments = selectedFiles.value.map((f) => ({ name: f.name, path: f.path }))
+  const content = text || `发送了 ${attachments.length} 个文件`
 
   // 乐观更新：立即显示用户消息
-  messages.value.push({ role: 'user', content: text })
+  messages.value.push({ role: 'user', content })
   inputText.value = ''
+  selectedFiles.value = []
   scrollToBottom()
 
   // 重置输入框高度
@@ -199,7 +204,7 @@ function handleSend(): void {
   }
 
   loading.value = true
-  window.api.ipcRenderer.send('chat-box:send-message', { text })
+  window.api.ipcRenderer.send('chat-box:send-message', { text, attachments })
 }
 
 /** 取消当前回复 */

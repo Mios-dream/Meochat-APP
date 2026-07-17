@@ -207,10 +207,12 @@ export interface PingMessage {
 
 /** 文件附件，仅支持 txt 格式。 */
 export interface FileAttachment {
+  /** Base64 编码的文件数据。 */
+  data: string
   /** 文件名。 */
-  name: string
-  /** Base64 编码的文件内容。 */
-  content: string
+  name?: string
+  /** 文件类型（image / text），前端显式指定。 */
+  type: 'image' | 'text'
 }
 
 /** 用户发送聊天消息。 */
@@ -218,9 +220,7 @@ export interface ChatSendMessage {
   type: 'chat:send'
   /** 用户文本消息。 */
   text: string
-  /** Base64 编码的图片数据列表（不含 data: URI 前缀时自动补全）。 */
-  images: string[]
-  /** 文件附件列表（仅支持 txt 格式）。 */
+  /** 文件附件列表，图片和文档统一通过此字段发送，由 type 区分。 */
   files: FileAttachment[]
   /** 是否要求后端生成 Live2D 动作帧。 */
   generation_motion: boolean

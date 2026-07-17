@@ -20,6 +20,7 @@ import {
 import type {
   ChatDoneMessage,
   ErrorMessage,
+  FileAttachment,
   ToolCallEvent,
   ToolResultEvent
 } from '@shared/types/ws'
@@ -220,15 +221,21 @@ class ChatManager {
    *   1. 参数验证和 Live2D 状态检查
    *   2. 中断当前播放并重置流处理器
    *   3. 推送用户消息到本地历史
-   *   4. 通过 WS 发送 chat:send 消息
-   *   5. 返回 Promise，在 chat:done 时 resolve，chat:error 时 reject
+   *   4. 将附件文件编码为 Base64（通过主进程读取）
+   *   5. 通过 WS 发送 chat:send 消息（含附件）
+   *   6. 返回 Promise，在 chat:done 时 resolve，chat:error 时 reject
    *
    * @param message - 用户输入的消息文本
    * @param isSleepMode - 是否为睡眠模式（受限回复）
+   * @param attachments - 附件列表（文件名 + 本地路径）
    * @returns 发送成功返回 true，参数为空或 Live2D 不可用时返回 false
    */
-  public async chat(message: string, isSleepMode: boolean = false): Promise<boolean> {
-    if (!message || !message.trim()) {
+  public async chat(
+    message: string,
+    isSleepMode: boolean = false,
+    attachments?: { name: string; path: string }[]
+  ): Promise<boolean> {
+    if ((!message || !message.trim()) && (!attachments || attachments.length === 0)) {
       return false
     }
 
@@ -244,11 +251,51 @@ class ChatManager {
       this.chatDoneReject = null
     }
 
+    // 图片扩展名列表，用于分类附件
+    const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'ico']
+    const getExt = (name: string): string => name.split('.').pop()?.toLowerCase() ?? ''
+
+    // 读取附件文件，编码为 Base64，统一放入 files 数组用 type 区分
+    const files: FileAttachment[] = []
+    if (attachments && attachments.length > 0) {
+      const results = await Promise.allSettled(
+        attachments.map((att) =>
+          window.api.ipcRenderer.invoke<{
+            success: boolean
+            name?: string
+            content?: string
+            mimeType?: string
+            error?: string
+          }>('tool:read-file-base64', att.path)
+        )
+      )
+      for (let i = 0; i < results.length; i++) {
+        const result = results[i]
+        if (result.status === 'rejected' || !result.value.success || !result.value.content) {
+          console.warn(
+            `[Chat] 读取附件失败: ${attachments[i].name}`,
+            result.status === 'rejected' ? result.reason : result.value.error
+          )
+          continue
+        }
+        const ext = getExt(attachments[i].name)
+        const isImage = imageExts.includes(ext)
+        files.push({
+          data: isImage
+            ? `data:${result.value.mimeType || 'image/png'};base64,${result.value.content}`
+            : result.value.content,
+          name: attachments[i].name,
+          type: isImage ? 'image' : 'text'
+        })
+      }
+    }
+
     return new Promise<boolean>((resolve, reject) => {
       try {
         // 同步用户消息到主进程存储（fire-and-forget）
+        const displayContent = message || `发送了 ${attachments?.length ?? 0} 个文件`
         window.api.ipcRenderer
-          .invoke('chat-box:append-message', { role: 'user', content: message })
+          .invoke('chat-box:append-message', { role: 'user', content: displayContent })
           .catch((err) => console.error('[Chat] 保存用户消息失败:', err))
         // 是否启用动作生成
         const useMotionGenerate = useConfigStore().config.generateMotion
@@ -276,9 +323,8 @@ class ChatManager {
 
         this.ws.send({
           type: 'chat:send',
-          text: message,
-          images: [],
-          files: [],
+          text: displayContent,
+          files,
           generation_motion: useMotionGenerate,
           is_sleep_mode: isSleepMode
         })

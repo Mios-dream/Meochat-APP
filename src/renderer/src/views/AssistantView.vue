@@ -353,9 +353,9 @@ function installChatBoxListener(): void {
   // 监听来自ChatBox的消息
   window.api.ipcRenderer.on('chat-box:send-message', async (data) => {
     try {
-      const chatData = data as { text: string }
+      const chatData = data as { text: string; attachments?: { name: string; path: string }[] }
       const isSleepMode = interactionSystem.isSleepMode()
-      await chatService.chat(chatData.text, isSleepMode)
+      await chatService.chat(chatData.text, isSleepMode, chatData.attachments)
     } catch (error) {
       console.error('[ChatBox] 聊天请求失败:', error)
     } finally {
