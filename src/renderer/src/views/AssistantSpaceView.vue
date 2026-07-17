@@ -48,7 +48,7 @@
       </div>
     </div>
 
-    <ChatBox :is-visible="isVisible" />
+    <ChatBox :is-visible="isVisible" @send="handleChatBoxSend" @cancel="handleChatBoxCancel" />
     <teleport to="body">
       <transition name="modal-fade">
         <div v-if="showHistoryModal" class="modal-overlay" @click="closeHistoryModal">
@@ -463,27 +463,6 @@ onMounted(async () => {
 
     interactionSystem.start()
 
-    // 监听来自ChatBox的消息
-    window.api.ipcRenderer.on('chat-box:send-message', async (data) => {
-      try {
-        // 获取当前睡眠模式状态，传递给后端识别
-        const isSleepMode = interactionSystem.isSleepMode()
-        // 调用 ChatManager 处理消息，并等待语音/动作播放完成后再解锁输入
-        const chatData = data as { text: string }
-        await chatService.chat(chatData.text, isSleepMode)
-      } finally {
-        // 发送状态更新给 ChatBox
-        window.api.ipcRenderer.send('chat-box:update-status', {
-          loading: false
-        })
-      }
-    })
-
-    // 监听来自ChatBox的取消消息
-    window.api.ipcRenderer.on('chat-box:cancel-message', () => {
-      chatService.interruptCurrentPlayback()
-    })
-
     // 订阅工具状态变更，通过 IPC 广播给 ChatBox 窗口以展示当前工具调用状态
     chatService.onToolStatusChange((data) => {
       window.api.ipcRenderer.send('chat-box:update-tool-status', data)
@@ -492,9 +471,6 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
-  window.api.ipcRenderer.removeAllListeners('chat-box:send-message')
-  window.api.ipcRenderer.removeAllListeners('chat-box:cancel-message')
-
   const tabs = document.getElementById('tabs-container')
   tabs!.style.opacity = '1'
   if (configStore.config.assistantEnabled) {
@@ -516,9 +492,27 @@ function switchChatBox(): void {
   }
 }
 
-// function toggleLock(): void {
-//   isLocked.value = !isLocked.value
-// }
+/**
+ * 处理 ChatBox 组件发出的发送消息事件。
+ * 与桌面宠物的 ChatBoxView 不同，助手空间内的 ChatBox 通过 emit 直连，
+ * 不经过 IPC 广播，避免与 AssistantView 重复处理。
+ */
+async function handleChatBoxSend(text: string): Promise<void> {
+  try {
+    const isSleepMode = interactionSystem.isSleepMode()
+    await chatService.chat(text, isSleepMode)
+  } finally {
+    // 发送状态更新给 ChatBox（仍通过 IPC，兼容 ChatBox 组件的 status-updated 监听）
+    window.api.ipcRenderer.send('chat-box:update-status', {
+      loading: false
+    })
+  }
+}
+
+/** 处理 ChatBox 组件发出的取消消息事件。 */
+function handleChatBoxCancel(): void {
+  chatService.interruptCurrentPlayback()
+}
 
 // 监听锁定状态变化
 watch(isLocked, (newValue) => {

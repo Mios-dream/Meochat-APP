@@ -52,6 +52,12 @@ defineProps<{
   isVisible: boolean
 }>()
 
+/** 向父组件（AssistantSpaceView）发送消息和取消事件，避免经过 IPC 广播 */
+const emit = defineEmits<{
+  send: [text: string]
+  cancel: []
+}>()
+
 // 输入框的值
 const inputValue = ref('')
 // 加载状态
@@ -143,14 +149,15 @@ async function handleSubmit(): Promise<void> {
   const message = inputValue.value.trim()
   inputValue.value = '' // 立即清空输入框
   loading.value = true // 设置加载状态
-  window.api.ipcRenderer.send('chat-box:send-message', { text: message })
+  emit('send', message)
 }
 
 /**
  * 处理取消当前对话
  */
 function handleCancel(): void {
-  window.api.ipcRenderer.send('chat-box:cancel-message', { text: '用户取消' })
+  loading.value = false
+  emit('cancel')
 }
 
 async function handleVoiceInput(): Promise<void> {
@@ -214,7 +221,7 @@ onMounted(() => {
   // 监听语音唤醒事件
   window.api.ipcRenderer.on('chat-box:wakeword-detected', (wakeword) => {
     loading.value = true
-    window.api.ipcRenderer.send('chat-box:send-message', { text: wakeword as string })
+    emit('send', wakeword as string)
   })
   // 监听工具状态更新事件（由 Assistant 窗口通过 IPC 广播）
   window.api.ipcRenderer.on('chat-box:tool-status-updated', (data) => {

@@ -205,11 +205,23 @@ export interface PingMessage {
   type: 'ping'
 }
 
+/** 文件附件，仅支持 txt 格式。 */
+export interface FileAttachment {
+  /** 文件名。 */
+  name: string
+  /** Base64 编码的文件内容。 */
+  content: string
+}
+
 /** 用户发送聊天消息。 */
 export interface ChatSendMessage {
   type: 'chat:send'
-  /** 消息列表，通常包含单条用户消息。 */
-  msg: { role: string; content: string }[]
+  /** 用户文本消息。 */
+  text: string
+  /** Base64 编码的图片数据列表（不含 data: URI 前缀时自动补全）。 */
+  images: string[]
+  /** 文件附件列表（仅支持 txt 格式）。 */
+  files: FileAttachment[]
   /** 是否要求后端生成 Live2D 动作帧。 */
   generation_motion: boolean
   /** 是否处于睡眠模式。 */

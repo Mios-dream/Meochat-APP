@@ -235,6 +235,7 @@ class ChatManager {
     if (this.live2DManager?.disabled) return false
 
     this.interruptCurrentPlayback()
+    this.isChatting = true
 
     // 清理上一轮未 resolve/reject 的 Promise
     if (this.chatDoneResolve) {
@@ -246,7 +247,8 @@ class ChatManager {
     return new Promise<boolean>((resolve, reject) => {
       try {
         // 同步用户消息到主进程存储（fire-and-forget）
-        window.api.ipcRenderer.invoke('chat-box:append-message', { role: 'user', content: message })
+        window.api.ipcRenderer
+          .invoke('chat-box:append-message', { role: 'user', content: message })
           .catch((err) => console.error('[Chat] 保存用户消息失败:', err))
         // 是否启用动作生成
         const useMotionGenerate = useConfigStore().config.generateMotion
@@ -255,29 +257,36 @@ class ChatManager {
 
         // 在 chat:done 时 resolve 当前 Promise，并清理回调引用
         this.chatDoneResolve = (value: boolean) => {
+          this.isChatting = false
           this.chatDoneResolve = null
           this.chatDoneReject = null
           resolve(value)
         }
         // 在 chat:error 或中断时 reject 当前 Promise，并清理回调引用
         this.chatDoneReject = (reason: unknown) => {
+          this.isChatting = false
           this.chatDoneResolve = null
           this.chatDoneReject = null
           // 回滚用户消息
-          window.api.ipcRenderer.invoke('chat-box:pop-history')
+          window.api.ipcRenderer
+            .invoke('chat-box:pop-history')
             .catch((err) => console.error('[Chat] 回滚历史失败:', err))
           reject(reason)
         }
 
         this.ws.send({
           type: 'chat:send',
-          msg: [{ role: 'user', content: message }],
+          text: message,
+          images: [],
+          files: [],
           generation_motion: useMotionGenerate,
           is_sleep_mode: isSleepMode
         })
       } catch (error) {
+        this.isChatting = false
         // 回滚用户消息
-        window.api.ipcRenderer.invoke('chat-box:pop-history')
+        window.api.ipcRenderer
+          .invoke('chat-box:pop-history')
           .catch((err) => console.error('[Chat] 回滚历史失败:', err))
         this.chatDoneResolve = null
         this.chatDoneReject = null
@@ -303,10 +312,9 @@ class ChatManager {
     if (this.isChatting) return null
     if (this.playbackController.isReplying()) return null
 
-    this.isChatting = true
-
     // 清除上一轮交互残留的台词板显示内容，防止文本堆积
     this.interruptCurrentPlayback()
+    this.isChatting = true
 
     this.currentInteractionIcon = payload.icon
 
@@ -431,25 +439,32 @@ class ChatManager {
    */
   private setupWsListeners(): void {
     // ---- 聊天流消息 ----
+    // 守卫：仅当前实例发起过聊天（isChatting === true）时才处理流消息，
+    // 防止主进程单条 WS 连接广播到多个窗口时，非活跃 ChatManager 重复处理并保存回复。
     this.ws.on('chat:text', (msg) => {
+      if (!this.isChatting) return
       this.streamProcessor.feed(msg)
     })
 
     this.ws.on('chat:audio', (msg) => {
+      if (!this.isChatting) return
       this.streamProcessor.feed(msg)
     })
 
     this.ws.on('chat:motion', (msg) => {
+      if (!this.isChatting) return
       this.streamProcessor.feed(msg)
     })
 
     this.ws.on('chat:done', (msg: ChatDoneMessage) => {
+      if (!this.isChatting) return
       this.streamProcessor.feed(msg)
       this.clearActiveToolCalls()
       this.resolveChatDonePromise(msg.full_text)
     })
 
     this.ws.on('error', (msg: ErrorMessage) => {
+      if (!this.isChatting && !this.chatDoneReject && !this.interactionDoneReject) return
       this.streamProcessor.feed(msg)
       this.clearActiveToolCalls()
       if (this.chatDoneReject) {
@@ -462,17 +477,20 @@ class ChatManager {
 
     // ---- LLM 工具调用事件（聊天框上显示当前正在调用的工具） ----
     this.ws.on('tool_call', (msg: ToolCallEvent) => {
+      if (!this.isChatting) return
       console.log('[ToolCall]', msg.tool_name, msg.arguments)
       this.addActiveToolCall(msg.call_id, msg.tool_name)
     })
 
     this.ws.on('tool_result', (msg: ToolResultEvent) => {
+      if (!this.isChatting) return
       console.log('[ToolResult]', msg.tool_name, msg.success, `${msg.duration_ms}ms`)
       this.removeActiveToolCall(msg.tool_call_id)
     })
 
     // ---- WS 工具协议 ----
     this.ws.on('tool:call', (msg) => {
+      if (!this.isChatting) return
       void this.toolSystem.handleToolCall(msg)
     })
 
@@ -538,10 +556,12 @@ class ChatManager {
   private handleStreamComplete(finalText?: string): void {
     const textToSave = (finalText || this.getCurrentDisplayText()).trim()
     if (textToSave) {
-      window.api.ipcRenderer.invoke('chat-box:append-message', {
-        role: 'assistant',
-        content: textToSave
-      }).catch((err) => console.error('[Chat] 保存助手回复失败:', err))
+      window.api.ipcRenderer
+        .invoke('chat-box:append-message', {
+          role: 'assistant',
+          content: textToSave
+        })
+        .catch((err) => console.error('[Chat] 保存助手回复失败:', err))
     }
   }
 

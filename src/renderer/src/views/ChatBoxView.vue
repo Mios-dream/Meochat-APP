@@ -72,6 +72,16 @@
 
     <!-- 消息输入区域：紧贴消息区底部 -->
     <div class="chat-input-area">
+      <!-- 已选文件预览栏 -->
+      <div v-if="selectedFiles.length > 0" class="file-preview-bar">
+        <div v-for="(file, idx) in selectedFiles" :key="idx" class="file-preview-item">
+          <font-awesome-icon :icon="getFileIcon(file.name)" class="file-preview-icon" />
+          <span class="file-preview-name">{{ file.name }}</span>
+          <button class="file-preview-remove" @click="removeFile(idx)">
+            <font-awesome-icon icon="xmark" />
+          </button>
+        </div>
+      </div>
       <textarea
         ref="inputRef"
         v-model="inputText"
@@ -132,6 +142,7 @@ const loading = ref(false)
 const inputText = ref('')
 const isPinned = ref(false)
 const toolStatus = ref<ToolStatusData>({ active: false, tools: [] })
+const selectedFiles = ref<{ name: string; path: string }[]>([])
 const elapsedTick = ref(0)
 const currentAssistant: Ref<AssistantInfo | null> = ref(null)
 const assistantManager = AssistantManager.getInstance()
@@ -149,6 +160,19 @@ const formatToolStatusText = computed(() => {
     .map((t) => `${t.tool_name} (${(t.elapsed + elapsedTick.value).toFixed(1)}s)`)
     .join(', ')
 })
+
+/** 根据文件名获取对应的 FontAwesome 图标 */
+function getFileIcon(fileName: string): string {
+  const ext = fileName.split('.').pop()?.toLowerCase() ?? ''
+  const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'ico']
+  if (imageExts.includes(ext)) return 'image'
+  return 'file'
+}
+
+/** 移除已选文件 */
+function removeFile(idx: number): void {
+  selectedFiles.value.splice(idx, 1)
+}
 
 /** 自动滚动聊天区域到底部 */
 function scrollToBottom(): void {
@@ -278,7 +302,8 @@ async function uploadFile(): Promise<void> {
       filters: [{ name: '所有文件', extensions: ['*'] }]
     })) as SelectFileResult
     if (result?.success && result.filePath) {
-      window.api.notify?.({ title: '文件已选择', body: result.filePath })
+      const name = result.filePath.split('\\').pop()?.split('/').pop() ?? result.filePath
+      selectedFiles.value.push({ name, path: result.filePath })
     }
   } catch (err) {
     console.error('选择文件失败:', err)
@@ -293,7 +318,8 @@ async function uploadImage(): Promise<void> {
       filters: [{ name: '图片文件', extensions: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'] }]
     })) as SelectFileResult
     if (result?.success && result.filePath) {
-      window.api.notify?.({ title: '图片已选择', body: result.filePath })
+      const name = result.filePath.split('\\').pop()?.split('/').pop() ?? result.filePath
+      selectedFiles.value.push({ name, path: result.filePath })
     }
   } catch (err) {
     console.error('选择图片失败:', err)
@@ -663,8 +689,68 @@ onUnmounted(() => {
   }
 }
 
+/* ───── 已选文件预览栏 ───── */
+.file-preview-bar {
+  position: absolute;
+  top: -30px;
+  left: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 2px 12px 6px;
+  flex-shrink: 0;
+}
+
+.file-preview-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(139, 30, 63, 0.08);
+  border-radius: 6px;
+  font-size: 12px;
+  color: #6f2b43;
+  max-width: 200px;
+}
+
+.file-preview-icon {
+  flex-shrink: 0;
+  color: var(--theme-color, #fc8ead);
+  font-size: 13px;
+}
+
+.file-preview-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-preview-remove {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  border: none;
+  background: transparent;
+  color: #c0a0ae;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  transition: all 0.2s ease;
+  padding: 0;
+}
+
+.file-preview-remove:hover {
+  background: rgba(233, 113, 104, 0.14);
+  color: #e97168;
+}
+
 /* ───── 消息输入区域 ───── */
 .chat-input-area {
+  position: relative;
   display: flex;
   flex-shrink: 0;
   align-items: flex-end;
