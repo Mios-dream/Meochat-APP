@@ -26,70 +26,28 @@
           <span class="loading-dot" />
           <span class="history-loading-text">加载历史记录...</span>
         </div>
-        <template v-else-if="messages.length > 0">
-          <div
-            v-for="(msg, idx) in messages"
-            :key="idx"
-            :class="[
-              'message-row',
-              msg.role === 'assistant'
-                ? 'assistant-row'
-                : msg.role === 'tool'
-                  ? 'tool-row'
-                  : 'user-row'
-            ]"
-          >
-            <div
-              v-if="msg.role === 'assistant'"
-              class="message-avatar small-avatar"
-              :style="{
-                backgroundImage: `url(${currentAssistant?.avatar ? 'app-resource://' + currentAssistant?.avatar : '../assets/images/assistant_avatar_small.png'})`
-              }"
+        <template v-else-if="displayItems.length > 0">
+          <template v-for="(item, idx) in displayItems" :key="idx">
+            <ChatMessageItem
+              v-if="item.kind === 'message'"
+              :role="item.msg.role"
+              :content="item.msg.content"
+              :tool-calls="item.msg.tool_calls"
+              :tool-call-id="item.msg.tool_call_id"
+              :avatar-url="avatarUrl"
+              :assistant-name="assistantName"
+              :avatar-size="35"
             />
-            <div class="message-column">
-              <div
-                :class="[
-                  'message-bubble',
-                  msg.role === 'assistant'
-                    ? 'assistant-bubble'
-                    : msg.role === 'tool'
-                      ? 'tool-bubble'
-                      : 'user-bubble'
-                ]"
-              >
-                <MessageContent
-                  :content="msg.content"
-                  :role="msg.role"
-                  :tool-calls="msg.tool_calls"
-                  :tool-call-id="msg.tool_call_id"
-                />
-              </div>
-              <div
-                v-if="getAttachments(msg.content).length > 0"
-                :class="['attach-bar', msg.role !== 'assistant' ? 'attach-bar--right' : '']"
-              >
-                <div
-                  v-for="(att, aidx) in getAttachments(msg.content)"
-                  :key="aidx"
-                  class="attach-chip"
-                >
-                  <font-awesome-icon
-                    :icon="
-                      att.type === 'image_ocr' || att.type === 'image_url'
-                        ? 'image'
-                        : att.type === 'attachment'
-                          ? 'triangle-exclamation'
-                          : 'file-lines'
-                    "
-                    class="attach-chip-icon"
-                  />
-                  <span class="attach-chip-name">{{
-                    att.type === 'image_url' ? '图片附件' : (att as any).fileName
-                  }}</span>
-                </div>
-              </div>
-            </div>
-          </div>
+            <ChatMessageItem
+              v-else
+              role="assistant"
+              :tools="item.tools"
+              :reply-content="item.reply?.content"
+              :avatar-url="avatarUrl"
+              :assistant-name="assistantName"
+              :avatar-size="35"
+            />
+          </template>
           <!-- 输入中动画 -->
           <div v-if="loading" class="typing-indicator">
             <span class="typing-dot" />
@@ -161,10 +119,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, nextTick, Ref } from 'vue'
-import MessageContent from '../components/MessageContent.vue'
-import { normalizeContent, getAttachments } from '../chat/contentNormalizer'
+import { ref, computed, onMounted, onUnmounted, nextTick, Ref } from 'vue'
+import ChatMessageItem from '../components/ChatMessageItem.vue'
+import type { MergedTool } from '../components/ToolCallGroupBlock.vue'
+import { normalizeContent } from '../chat/contentNormalizer'
 import type { ChatMessage } from '../chat/ChatManager'
+import type { ContentPart } from '@shared/types/chat'
 import { AssistantInfo } from '@shared/types/assistantTypes.js'
 import { AssistantManager } from '@renderer/services/assistantManager.js'
 
@@ -192,6 +152,88 @@ function normalizeMessages(raw: ChatMessage[]): ChatMessage[] {
     content: normalizeContent(msg.content) ?? []
   }))
 }
+
+/** 展示项：普通消息或合并后的工具组 */
+interface DisplayMessage {
+  kind: 'message'
+  msg: ChatMessage
+}
+
+interface DisplayAssistantWithTools {
+  kind: 'assistant_with_tools'
+  tools: MergedTool[]
+  /** 工具调用后的助手文字回复 */
+  reply?: ChatMessage
+}
+
+type DisplayItem = DisplayMessage | DisplayAssistantWithTools
+
+/** 从各种格式的消息 content 中提取纯文本 */
+function getTextContent(content: ChatMessage['content']): string {
+  if (!content) return ''
+  if (typeof content === 'string') return content
+  if (Array.isArray(content)) {
+    return content
+      .filter((p): p is Extract<typeof p, { type: 'text' }> => p.type === 'text')
+      .map((p) => p.text)
+      .join('')
+  }
+  return ''
+}
+
+const avatarUrl = computed(() => {
+  if (currentAssistant.value?.avatar) {
+    return 'app-resource://' + currentAssistant.value.avatar
+  }
+  return '../assets/images/assistant_avatar_small.png'
+})
+
+const assistantName = computed(() => currentAssistant.value?.name ?? '助手')
+
+/** 预处理消息列表：将工具调用及其结果合并为工具组 */
+const displayItems = computed<DisplayItem[]>(() => {
+  const items: DisplayItem[] = []
+  const skip = new Set<number>()
+  const msgs = messages.value
+
+  for (let i = 0; i < msgs.length; i++) {
+    if (skip.has(i)) continue
+    const msg = msgs[i]
+
+    if (msg.role === 'assistant' && msg.tool_calls && msg.tool_calls.length > 0) {
+      // 合并工具调用 + 后续匹配的工具结果
+      const tools: MergedTool[] = msg.tool_calls.map((tc) => {
+        for (let j = i + 1; j < msgs.length; j++) {
+          if (msgs[j].role === 'tool' && msgs[j].tool_call_id === tc.id) {
+            skip.add(j)
+            return {
+              id: tc.id,
+              name: tc.function.name,
+              args: tc.function.arguments,
+              result: getTextContent(msgs[j].content)
+            }
+          }
+        }
+        return { id: tc.id, name: tc.function.name, args: tc.function.arguments }
+      })
+      // 查找后续的助手文字回复，合并到同一块
+      let reply: ChatMessage | undefined
+      for (let j = i + 1; j < msgs.length; j++) {
+        if (skip.has(j)) continue
+        if (msgs[j].role === 'assistant') {
+          reply = msgs[j]
+          skip.add(j)
+          break
+        }
+      }
+      items.push({ kind: 'assistant_with_tools', tools, reply })
+    } else {
+      // 未匹配到 tool_calls 的孤立 tool 消息也照常渲染
+      items.push({ kind: 'message', msg })
+    }
+  }
+  return items
+})
 
 /** 根据文件名获取对应的 FontAwesome 图标 */
 function getFileIcon(fileName: string): string {
@@ -222,7 +264,26 @@ async function handleSend(): Promise<void> {
 
   // 构建附件列表
   const attachments = selectedFiles.value.map((f) => ({ name: f.name, path: f.path }))
-  const content = text || `发送了 ${attachments.length} 个文件`
+
+  // 构建消息内容（含附件信息，用于乐观更新时直接显示）
+  // 使用与历史记录同步同样的 marker 标记格式，确保 normalizeContent 正确解析
+  let content: string | ContentPart[]
+  if (attachments.length > 0) {
+    const markers: string[] = []
+    if (text) markers.push(text)
+    const imgExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'ico']
+    for (const file of selectedFiles.value) {
+      const ext = file.name.split('.').pop()?.toLowerCase() ?? ''
+      if (imgExts.includes(ext)) {
+        markers.push(`[图片: ${file.name}]`)
+      } else {
+        markers.push(`[文件: ${file.name}]`)
+      }
+    }
+    content = normalizeContent(markers.join('\n')) ?? []
+  } else {
+    content = text || ''
+  }
 
   // 乐观更新：立即显示用户消息
   messages.value.push({ role: 'user', content })
@@ -418,8 +479,10 @@ onUnmounted(() => {
 
 <style scoped>
 .toolMenuContainer {
-  width: 100vw;
-  height: 100vh;
+  /* width: 100vw;
+  height: 100vh; */
+  position: fixed;
+  inset: 2px;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
@@ -601,127 +664,7 @@ onUnmounted(() => {
   }
 }
 
-/* ───── 消息气泡 ───── */
-.message-row {
-  display: flex;
-  gap: 8px;
-  align-items: flex-start;
-  max-width: 80%;
-}
-
-.assistant-row {
-  align-self: flex-start;
-  margin-bottom: 20px;
-}
-
-.user-row {
-  align-self: flex-end;
-  margin-bottom: 10px;
-}
-
-.message-column {
-  display: flex;
-  flex-direction: column;
-  max-width: 100%;
-  min-width: 0;
-}
-
-.assistant-row .message-column {
-  align-self: flex-start;
-}
-
-.user-row .message-column {
-  align-self: flex-end;
-}
-
-.attach-bar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  margin-top: 4px;
-}
-
-.attach-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 8px;
-  background: rgba(249, 130, 166, 0.08);
-  border: 1px solid rgba(249, 130, 166, 0.2);
-  border-radius: 6px;
-  font-size: 11px;
-  color: #6f2b43;
-  max-width: 180px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.attach-chip-icon {
-  flex-shrink: 0;
-  font-size: 11px;
-  color: #fb7299;
-}
-
-.attach-chip-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.attach-bar--right {
-  justify-content: flex-end;
-}
-
-.message-avatar {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-.small-avatar {
-  width: 35px;
-  height: 35px;
-  background-size: cover;
-  background-position: center;
-  border: 2px solid var(--theme-color-light, #fca5b9);
-}
-
-.message-bubble {
-  padding: 8px 14px;
-  border-radius: 10px;
-  font-size: 13px;
-  line-height: 1.5;
-  word-break: break-word;
-  /* box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05); */
-}
-
-.assistant-bubble {
-  background: #fff5f7;
-  border: 1px solid rgba(249, 130, 166, 0.15);
-  color: #6f2b43;
-  /* border-top-left-radius: 4px; */
-}
-
-.user-bubble {
-  background: #f0f0f0;
-  border: 1px solid rgba(0, 0, 0, 0.04);
-  color: #555;
-  /* border-bottom-right-radius: 4px; */
-}
-
-.tool-row {
-  align-self: flex-start;
-  max-width: 90%;
-  margin-bottom: 10px;
-}
-
-.tool-bubble {
-  background: #faf5ff;
-  border: 1px solid rgba(103, 58, 183, 0.12);
-  color: #555;
-  font-size: 12px;
-}
+/* 消息渲染由 ChatMessageItem 组件接管 */
 
 /* ───── 历史加载中 ───── */
 .history-loading {

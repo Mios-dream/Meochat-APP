@@ -48,7 +48,12 @@
       </div>
     </div>
 
-    <ChatBox :is-visible="isVisible" :loading="chatLoading" @send="handleChatBoxSend" @cancel="handleChatBoxCancel" />
+    <ChatBox
+      :is-visible="isVisible"
+      :loading="chatLoading"
+      @send="handleChatBoxSend"
+      @cancel="handleChatBoxCancel"
+    />
     <teleport to="body">
       <transition name="modal-fade">
         <div v-if="showHistoryModal" class="modal-overlay" @click="closeHistoryModal">
@@ -61,83 +66,27 @@
               <div v-else-if="historyError" class="no-history">{{ historyError }}</div>
               <div v-else-if="chatHistory.length === 0" class="no-history">暂无聊天历史</div>
               <div v-else class="history-list">
-                <div v-for="(message, index) in chatHistory" :key="index">
-                  <div v-if="message.role === 'assistant'" class="message-item">
-                    <div
-                      class="assistant-chat-avatar"
-                      :style="{
-                        backgroundImage: `url(${currentAssistant?.avatar ? 'app-resource://' + currentAssistant?.avatar : '../assets/images/assistant_avatar_small.png'})`
-                      }"
-                    ></div>
-                    <div class="message-content">
-                      <div class="message-info">
-                        <div class="assistant-name">{{ currentAssistant?.name }}</div>
-                        <div class="message-time">{{ formatTime(message.timestamp) }}</div>
-                      </div>
-                      <MessageContent
-                        :content="message.content"
-                        :role="message.role"
-                        :tool-calls="message.tool_calls"
-                        :tool-call-id="message.tool_call_id"
-                      />
-                      <div v-if="getAttachments(message.content).length > 0" class="attach-bar">
-                        <div
-                          v-for="(att, aidx) in getAttachments(message.content)"
-                          :key="aidx"
-                          class="attach-chip"
-                        >
-                          <font-awesome-icon
-                            :icon="
-                              att.type === 'image_ocr' || att.type === 'image_url'
-                                ? 'image'
-                                : att.type === 'attachment'
-                                  ? 'triangle-exclamation'
-                                  : 'file-lines'
-                            "
-                            class="attach-chip-icon"
-                          />
-                          <span class="attach-chip-name">{{
-                            att.type === 'image_url' ? '图片附件' : (att as any).fileName
-                          }}</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  <div v-else>
-                    <div class="message-content">
-                      <MessageContent
-                        :content="message.content"
-                        :role="message.role"
-                        :tool-calls="message.tool_calls"
-                        :tool-call-id="message.tool_call_id"
-                      />
-                      <div
-                        v-if="getAttachments(message.content).length > 0"
-                        class="attach-bar attach-bar--right"
-                      >
-                        <div
-                          v-for="(att, aidx) in getAttachments(message.content)"
-                          :key="aidx"
-                          class="attach-chip"
-                        >
-                          <font-awesome-icon
-                            :icon="
-                              att.type === 'image_ocr' || att.type === 'image_url'
-                                ? 'image'
-                                : att.type === 'attachment'
-                                  ? 'triangle-exclamation'
-                                  : 'file-lines'
-                            "
-                            class="attach-chip-icon"
-                          />
-                          <span class="attach-chip-name">{{
-                            att.type === 'image_url' ? '图片附件' : (att as any).fileName
-                          }}</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                <template v-for="(disp, index) in historyDisplayItems" :key="index">
+                  <ChatMessageItem
+                    v-if="disp.kind === 'message'"
+                    :role="disp.item.role"
+                    :content="disp.item.content"
+                    :tool-calls="disp.item.tool_calls"
+                    :tool-call-id="disp.item.tool_call_id"
+                    :avatar-url="avatarUrl"
+                    :assistant-name="assistantName"
+                    :timestamp="disp.item.timestamp"
+                  />
+                  <ChatMessageItem
+                    v-else
+                    role="assistant"
+                    :tools="disp.tools"
+                    :reply-content="disp.reply?.content"
+                    :avatar-url="avatarUrl"
+                    :assistant-name="assistantName"
+                    :timestamp="disp.timestamp"
+                  />
+                </template>
               </div>
             </div>
           </div>
@@ -304,12 +253,13 @@ import { useConfigStore } from '../stores/useConfigStore'
 import { storeToRefs } from 'pinia'
 import { AssistantInfo, AssistantManager } from '../services/assistantManager'
 import ChatBox from '../components/ChatBox.vue'
-import MessageContent from '../components/MessageContent.vue'
+import ChatMessageItem from '../components/ChatMessageItem.vue'
+import type { MergedTool } from '../components/ToolCallGroupBlock.vue'
 import DiaryNotebookModal from '../components/main/DiaryNotebookModal.vue'
 import { InteractionSystem } from '@renderer/core/interaction/InteractionSystem'
 import { DiarySystem } from '@renderer/services/DiarySystem'
 import type { ChatMessage, ContentPart, ToolCall } from '@shared/types/chat'
-import { normalizeContent, getAttachments } from '../chat/contentNormalizer'
+import { normalizeContent } from '../chat/contentNormalizer'
 
 const configStore = useConfigStore()
 const { config } = storeToRefs(configStore)
@@ -338,17 +288,91 @@ const volume = ref(80)
 // 模型设置
 const isLocked = ref(true)
 
+/** 聊天历史单项类型 */
+interface HistoryItem {
+  role: 'user' | 'assistant' | 'tool'
+  content: string | ContentPart[] | null
+  timestamp: Date | null
+  tool_calls?: ToolCall[]
+  tool_call_id?: string
+}
+
 // 聊天历史
 const showHistoryModal = ref(false)
-const chatHistory = ref<
-  Array<{
-    role: 'user' | 'assistant' | 'tool'
-    content: string | ContentPart[] | null
-    timestamp: Date | null
-    tool_calls?: ToolCall[]
-    tool_call_id?: string
-  }>
->([])
+const chatHistory = ref<HistoryItem[]>([])
+
+/** 展示项：普通消息或合并后的工具组 */
+interface DisplayHistoryItem {
+  kind: 'message'
+  item: HistoryItem
+}
+
+interface DisplayHistoryToolGroup {
+  kind: 'tool_group'
+  tools: MergedTool[]
+  /** 原始工具调用消息的时间戳 */
+  timestamp: Date | null
+  /** 工具调用后的助手文字回复 */
+  reply?: HistoryItem
+}
+
+type HistoryDisplayItem = DisplayHistoryItem | DisplayHistoryToolGroup
+
+/** 从各种格式的消息 content 中提取纯文本 */
+function getTextContent(content: string | ContentPart[] | null): string {
+  if (!content) return ''
+  if (typeof content === 'string') return content
+  if (Array.isArray(content)) {
+    return content
+      .filter((p): p is ContentPart & { type: 'text' } => p.type === 'text')
+      .map((p) => p.text)
+      .join('')
+  }
+  return ''
+}
+
+/** 预处理：将工具调用及其结果合并为工具组 */
+const historyDisplayItems = computed<HistoryDisplayItem[]>(() => {
+  const items: HistoryDisplayItem[] = []
+  const skip = new Set<number>()
+  const list = chatHistory.value
+
+  for (let i = 0; i < list.length; i++) {
+    if (skip.has(i)) continue
+    const item = list[i]
+
+    if (item.role === 'assistant' && item.tool_calls && item.tool_calls.length > 0) {
+      const tools: MergedTool[] = item.tool_calls.map((tc) => {
+        for (let j = i + 1; j < list.length; j++) {
+          if (list[j].role === 'tool' && list[j].tool_call_id === tc.id) {
+            skip.add(j)
+            return {
+              id: tc.id,
+              name: tc.function.name,
+              args: tc.function.arguments,
+              result: getTextContent(list[j].content)
+            }
+          }
+        }
+        return { id: tc.id, name: tc.function.name, args: tc.function.arguments }
+      })
+      // 查找后续的助手文字回复，合并到同一块
+      let reply: HistoryItem | undefined
+      for (let j = i + 1; j < list.length; j++) {
+        if (skip.has(j)) continue
+        if (list[j].role === 'assistant') {
+          reply = list[j]
+          skip.add(j)
+          break
+        }
+      }
+      items.push({ kind: 'tool_group', tools, timestamp: item.timestamp, reply })
+    } else {
+      items.push({ kind: 'message', item })
+    }
+  }
+  return items
+})
 const historyLoading = ref(false)
 const historyError = ref('')
 
@@ -383,12 +407,24 @@ const isCapturingShortcut = ref(false)
 // 组件实例
 const live2DManager = Live2DManager.getInstance()
 const chatService = ChatManager.getInstance()
+// 聊天框 IPC 事件监听清理函数数组
+let removeChatBoxListeners: () => void
 const diarySystem = new DiarySystem()
 const assistantManager = AssistantManager.getInstance()
 // 获取交互系统实例
 const interactionSystem = InteractionSystem.getInstance()
 
 const currentAssistant: Ref<AssistantInfo | null> = ref(null)
+
+const avatarUrl = computed(() => {
+  if (currentAssistant.value?.avatar) {
+    return 'app-resource://' + currentAssistant.value.avatar
+  }
+  return '../assets/images/assistant_avatar_small.png'
+})
+
+const assistantName = computed(() => currentAssistant.value?.name ?? '助手')
+
 // 当前助手的好感度
 const currentLove = computed(() => currentAssistant.value?.userState.love || 0) // 当前好感度值
 const canViewDiary = computed(() => currentLove.value > 100)
@@ -528,11 +564,35 @@ onMounted(async () => {
 
     interactionSystem.start()
   })
+
+  // 监听从工具栏（ChatBoxView）转发的聊天调用请求
+  // 当桌宠模式未开启时，聊天请求降级到主窗口处理
+  removeChatBoxListeners = window.api.chat.onInvokeRequest(async (data) => {
+    try {
+      const isSleepMode = interactionSystem.isSleepMode()
+      await chatService.chat(data.text, isSleepMode, data.attachments)
+      const history = await chatService.getChatHistory()
+      window.api.chat.sendInvokeResult({
+        requestId: data.requestId,
+        success: true,
+        history
+      })
+    } catch (error) {
+      console.error('[AssistantSpace] 聊天请求失败:', error)
+      window.api.chat.sendInvokeResult({
+        requestId: data.requestId,
+        success: false,
+        error: String(error)
+      })
+    }
+  })
 })
 
 onUnmounted(() => {
   const tabs = document.getElementById('tabs-container')
   tabs!.style.opacity = '1'
+  // 清理聊天框 IPC 事件监听
+  removeChatBoxListeners()
   if (configStore.config.assistantEnabled) {
     window.api.assistant.openAssistant()
   }
@@ -730,26 +790,6 @@ async function loadChatHistory(): Promise<void> {
   } catch (error) {
     console.error('加载远程聊天历史失败，仅显示本地记录:', error)
   }
-}
-
-/**
- * 格式化时间显示
- * @param timestamp - 时间戳
- * @returns 格式化后的时间字符串
- */
-function formatTime(timestamp: Date | null): string {
-  if (!timestamp) {
-    // return '----/--/--'
-    return ''
-  }
-  // 格式化时间显示为年月日
-  return timestamp.toLocaleDateString([], {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit'
-  })
 }
 
 function formatDiaryTimestamp(timestamp: string): string {
@@ -1244,116 +1284,7 @@ async function saveShortcut(shortcut: string): Promise<void> {
   gap: 15px;
 }
 
-.message-item {
-  padding: 12px 15px;
-  border-radius: 10px;
-  width: 100%;
-  display: flex;
-
-  .message-text :deep(.message-dim) {
-    opacity: 0.45;
-  }
-  flex-direction: row;
-}
-
-.assistant-chat-avatar {
-  /* background-image: url('../assets/images/assistant_avatar_small.png'); */
-  background-size: cover;
-  width: 50px;
-  height: 50px;
-  border-radius: 100%;
-  border: 2px solid #f982a6;
-  margin-right: 10px;
-  flex-shrink: 0;
-}
-
-.message-content {
-  flex: 1; /* 占据剩余空间 */
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.message-info {
-  width: 100%;
-  height: 20px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: 15px;
-  color: #656565;
-  margin-bottom: 10px;
-}
-
-.message-text {
-  margin-bottom: 5px;
-  padding: 10px;
-  color: #656565;
-  border-radius: 10px;
-  display: inline-block;
-  max-width: 90%; /* 限制最大宽度为容器的80% */
-  word-wrap: break-word;
-  white-space: pre-wrap;
-  box-sizing: border-box;
-}
-
-.message-text.assistant {
-  background-color: #fff3f5;
-  align-self: flex-start;
-  /* border-top-left-radius: 4px; */
-  border: 1px solid rgba(249, 130, 166, 0.15);
-}
-
-.message-text.user {
-  background-color: #f5f5f5;
-  align-self: flex-end;
-  /* border-bottom-right-radius: 4px; */
-  border: 1px solid rgba(0, 0, 0, 0.04);
-}
-
-.attach-bar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  margin-top: 4px;
-}
-
-.attach-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 8px;
-  background: rgba(249, 130, 166, 0.08);
-  border: 1px solid rgba(249, 130, 166, 0.2);
-  border-radius: 6px;
-  font-size: 11px;
-  color: #6f2b43;
-  max-width: 180px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.attach-chip-icon {
-  flex-shrink: 0;
-  font-size: 11px;
-  color: #fb7299;
-}
-
-.attach-chip-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.attach-bar--right {
-  justify-content: flex-end;
-}
-
-.message-time {
-  font-size: 15px;
-  color: #656565;
-  text-align: right;
-}
+/* 消息渲染由 ChatMessageItem 组件接管 */
 
 /* 淡入淡出动画 */
 .modal-fade-enter-active {

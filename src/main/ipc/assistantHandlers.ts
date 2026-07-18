@@ -119,19 +119,22 @@ function setupChatBoxIPC(): void {
     if (chatBoxWin) chatBoxWin.show()
   })
 
-  // ─── 聊天调用：ChatBoxView → Main(handle) → AssistantWindow → Main → 返回结果 ───
+  // ─── 聊天调用：ChatBoxView → Main(handle) → AssistantWindow/MainWindow → Main → 返回结果 ───
   registerHandle(
     CHANNELS.CHAT_INVOKE,
     async (_event, data: { text: string; attachments?: { name: string; path: string }[] }) => {
+      // 优先转发到桌宠助手窗口
       const assistantWin = windowRegistry.getWindowByType('assistant')
-      if (!assistantWin) throw new Error('Assistant window not found')
+      // 桌宠未开启时，降级到主窗口（助手空间）
+      const targetWin = assistantWin ?? windowRegistry.getWindowByType('main')
+      if (!targetWin) throw new Error('No available window to handle chat')
 
       const requestId = randomUUID()
 
       return new Promise<ChatInvokeResult>((resolve, reject) => {
         pendingChatInvokes.set(requestId, { resolve, reject })
 
-        assistantWin.webContents.send(CHANNELS.CHAT_INVOKE_REQUEST_EVENT, {
+        targetWin.webContents.send(CHANNELS.CHAT_INVOKE_REQUEST_EVENT, {
           requestId,
           text: data.text,
           attachments: data.attachments
