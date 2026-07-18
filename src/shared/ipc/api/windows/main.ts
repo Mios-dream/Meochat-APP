@@ -7,6 +7,7 @@ import type { ws } from '../base/ws'
 import type { AppUpdate } from '../base/appUpdate'
 import type { KernelApi } from '../base/kernel'
 import type { AssistantApi } from '../base/assistant'
+import type { ChatApi } from '../base/chat'
 import type { SystemApi } from '../base/system'
 
 import type { OnboardingMode, OnboardingProfile, OnboardingState } from '@shared/types/onboarding'
@@ -47,5 +48,6 @@ export interface MainWindowApi extends CommonApi {
   appUpdate: AppUpdate
   kernel: KernelApi
   assistant: AssistantApi
+  chat: ChatApi
   system: SystemApi
 }

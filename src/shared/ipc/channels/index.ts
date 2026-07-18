@@ -28,6 +28,7 @@ import { utilityChannels } from './utility'
 import { eventChannels } from './events'
 import { dispatchChannels } from './dispatch'
 import { tipsChannels } from './tips'
+import { chatChannels } from './chat'
 
 export const CHANNELS = {
   ...appChannels,
@@ -38,7 +39,8 @@ export const CHANNELS = {
   ...utilityChannels,
   ...eventChannels,
   ...dispatchChannels,
-  ...tipsChannels
+  ...tipsChannels,
+  ...chatChannels
 } as const
 
 /** 从 CHANNELS 提取通道名字符串联合类型 */

@@ -4,6 +4,7 @@ import { Live2DManager } from '../services/Live2dManager'
 import { useConfigStore } from '../stores/useConfigStore'
 import { normalizeNumber } from '@renderer/utils/MathUtils'
 import type { ChatMessage, ChatHistoryApiResponse } from '@shared/types/chat'
+import { normalizeContent } from './contentNormalizer'
 import {
   audioBase64ToBlob,
   ChatPlaybackController,
@@ -18,13 +19,13 @@ import {
   ALL_WIDGET_COMPONENT_DEFINITIONS
 } from '@renderer/composables/widgetTools'
 import type {
+  ChatResultMessage,
   ChatDoneMessage,
   ErrorMessage,
   FileAttachment,
   ToolCallEvent,
   ToolResultEvent
 } from '@shared/types/ws'
-
 /** 自动交互事件请求载荷，用于 /api/interaction/message（保留 HTTP 方式）。 */
 export interface InteractionEventPayload {
   /** 事件类型，例如 idle、mouse、time、festival 等。 */
@@ -46,28 +47,6 @@ export interface InteractionEventPayload {
     /** 本地图片路径，如 'icon_bell.png'。 */
     path: string
   }
-}
-
-/**
- * 工具状态变更数据，由 ChatManager 通过回调通知视图组件。
- *
- * 视图组件（AssistantView）接收后通过 IPC 广播给 ChatBox 窗口以展示当前工具调用状态。
- */
-export interface ToolStatusData {
-  /** 是否有活跃的工具调用。 */
-  active: boolean
-  /** 当前活跃的工具调用列表。 */
-  tools: ToolStatusItem[]
-}
-
-/** 单个工具调用的状态信息。 */
-export interface ToolStatusItem {
-  /** 工具调用唯一 ID。 */
-  call_id: string
-  /** 被调用的工具名称。 */
-  tool_name: string
-  /** 工具调用已耗时，单位秒。 */
-  elapsed: number
 }
 
 /**
@@ -101,11 +80,6 @@ class ChatManager {
   private interactionDoneResolve: ((value: string | null) => void) | null = null
   /** 当前交互请求的 reject 函数，chat:error 或中断时调用。 */
   private interactionDoneReject: ((reason: unknown) => void) | null = null
-  /** 活跃的工具调用映射，key = call_id，value = 工具名和开始时间。 */
-  private activeToolCalls: Map<string, { tool_name: string; startTime: number }> = new Map()
-  /** 工具状态变更回调集合。视图组件（AssistantView）订阅后通过 IPC 通知 ChatBox 窗口。 */
-  private toolStatusCallbacks: Array<(data: ToolStatusData) => void> = []
-
   /** 初始化各内部模块，建立 WS 连接并注册消息监听。 */
   private constructor() {
     this.messageTips = new MessageTips()
@@ -141,9 +115,6 @@ class ChatManager {
     // 避免工具返回后台词板重新显示时从头重复播放已展示过的旧文本。
     this.playbackController.onSpeechEnd(() => {
       this.messageTips.hideMessage()
-      if (this.activeToolCalls.size > 0) {
-        this.playbackController.resetDisplayText()
-      }
     })
 
     this.registerClientTools()
@@ -177,21 +148,21 @@ class ChatManager {
 
   /** 获取当前助手的聊天历史（从主进程）。 */
   public async getChatHistory(): Promise<ChatMessage[]> {
-    return window.api.ipcRenderer.invoke('chat-box:get-history') as Promise<ChatMessage[]>
+    return window.api.chat.getHistory()
   }
 
   /** 从后端拉取当前助手聊天历史，并同步到主进程存储。 */
   public async fetchChatHistory(): Promise<ChatMessage[]> {
-    const response = await request.get('/api/chat/history?only_assistant=false')
+    const response = await request.get('/api/chat/history')
     const data = response.data as ChatHistoryApiResponse
     const messages = normalizeChatHistory(data.data)
-    await window.api.ipcRenderer.invoke('chat-box:replace-history', messages)
+    await window.api.chat.replaceHistory(messages)
     return messages
   }
 
   /** 清空聊天历史。 */
   public async clearChatHistory(): Promise<void> {
-    await window.api.ipcRenderer.invoke('chat-box:clear-history')
+    await window.api.chat.clearHistory()
   }
 
   /** 获取当前是否处于语音/动作回复播放中。 */
@@ -294,13 +265,11 @@ class ChatManager {
       try {
         // 同步用户消息到主进程存储（fire-and-forget）
         const displayContent = message || `发送了 ${attachments?.length ?? 0} 个文件`
-        window.api.ipcRenderer
-          .invoke('chat-box:append-message', { role: 'user', content: displayContent })
+        window.api.chat
+          .appendMessage({ role: 'user', content: displayContent })
           .catch((err) => console.error('[Chat] 保存用户消息失败:', err))
         // 是否启用动作生成
         const useMotionGenerate = useConfigStore().config.generateMotion
-        // 重置流处理器，清理上一轮未完成的播放段
-        this.streamProcessor.reset(useMotionGenerate)
 
         // 在 chat:done 时 resolve 当前 Promise，并清理回调引用
         this.chatDoneResolve = (value: boolean) => {
@@ -315,9 +284,7 @@ class ChatManager {
           this.chatDoneResolve = null
           this.chatDoneReject = null
           // 回滚用户消息
-          window.api.ipcRenderer
-            .invoke('chat-box:pop-history')
-            .catch((err) => console.error('[Chat] 回滚历史失败:', err))
+          window.api.chat.popHistory().catch((err) => console.error('[Chat] 回滚历史失败:', err))
           reject(reason)
         }
 
@@ -331,9 +298,7 @@ class ChatManager {
       } catch (error) {
         this.isChatting = false
         // 回滚用户消息
-        window.api.ipcRenderer
-          .invoke('chat-box:pop-history')
-          .catch((err) => console.error('[Chat] 回滚历史失败:', err))
+        window.api.chat.popHistory().catch((err) => console.error('[Chat] 回滚历史失败:', err))
         this.chatDoneResolve = null
         this.chatDoneReject = null
         reject(error)
@@ -374,7 +339,6 @@ class ChatManager {
     return new Promise<string | null>((resolve, reject) => {
       try {
         const useMotionGenerate = useConfigStore().config.generateMotion
-        this.streamProcessor.reset(useMotionGenerate)
         this.playbackController.setKeepSleepEyesClosed(payload.keepSleepEyes === true)
 
         this.interactionDoneResolve = (value: string | null) => {
@@ -453,10 +417,8 @@ class ChatManager {
   public interruptCurrentPlayback(): void {
     this.messageTips.hideMessage()
     this.playbackController.stopAudio()
-    this.streamProcessor.clearPending()
     this.playbackController.resetDisplayText()
     this.currentInteractionIcon = undefined
-    this.clearActiveToolCalls()
 
     this.ws.send({ type: 'chat:cancel' })
 
@@ -484,35 +446,51 @@ class ChatManager {
    * 注册 WebSocket 消息监听器。
    */
   private setupWsListeners(): void {
-    // ---- 聊天流消息 ----
-    // 守卫：仅当前实例发起过聊天（isChatting === true）时才处理流消息，
+    // ---- 聊天结果消息（统一格式，替代 chat:text / chat:audio / chat:motion） ----
+    // 守卫：仅当前实例发起过聊天（isChatting === true）时才处理，
     // 防止主进程单条 WS 连接广播到多个窗口时，非活跃 ChatManager 重复处理并保存回复。
-    this.ws.on('chat:text', (msg) => {
+    this.ws.on('chat:result', (msg: ChatResultMessage) => {
       if (!this.isChatting) return
-      this.streamProcessor.feed(msg)
-    })
 
-    this.ws.on('chat:audio', (msg) => {
-      if (!this.isChatting) return
-      this.streamProcessor.feed(msg)
-    })
+      // 工具执行结果：保存 role: tool 消息到聊天历史
+      if (msg.role === 'tool' && msg.tool_call_id) {
+        window.api.chat
+          .appendMessage({
+            role: 'tool',
+            content: msg.content ?? '',
+            tool_call_id: msg.tool_call_id
+          })
+          .catch((err) => console.error('[Chat] 保存工具结果消息失败:', err))
+        return
+      }
 
-    this.ws.on('chat:motion', (msg) => {
-      if (!this.isChatting) return
-      this.streamProcessor.feed(msg)
+      // 工具调用：保存助手消息（含 tool_calls）到聊天历史
+      if (msg.tool_calls && msg.tool_calls.length > 0) {
+        window.api.chat
+          .appendMessage({
+            role: 'assistant',
+            content: null,
+            tool_calls: msg.tool_calls
+          })
+          .catch((err) => console.error('[Chat] 保存工具调用消息失败:', err))
+      }
+
+      // 文本 + 可选 extras（音频/动作）：交给流处理器解析播放段
+      if (msg.content !== null || msg.extras) {
+        this.streamProcessor.feed(msg)
+      }
     })
 
     this.ws.on('chat:done', (msg: ChatDoneMessage) => {
       if (!this.isChatting) return
       this.streamProcessor.feed(msg)
-      this.clearActiveToolCalls()
       this.resolveChatDonePromise(msg.full_text)
     })
 
     this.ws.on('error', (msg: ErrorMessage) => {
       if (!this.isChatting && !this.chatDoneReject && !this.interactionDoneReject) return
       this.streamProcessor.feed(msg)
-      this.clearActiveToolCalls()
+
       if (this.chatDoneReject) {
         this.chatDoneReject(new Error(msg.data))
       }
@@ -525,18 +503,38 @@ class ChatManager {
     this.ws.on('tool_call', (msg: ToolCallEvent) => {
       if (!this.isChatting) return
       console.log('[ToolCall]', msg.tool_name, msg.arguments)
-      this.addActiveToolCall(msg.call_id, msg.tool_name)
+      window.api.chat
+        .appendMessage({
+          role: 'tool',
+          content: `正在调用工具: ${msg.tool_name}`,
+          tool_call_id: msg.call_id
+        })
+        .catch((err) => console.error('[Chat] 保存工具调用消息失败:', err))
     })
 
     this.ws.on('tool_result', (msg: ToolResultEvent) => {
       if (!this.isChatting) return
       console.log('[ToolResult]', msg.tool_name, msg.success, `${msg.duration_ms}ms`)
-      this.removeActiveToolCall(msg.tool_call_id)
+
+      window.api.chat
+        .appendMessage({
+          role: 'tool',
+          content: msg.result,
+          tool_call_id: msg.tool_call_id
+        })
+        .catch((err) => console.error('[Chat] 保存工具结果失败:', err))
     })
 
     // ---- WS 工具协议 ----
     this.ws.on('tool:call', (msg) => {
       if (!this.isChatting) return
+      window.api.chat
+        .appendMessage({
+          role: 'tool',
+          content: `正在调用工具: ${msg.tool_name}`,
+          tool_call_id: msg.call_id
+        })
+        .catch((err) => console.error('[Chat] 保存工具调用消息失败:', err))
       void this.toolSystem.handleToolCall(msg)
     })
 
@@ -546,6 +544,13 @@ class ChatManager {
 
     this.ws.on('tool:async_result', (msg) => {
       console.log('[ToolAsyncResult]', msg.call_id, msg.result)
+      window.api.chat
+        .appendMessage({
+          role: 'tool',
+          content: msg.result,
+          tool_call_id: msg.call_id
+        })
+        .catch((err) => console.error('[Chat] 保存工具结果失败:', err))
     })
 
     // ---- 客户端工具协商 ----
@@ -602,122 +607,24 @@ class ChatManager {
   private handleStreamComplete(finalText?: string): void {
     const textToSave = (finalText || this.getCurrentDisplayText()).trim()
     if (textToSave) {
-      window.api.ipcRenderer
-        .invoke('chat-box:append-message', {
+      window.api.chat
+        .appendMessage({
           role: 'assistant',
           content: textToSave
         })
         .catch((err) => console.error('[Chat] 保存助手回复失败:', err))
     }
   }
-
-  /**
-   * 将新工具调用记录到活跃列表，并刷新聊天框上的工具状态显示。
-   *
-   * @param callId - 工具调用唯一 ID
-   * @param toolName - 被调用的工具名称
-   */
-  private addActiveToolCall(callId: string, toolName: string): void {
-    this.activeToolCalls.set(callId, { tool_name: toolName, startTime: Date.now() })
-    this.updateToolStatusDisplay()
-  }
-
-  /**
-   * 从活跃列表中移除已完成的工具调用，并刷新或清除聊天框上的工具状态显示。
-   *
-   * @param callId - 工具调用唯一 ID（对应 ToolResultEvent.tool_call_id）
-   */
-  private removeActiveToolCall(callId: string): void {
-    this.activeToolCalls.delete(callId)
-    this.updateToolStatusDisplay()
-  }
-
-  /**
-   * 根据当前活跃工具调用列表刷新聊天框上的工具状态文本。
-   *
-   * 无活跃工具时清除显示；有活跃工具时格式化名称列表并通过 MessageTips 展示。
-   * 优先级设为 1，低于聊天文本（999），确保工具状态不会覆盖正在播放的助手回复。
-   */
-  private updateToolStatusDisplay(): void {
-    if (this.activeToolCalls.size === 0) {
-      this.messageTips.showMessage('', 0, 0, 0)
-      this.emitToolStatusChange()
-      return
-    }
-
-    const names: string[] = []
-    const now = Date.now()
-    for (const info of this.activeToolCalls.values()) {
-      const elapsed = ((now - info.startTime) / 1000).toFixed(1)
-      names.push(`${info.tool_name} (${elapsed}s)`)
-    }
-
-    this.messageTips.showMessage(`正在调用工具: ${names.join(', ')}`, -1, 1, 0)
-    this.emitToolStatusChange()
-  }
-
-  /**
-   * 清空所有活跃工具调用记录并隐藏工具状态显示。
-   *
-   * 在 chat:done、chat:error 及用户中断时调用。
-   */
-  private clearActiveToolCalls(): void {
-    this.activeToolCalls.clear()
-    this.messageTips.showMessage('', 0, 0, 0)
-    this.emitToolStatusChange()
-  }
-
-  /**
-   * 注册工具状态变更监听器。
-   *
-   * 视图组件（如 AssistantView）通过此方法订阅工具状态变化，
-   * 再通过 IPC 广播给 ChatBox 窗口以展示当前工具调用状态。
-   *
-   * @param callback - 工具状态变更时触发的回调，接收完整的 ToolStatusData
-   * @returns 取消注册的函数
-   */
-  public onToolStatusChange(callback: (data: ToolStatusData) => void): () => void {
-    this.toolStatusCallbacks.push(callback)
-    return () => {
-      const idx = this.toolStatusCallbacks.indexOf(callback)
-      if (idx !== -1) this.toolStatusCallbacks.splice(idx, 1)
-    }
-  }
-
-  /**
-   * 向所有已注册的工具状态回调派发当前工具调用状态。
-   *
-   * 在 addActiveToolCall、removeActiveToolCall、clearActiveToolCalls 后自动调用。
-   */
-  private emitToolStatusChange(): void {
-    const data: ToolStatusData = {
-      active: this.activeToolCalls.size > 0,
-      tools: []
-    }
-    const now = Date.now()
-    for (const [callId, info] of this.activeToolCalls) {
-      data.tools.push({
-        call_id: callId,
-        tool_name: info.tool_name,
-        elapsed: (now - info.startTime) / 1000
-      })
-    }
-    for (const cb of this.toolStatusCallbacks) {
-      try {
-        cb(data)
-      } catch (error) {
-        console.error('[ChatManager] 工具状态回调异常:', error)
-      }
-    }
-  }
 }
 
-/** 标准化后端聊天历史返回值，保证角色字段稳定。 */
+/** 标准化后端聊天历史返回值，保留所有 OpenAI 兼容字段。 */
 function normalizeChatHistory(rawMessages?: ChatHistoryApiResponse['data']): ChatMessage[] {
   if (!Array.isArray(rawMessages)) return []
   return rawMessages.map((item) => ({
-    role: item.role === 'assistant' ? 'assistant' : 'user',
-    content: item.content
+    role: item.role === 'assistant' ? 'assistant' : item.role === 'tool' ? 'tool' : 'user',
+    content: normalizeContent(item.content),
+    ...(item.tool_calls ? { tool_calls: item.tool_calls } : {}),
+    ...(item.tool_call_id ? { tool_call_id: item.tool_call_id } : {})
   }))
 }
 

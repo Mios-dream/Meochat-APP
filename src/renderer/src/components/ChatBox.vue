@@ -1,16 +1,5 @@
 <template>
   <div id="chatBox" :class="{ 'slide-up': isVisible }">
-    <!-- 工具调用状态栏：显示当前 LLM 正在调用的工具 -->
-    <Transition name="tool-status-fade">
-      <div v-if="toolStatus.active" id="toolStatusBar">
-        <!-- <div v-if="true" id="toolStatusBar"> -->
-        <span class="tool-status-dot" />
-        <span class="tool-status-text">
-          {{ formatToolStatusText }}
-        </span>
-      </div>
-    </Transition>
-
     <input
       id="chatBoxInput"
       ref="inputRef"
@@ -42,7 +31,6 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { MicrophoneManager } from '../services/MicrophoneManager'
 import { useConfigStore } from '../stores/useConfigStore'
 import { storeToRefs } from 'pinia'
-import type { ToolStatusData } from '../chat/ChatManager'
 
 const configStore = useConfigStore()
 const { config } = storeToRefs(configStore)
@@ -56,30 +44,18 @@ defineProps<{
 const emit = defineEmits<{
   send: [text: string]
   cancel: []
+  'update:loading': [value: boolean]
 }>()
 
 // 输入框的值
 const inputValue = ref('')
-// 加载状态
+// 加载状态，优先使用 prop
 const loading = ref(false)
 // 录音状态
 const isRecording = ref(false)
-// 工具调用状态（由 Assistant 窗口通过 IPC 广播）
-const toolStatus = ref<ToolStatusData>({ active: false, tools: [] })
-/** 本地计时器：自最近一次 IPC 更新后累计的秒数，用于驱动耗时文本实时刷新。 */
-const elapsedTick = ref(0)
 /** 计时器句柄，工具不再活跃时清理。 */
 let elapsedTimer: ReturnType<typeof setInterval> | null = null
 
-// 工具状态文本格式化（elapsedTick 变化时自动重新计算）
-const formatToolStatusText = computed(() => {
-  if (toolStatus.value.tools.length === 0) return ''
-  const names = toolStatus.value.tools.map((t) => {
-    const totalElapsed = t.elapsed + elapsedTick.value
-    return `${t.tool_name} (${totalElapsed.toFixed(1)}s)`
-  })
-  return `正在调用工具: ${names.join(', ')}`
-})
 const voiceIdleTimeoutMs = 10000
 let voiceIdleTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -194,59 +170,17 @@ onMounted(() => {
       console.error('麦克风权限未授予')
     }
   })
-  // 监听来自AssistantView的状态更新
-  window.api.ipcRenderer.on('chat-box:status-updated', (data) => {
-    const statusData = data as { loading: boolean }
-    const oldLoading = loading.value
-    loading.value = statusData.loading
-    inputValue.value = '' // 立即清空输入框
-
-    // 如果加载状态从true变为false，并且当前是语音聊天模式，则自动开始下一次录音
-    if (oldLoading && !loading.value && isRecording.value) {
-      setTimeout(() => {
-        if (isRecording.value) {
-          micManager
-            .startRecording()
-            .then(() => {
-              scheduleVoiceIdleTimeout()
-            })
-            .catch((error) => {
-              stopRecording()
-              console.error('自动开始录音失败:', error)
-            })
-        }
-      }, 1000) // 延迟1秒开始下一次录音，给用户准备时间
-    }
-  })
-  // 监听语音唤醒事件
-  window.api.ipcRenderer.on('chat-box:wakeword-detected', (wakeword) => {
-    loading.value = true
-    emit('send', wakeword as string)
-  })
-  // 监听工具状态更新事件（由 Assistant 窗口通过 IPC 广播）
-  window.api.ipcRenderer.on('chat-box:tool-status-updated', (data) => {
-    const toolData = data as ToolStatusData
-    toolStatus.value = toolData
-    elapsedTick.value = 0
-
-    // 根据活跃状态启停本地计时器，驱动耗时文本每秒刷新
-    if (elapsedTimer) {
-      clearInterval(elapsedTimer)
-      elapsedTimer = null
-    }
-    if (toolData.active) {
-      elapsedTimer = setInterval(() => {
-        elapsedTick.value++
-      }, 1000)
-    }
-  })
+})
+// 监听语音唤醒事件
+const removeWakeword = window.api.chat.onWakewordDetected((wakeword) => {
+  loading.value = true
+  emit('send', wakeword as string)
 })
 
+// 在 onUnmounted 时统一清理
 onUnmounted(() => {
-  // 清理事件监听
-  window.api.ipcRenderer.removeAllListeners('chat-box:status-updated')
-  window.api.ipcRenderer.removeAllListeners('chat-box:wakeword-detected')
-  window.api.ipcRenderer.removeAllListeners('chat-box:tool-status-updated')
+  removeWakeword()
+
   if (elapsedTimer) {
     clearInterval(elapsedTimer)
     elapsedTimer = null

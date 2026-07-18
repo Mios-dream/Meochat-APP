@@ -30,7 +30,14 @@
           <div
             v-for="(msg, idx) in messages"
             :key="idx"
-            :class="['message-row', msg.role === 'assistant' ? 'assistant-row' : 'user-row']"
+            :class="[
+              'message-row',
+              msg.role === 'assistant'
+                ? 'assistant-row'
+                : msg.role === 'tool'
+                  ? 'tool-row'
+                  : 'user-row'
+            ]"
           >
             <div
               v-if="msg.role === 'assistant'"
@@ -39,13 +46,48 @@
                 backgroundImage: `url(${currentAssistant?.avatar ? 'app-resource://' + currentAssistant?.avatar : '../assets/images/assistant_avatar_small.png'})`
               }"
             />
-            <div
-              :class="[
-                'message-bubble',
-                msg.role === 'assistant' ? 'assistant-bubble' : 'user-bubble'
-              ]"
-            >
-              <MessageContent :content="msg.content" :role="msg.role" />
+            <div class="message-column">
+              <div
+                :class="[
+                  'message-bubble',
+                  msg.role === 'assistant'
+                    ? 'assistant-bubble'
+                    : msg.role === 'tool'
+                      ? 'tool-bubble'
+                      : 'user-bubble'
+                ]"
+              >
+                <MessageContent
+                  :content="msg.content"
+                  :role="msg.role"
+                  :tool-calls="msg.tool_calls"
+                  :tool-call-id="msg.tool_call_id"
+                />
+              </div>
+              <div
+                v-if="getAttachments(msg.content).length > 0"
+                :class="['attach-bar', msg.role !== 'assistant' ? 'attach-bar--right' : '']"
+              >
+                <div
+                  v-for="(att, aidx) in getAttachments(msg.content)"
+                  :key="aidx"
+                  class="attach-chip"
+                >
+                  <font-awesome-icon
+                    :icon="
+                      att.type === 'image_ocr' || att.type === 'image_url'
+                        ? 'image'
+                        : att.type === 'attachment'
+                          ? 'triangle-exclamation'
+                          : 'file-lines'
+                    "
+                    class="attach-chip-icon"
+                  />
+                  <span class="attach-chip-name">{{
+                    att.type === 'image_url' ? '图片附件' : (att as any).fileName
+                  }}</span>
+                </div>
+              </div>
             </div>
           </div>
           <!-- 输入中动画 -->
@@ -61,14 +103,6 @@
         </div>
       </div>
     </div>
-
-    <!-- 工具调用状态栏 -->
-    <Transition name="tool-fade">
-      <div v-if="toolStatus.active" class="tool-status-bar">
-        <span class="tool-status-dot" />
-        <span class="tool-status-text">{{ formatToolStatusText }}</span>
-      </div>
-    </Transition>
 
     <!-- 消息输入区域：紧贴消息区底部 -->
     <div class="chat-input-area">
@@ -127,9 +161,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, nextTick, Ref } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick, Ref } from 'vue'
 import MessageContent from '../components/MessageContent.vue'
-import type { ChatMessage, ToolStatusData } from '../chat/ChatManager'
+import { normalizeContent, getAttachments } from '../chat/contentNormalizer'
+import type { ChatMessage } from '../chat/ChatManager'
 import { AssistantInfo } from '@shared/types/assistantTypes.js'
 import { AssistantManager } from '@renderer/services/assistantManager.js'
 
@@ -141,25 +176,22 @@ const historyLoading = ref(false)
 const loading = ref(false)
 const inputText = ref('')
 const isPinned = ref(false)
-const toolStatus = ref<ToolStatusData>({ active: false, tools: [] })
 const selectedFiles = ref<{ name: string; path: string }[]>([])
-const elapsedTick = ref(0)
 const currentAssistant: Ref<AssistantInfo | null> = ref(null)
 const assistantManager = AssistantManager.getInstance()
 
-let removeStatusUpdated: () => void = () => {}
 let removeClearHistory: () => void = () => {}
 let removeToolStatus: () => void = () => {}
 let removeHistoryChanged: () => void = () => {}
 let elapsedTimer: ReturnType<typeof setInterval> | null = null
 
-/** 工具状态文本格式化 */
-const formatToolStatusText = computed(() => {
-  if (toolStatus.value.tools.length === 0) return ''
-  return toolStatus.value.tools
-    .map((t) => `${t.tool_name} (${(t.elapsed + elapsedTick.value).toFixed(1)}s)`)
-    .join(', ')
-})
+/** 标准化消息列表中的 content 字段 */
+function normalizeMessages(raw: ChatMessage[]): ChatMessage[] {
+  return raw.map((msg) => ({
+    ...msg,
+    content: normalizeContent(msg.content) ?? []
+  }))
+}
 
 /** 根据文件名获取对应的 FontAwesome 图标 */
 function getFileIcon(fileName: string): string {
@@ -184,7 +216,7 @@ function scrollToBottom(): void {
 }
 
 /** 发送消息（含文本和已选文件） */
-function handleSend(): void {
+async function handleSend(): Promise<void> {
   const text = inputText.value.trim()
   if ((!text || loading.value) && selectedFiles.value.length === 0) return
 
@@ -204,13 +236,22 @@ function handleSend(): void {
   }
 
   loading.value = true
-  window.api.ipcRenderer.send('chat-box:send-message', { text, attachments })
+  try {
+    const result = await window.api.chat.invokeChat({ text, attachments })
+    if (result.error) {
+      console.error('聊天请求失败:', result.error)
+    }
+  } catch (err) {
+    console.error('聊天请求失败:', err)
+  } finally {
+    loading.value = false
+  }
 }
 
 /** 取消当前回复 */
 function handleCancel(): void {
   loading.value = false
-  window.api.ipcRenderer.send('chat-box:cancel-message', { text: '用户取消' })
+  window.api.chat.cancelMessage({ text: '用户取消' })
 }
 
 /** textarea 自动伸缩高度 */
@@ -225,12 +266,12 @@ function autoResize(): void {
 async function handleNewConversation(): Promise<void> {
   // 如果有进行中的回复，先取消
   if (loading.value) {
-    window.api.ipcRenderer.send('chat-box:cancel-message', { text: '用户取消' })
+    window.api.chat.cancelMessage({ text: '用户取消' })
     loading.value = false
   }
   messages.value = []
   try {
-    await window.api.ipcRenderer.invoke('chat-box:clear-history')
+    await window.api.chat.clearHistory()
   } catch (err) {
     console.warn('清空历史失败:', err)
   }
@@ -336,7 +377,7 @@ onMounted(async () => {
   // 从主进程获取聊天历史
   historyLoading.value = true
   try {
-    const history = (await window.api.ipcRenderer.invoke('chat-box:get-history')) as ChatMessage[]
+    const history = normalizeMessages(await window.api.chat.getHistory())
     if (history.length > 0) {
       messages.value = history
       scrollToBottom()
@@ -347,52 +388,24 @@ onMounted(async () => {
     historyLoading.value = false
   }
 
-  // 监听助手状态更新，以 ChatManager 的完整历史为唯一数据源
-  removeStatusUpdated = window.api.ipcRenderer.on('chat-box:status-updated', (data) => {
-    const statusData = data as { loading: boolean; reply?: string; history?: ChatMessage[] }
-    loading.value = statusData.loading
-    if (statusData.history) {
-      messages.value = statusData.history
-      scrollToBottom()
-    }
-  })
-
   // 监听清空历史事件（由其他窗口发起）
-  removeClearHistory = window.api.ipcRenderer.on('chat-box:clear-history', () => {
+  removeClearHistory = window.api.chat.onClearHistory(() => {
     messages.value = []
   })
 
   // 监听聊天历史变更，重新从主进程拉取最新数据
-  removeHistoryChanged = window.api.ipcRenderer.on('chat-box:history-changed', async () => {
+  removeHistoryChanged = window.api.chat.onHistoryChanged(async () => {
     try {
-      const history = (await window.api.ipcRenderer.invoke('chat-box:get-history')) as ChatMessage[]
+      const history = normalizeMessages(await window.api.chat.getHistory())
       messages.value = history
       scrollToBottom()
     } catch (error) {
       console.warn('同步聊天历史失败:', error)
     }
   })
-
-  // 监听工具调用状态更新
-  removeToolStatus = window.api.ipcRenderer.on('chat-box:tool-status-updated', (data) => {
-    const toolData = data as ToolStatusData
-    toolStatus.value = toolData
-    elapsedTick.value = 0
-
-    if (elapsedTimer) {
-      clearInterval(elapsedTimer)
-      elapsedTimer = null
-    }
-    if (toolData.active) {
-      elapsedTimer = setInterval(() => {
-        elapsedTick.value++
-      }, 1000)
-    }
-  })
 })
 
 onUnmounted(() => {
-  removeStatusUpdated()
   removeClearHistory()
   removeHistoryChanged()
   removeToolStatus()
@@ -606,6 +619,59 @@ onUnmounted(() => {
   margin-bottom: 10px;
 }
 
+.message-column {
+  display: flex;
+  flex-direction: column;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.assistant-row .message-column {
+  align-self: flex-start;
+}
+
+.user-row .message-column {
+  align-self: flex-end;
+}
+
+.attach-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.attach-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  background: rgba(249, 130, 166, 0.08);
+  border: 1px solid rgba(249, 130, 166, 0.2);
+  border-radius: 6px;
+  font-size: 11px;
+  color: #6f2b43;
+  max-width: 180px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.attach-chip-icon {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: #fb7299;
+}
+
+.attach-chip-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.attach-bar--right {
+  justify-content: flex-end;
+}
+
 .message-avatar {
   width: 32px;
   height: 32px;
@@ -642,6 +708,19 @@ onUnmounted(() => {
   border: 1px solid rgba(0, 0, 0, 0.04);
   color: #555;
   /* border-bottom-right-radius: 4px; */
+}
+
+.tool-row {
+  align-self: flex-start;
+  max-width: 90%;
+  margin-bottom: 10px;
+}
+
+.tool-bubble {
+  background: #faf5ff;
+  border: 1px solid rgba(103, 58, 183, 0.12);
+  color: #555;
+  font-size: 12px;
 }
 
 /* ───── 历史加载中 ───── */

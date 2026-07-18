@@ -48,7 +48,7 @@
       </div>
     </div>
 
-    <ChatBox :is-visible="isVisible" @send="handleChatBoxSend" @cancel="handleChatBoxCancel" />
+    <ChatBox :is-visible="isVisible" :loading="chatLoading" @send="handleChatBoxSend" @cancel="handleChatBoxCancel" />
     <teleport to="body">
       <transition name="modal-fade">
         <div v-if="showHistoryModal" class="modal-overlay" @click="closeHistoryModal">
@@ -74,12 +74,67 @@
                         <div class="assistant-name">{{ currentAssistant?.name }}</div>
                         <div class="message-time">{{ formatTime(message.timestamp) }}</div>
                       </div>
-                      <MessageContent :content="message.content" :role="message.role" />
+                      <MessageContent
+                        :content="message.content"
+                        :role="message.role"
+                        :tool-calls="message.tool_calls"
+                        :tool-call-id="message.tool_call_id"
+                      />
+                      <div v-if="getAttachments(message.content).length > 0" class="attach-bar">
+                        <div
+                          v-for="(att, aidx) in getAttachments(message.content)"
+                          :key="aidx"
+                          class="attach-chip"
+                        >
+                          <font-awesome-icon
+                            :icon="
+                              att.type === 'image_ocr' || att.type === 'image_url'
+                                ? 'image'
+                                : att.type === 'attachment'
+                                  ? 'triangle-exclamation'
+                                  : 'file-lines'
+                            "
+                            class="attach-chip-icon"
+                          />
+                          <span class="attach-chip-name">{{
+                            att.type === 'image_url' ? '图片附件' : (att as any).fileName
+                          }}</span>
+                        </div>
+                      </div>
                     </div>
                   </div>
                   <div v-else>
                     <div class="message-content">
-                      <MessageContent :content="message.content" :role="message.role" />
+                      <MessageContent
+                        :content="message.content"
+                        :role="message.role"
+                        :tool-calls="message.tool_calls"
+                        :tool-call-id="message.tool_call_id"
+                      />
+                      <div
+                        v-if="getAttachments(message.content).length > 0"
+                        class="attach-bar attach-bar--right"
+                      >
+                        <div
+                          v-for="(att, aidx) in getAttachments(message.content)"
+                          :key="aidx"
+                          class="attach-chip"
+                        >
+                          <font-awesome-icon
+                            :icon="
+                              att.type === 'image_ocr' || att.type === 'image_url'
+                                ? 'image'
+                                : att.type === 'attachment'
+                                  ? 'triangle-exclamation'
+                                  : 'file-lines'
+                            "
+                            class="attach-chip-icon"
+                          />
+                          <span class="attach-chip-name">{{
+                            att.type === 'image_url' ? '图片附件' : (att as any).fileName
+                          }}</span>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -253,6 +308,8 @@ import MessageContent from '../components/MessageContent.vue'
 import DiaryNotebookModal from '../components/main/DiaryNotebookModal.vue'
 import { InteractionSystem } from '@renderer/core/interaction/InteractionSystem'
 import { DiarySystem } from '@renderer/services/DiarySystem'
+import type { ChatMessage, ContentPart, ToolCall } from '@shared/types/chat'
+import { normalizeContent, getAttachments } from '../chat/contentNormalizer'
 
 const configStore = useConfigStore()
 const { config } = storeToRefs(configStore)
@@ -270,6 +327,8 @@ const isTipsActive: Ref<boolean> = ref(false)
 const currentTip: Ref<string> = ref('')
 // 对话框是否显示
 const isVisible = ref(false)
+// 聊天加载状态
+const chatLoading = ref(false)
 
 // 是否显示设置菜单
 const isVisibleSetting = ref(false)
@@ -282,7 +341,13 @@ const isLocked = ref(true)
 // 聊天历史
 const showHistoryModal = ref(false)
 const chatHistory = ref<
-  Array<{ role: 'user' | 'assistant'; content: string; timestamp: Date | null }>
+  Array<{
+    role: 'user' | 'assistant' | 'tool'
+    content: string | ContentPart[] | null
+    timestamp: Date | null
+    tool_calls?: ToolCall[]
+    tool_call_id?: string
+  }>
 >([])
 const historyLoading = ref(false)
 const historyError = ref('')
@@ -462,11 +527,6 @@ onMounted(async () => {
     }
 
     interactionSystem.start()
-
-    // 订阅工具状态变更，通过 IPC 广播给 ChatBox 窗口以展示当前工具调用状态
-    chatService.onToolStatusChange((data) => {
-      window.api.ipcRenderer.send('chat-box:update-tool-status', data)
-    })
   })
 })
 
@@ -498,14 +558,12 @@ function switchChatBox(): void {
  * 不经过 IPC 广播，避免与 AssistantView 重复处理。
  */
 async function handleChatBoxSend(text: string): Promise<void> {
+  chatLoading.value = true
   try {
     const isSleepMode = interactionSystem.isSleepMode()
     await chatService.chat(text, isSleepMode)
   } finally {
-    // 发送状态更新给 ChatBox（仍通过 IPC，兼容 ChatBox 组件的 status-updated 监听）
-    window.api.ipcRenderer.send('chat-box:update-status', {
-      loading: false
-    })
+    chatLoading.value = false
   }
 }
 
@@ -713,22 +771,30 @@ function formatDiaryTimestamp(timestamp: string): string {
   })
 }
 
-function buildHistoryItems(
-  messages: Array<{ role: 'user' | 'assistant'; content: string }>
-): Array<{
-  role: 'user' | 'assistant'
-  content: string
+function buildHistoryItems(messages: ChatMessage[]): Array<{
+  role: 'user' | 'assistant' | 'tool'
+  content: string | ContentPart[] | null
   timestamp: Date | null
+  tool_calls?: ToolCall[]
+  tool_call_id?: string
 }> {
   let lastTimestamp: Date | null = null
 
   return messages.map((item) => {
-    const parsedTimestamp = parseTimestampFromContent(item.content)
-    let content = item.content
-    if (item.role === 'user') {
-      content = (
+    const parsedTimestamp = parseTimestampFromContent(item.content ?? '')
+    let content: string | ContentPart[] | null = item.content
+    if (item.role === 'user' && typeof item.content === 'string') {
+      // 移除旧版后端前缀
+      let cleanText = (
         item.content.match(/用户对话内容或动作:\s*([\s\S]*?)$/)?.[1] || item.content
       ).trim()
+      // 如果是纯字符串内容，尝试解析其中的 [图片:]/[文件:]/[附件:] 标记
+      const parsed = normalizeContent(cleanText)
+      if (parsed && parsed.length > 0) {
+        content = parsed
+      } else {
+        content = cleanText
+      }
     }
     if (parsedTimestamp) {
       lastTimestamp = parsedTimestamp
@@ -736,19 +802,34 @@ function buildHistoryItems(
 
     return {
       role: item.role,
-      content: content,
-      timestamp: parsedTimestamp || lastTimestamp
+      content,
+      timestamp: parsedTimestamp || lastTimestamp,
+      ...(item.tool_calls ? { tool_calls: item.tool_calls } : {}),
+      ...(item.tool_call_id ? { tool_call_id: item.tool_call_id } : {})
     }
   })
 }
 
 //格式化日期
-function parseTimestampFromContent(content: string): Date | null {
-  const matched = content.match(/当前时间[:：]\s*(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})/)
+function parseTimestampFromContent(content: string | ContentPart[] | null): Date | null {
+  if (!content) return null
+  if (Array.isArray(content)) {
+    for (const part of content) {
+      if (part.type === 'text') {
+        const result = extractTimestamp(part.text)
+        if (result) return result
+      }
+    }
+    return null
+  }
+  return extractTimestamp(content)
+}
+
+function extractTimestamp(text: string): Date | null {
+  const matched = text.match(/当前时间[:：]\s*(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})/)
   if (!matched?.[1]) {
     return null
   }
-
   const normalized = matched[1].replace(' ', 'T')
   const parsed = new Date(normalized)
   return Number.isNaN(parsed.getTime()) ? null : parsed
@@ -1228,6 +1309,44 @@ async function saveShortcut(shortcut: string): Promise<void> {
   align-self: flex-end;
   /* border-bottom-right-radius: 4px; */
   border: 1px solid rgba(0, 0, 0, 0.04);
+}
+
+.attach-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.attach-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  background: rgba(249, 130, 166, 0.08);
+  border: 1px solid rgba(249, 130, 166, 0.2);
+  border-radius: 6px;
+  font-size: 11px;
+  color: #6f2b43;
+  max-width: 180px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.attach-chip-icon {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: #fb7299;
+}
+
+.attach-chip-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.attach-bar--right {
+  justify-content: flex-end;
 }
 
 .message-time {

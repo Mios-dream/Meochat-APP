@@ -6,6 +6,7 @@ import { ipcRenderer } from 'electron'
 import { commonApi } from './builders/common'
 import { ipc } from './builders/ipc'
 import { assistantApi } from './builders/assistantApi'
+import { chatApi } from './builders/chatApi'
 import { systemApi } from './builders/systemApi'
 import { wsApi } from './builders/wsApi'
 import { CHANNELS } from '@shared/ipc/channels'
@@ -66,6 +67,7 @@ export function buildMainWindowApi(): MainWindowApi {
     },
     kernel: kernelApi,
     assistant: assistantApi,
+    chat: chatApi,
     system: systemApi,
     ws: wsApi
   }

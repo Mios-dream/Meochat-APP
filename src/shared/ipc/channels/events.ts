@@ -16,16 +16,12 @@ export const eventChannels = {
 
   /** 窗口实例数据 */
   WINDOW_INSTANCE_DATA_EVENT: 'window:instance-data',
-  /** 聊天框状态更新 */
-  CHATBOX_STATUS_UPDATED_EVENT: 'chat-box:status-updated',
-  /** 工具状态更新 */
-  CHATBOX_TOOL_STATUS_UPDATED_EVENT: 'chat-box:tool-status-updated',
-  /** 消息推送 */
-  CHATBOX_SEND_MESSAGE_EVENT: 'chat-box:send-message',
   /** 取消消息推送 */
   CHATBOX_CANCEL_MESSAGE_EVENT: 'chat-box:cancel-message',
   /** 唤醒词事件 */
   CHATBOX_WAKEWORD_DETECTED_EVENT: 'chat-box:wakeword-detected',
   /** 聊天历史变更通知 */
-  CHATBOX_HISTORY_CHANGED_EVENT: 'chat-box:history-changed'
+  CHAT_HISTORY_CHANGED_EVENT: 'chat:history-changed',
+  /** 主进程转发聊天调用请求到助理窗口 */
+  CHAT_INVOKE_REQUEST_EVENT: 'chat:invoke-request'
 } as const

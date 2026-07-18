@@ -1,4 +1,5 @@
 ﻿import { screen, BrowserWindow, app } from 'electron'
+import { randomUUID } from 'crypto'
 import { CHANNELS } from '@shared/ipc/channels'
 import { registerHandle, registerOn } from '../utils/registerIpcHandler'
 import {
@@ -10,17 +11,25 @@ import {
 } from '../windows'
 import { chatHistoryStore } from '../services/chatHistoryStore'
 import type { ChatMessage } from '@shared/types/chat'
+import type { ChatInvokeResult } from '@shared/ipc/api/base/chat'
+
+/** 待处理的聊天调用请求，requestId → 回调 */
+const pendingChatInvokes = new Map<
+  string,
+  { resolve: (value: ChatInvokeResult) => void; reject: (reason: unknown) => void }
+>()
 import { checkAssistantWindowVisibility } from '../utils/windowVisibility'
 import dragAddon from 'electron-click-drag-plugin'
 import robot from '@jitsi/robotjs'
 import { uIOhook } from 'uiohook-napi'
 import log from '../utils/logger'
+import { AssistantService } from '../services/assistantService'
 
 /** 广播聊天历史变更通知到所有窗口 */
 function broadcastHistoryChanged(): void {
   BrowserWindow.getAllWindows().forEach((win) => {
     if (!win.isDestroyed()) {
-      win.webContents.send(CHANNELS.CHATBOX_HISTORY_CHANGED_EVENT)
+      win.webContents.send(CHANNELS.CHAT_HISTORY_CHANGED_EVENT)
     }
   })
 }
@@ -110,54 +119,81 @@ function setupChatBoxIPC(): void {
     if (chatBoxWin) chatBoxWin.show()
   })
 
-  registerOn(CHANNELS.CHATBOX_SEND_MESSAGE, (_event, data) => {
-    BrowserWindow.getAllWindows().forEach((win) => {
-      win.webContents.send(CHANNELS.CHATBOX_SEND_MESSAGE_EVENT, data)
-    })
+  // ─── 聊天调用：ChatBoxView → Main(handle) → AssistantWindow → Main → 返回结果 ───
+  registerHandle(
+    CHANNELS.CHAT_INVOKE,
+    async (_event, data: { text: string; attachments?: { name: string; path: string }[] }) => {
+      const assistantWin = windowRegistry.getWindowByType('assistant')
+      if (!assistantWin) throw new Error('Assistant window not found')
+
+      const requestId = randomUUID()
+
+      return new Promise<ChatInvokeResult>((resolve, reject) => {
+        pendingChatInvokes.set(requestId, { resolve, reject })
+
+        assistantWin.webContents.send(CHANNELS.CHAT_INVOKE_REQUEST_EVENT, {
+          requestId,
+          text: data.text,
+          attachments: data.attachments
+        })
+
+        setTimeout(() => {
+          if (pendingChatInvokes.has(requestId)) {
+            pendingChatInvokes.delete(requestId)
+            reject(new Error('Chat invoke timeout'))
+          }
+        }, 120000)
+      })
+    }
+  )
+
+  // 接收助理窗口的聊天调用结果
+  registerOn(CHANNELS.CHAT_INVOKE_RESULT, (_event, data) => {
+    const pending = pendingChatInvokes.get(data.requestId)
+    if (pending) {
+      pendingChatInvokes.delete(data.requestId)
+      if (data.success) {
+        pending.resolve({ success: true, history: data.history, reply: data.reply })
+      } else {
+        pending.reject(new Error(data.error || 'Chat invoke failed'))
+      }
+    }
   })
 
-  registerOn(CHANNELS.CHATBOX_CANCEL_MESSAGE, () => {
+  registerOn(CHANNELS.CANCEL_MESSAGE, () => {
     BrowserWindow.getAllWindows().forEach((win) => {
       win.webContents.send(CHANNELS.CHATBOX_CANCEL_MESSAGE_EVENT)
     })
   })
 
-  registerOn(CHANNELS.CHATBOX_UPDATE_STATUS, (_event, data) => {
-    BrowserWindow.getAllWindows().forEach((win) => {
-      win.webContents.send(CHANNELS.CHATBOX_STATUS_UPDATED_EVENT, data)
-    })
-  })
-
-  registerOn(CHANNELS.CHATBOX_WAKEWORD_DETECTED, (_event, data) => {
+  registerOn(CHANNELS.WAKEWORD_DETECTED, (_event, data) => {
     BrowserWindow.getAllWindows().forEach((win) => {
       win.webContents.send(CHANNELS.CHATBOX_WAKEWORD_DETECTED_EVENT, data)
     })
   })
 
-  // 工具状态广播：Assistant 窗口 → 主进程 → ChatBox 窗口
-  registerOn(CHANNELS.CHATBOX_UPDATE_TOOL_STATUS, (_event, data) => {
-    BrowserWindow.getAllWindows().forEach((win) => {
-      win.webContents.send(CHANNELS.CHATBOX_TOOL_STATUS_UPDATED_EVENT, data)
-    })
-  })
-
   // 获取聊天历史：直接从主进程存储返回
-  registerHandle(CHANNELS.CHATBOX_GET_HISTORY, async () => {
+  registerHandle(CHANNELS.GET_HISTORY, async () => {
     const result = chatHistoryStore.get()
     if (!result.success) throw new Error(result.error)
     return result.data
   })
 
   // 追加一条消息到历史
-  registerHandle(CHANNELS.CHATBOX_APPEND_MESSAGE, async (_event, message: ChatMessage) => {
-    const result = chatHistoryStore.push(undefined, message)
+  registerHandle(CHANNELS.APPEND_MESSAGE, async (_event, message: ChatMessage) => {
+    const currentAssistant = AssistantService.getInstance().getCurrentAssistant()
+    if (!currentAssistant) {
+      console.error('当前没有选中助手，无法追加消息到历史')
+      return { success: false, error: '当前没有选中助手' }
+    }
+    const result = chatHistoryStore.push(currentAssistant.name, message)
     if (!result.success) throw new Error(result.error)
     broadcastHistoryChanged()
     return result.data
   })
 
   // 删除最后一条消息（发送失败回滚）
-  registerHandle(CHANNELS.CHATBOX_POP_HISTORY, async () => {
+  registerHandle(CHANNELS.POP_HISTORY, async () => {
     const result = chatHistoryStore.popLast()
     if (!result.success) throw new Error(result.error)
     broadcastHistoryChanged()
@@ -165,7 +201,7 @@ function setupChatBoxIPC(): void {
   })
 
   // 替换全部历史（远端同步后覆盖）
-  registerHandle(CHANNELS.CHATBOX_REPLACE_HISTORY, async (_event, messages: ChatMessage[]) => {
+  registerHandle(CHANNELS.REPLACE_HISTORY, async (_event, messages: ChatMessage[]) => {
     const result = chatHistoryStore.replace(undefined, messages)
     if (!result.success) throw new Error(result.error)
     broadcastHistoryChanged()
@@ -173,13 +209,13 @@ function setupChatBoxIPC(): void {
   })
 
   // 清空聊天历史：同步清空主进程存储并广播到所有窗口
-  registerHandle(CHANNELS.CHATBOX_CLEAR_HISTORY, async () => {
+  registerHandle(CHANNELS.CLEAR_HISTORY, async () => {
     const result = chatHistoryStore.clear()
     if (!result.success) throw new Error(result.error)
     broadcastHistoryChanged()
     BrowserWindow.getAllWindows().forEach((win) => {
       if (!win.isDestroyed()) {
-        win.webContents.send(CHANNELS.CHATBOX_CLEAR_HISTORY)
+        win.webContents.send(CHANNELS.CLEAR_HISTORY)
       }
     })
     return []

@@ -6,6 +6,7 @@ import type { CommonApi } from '../base/common'
 import { ws } from '../base/ws'
 import { SystemApi } from '../base/system'
 import { AssistantApi } from '../base/assistant'
+import { ChatApi } from '../base/chat'
 import type { AssistantInfo } from '@shared/types/assistantTypes'
 
 /** 助手窗口暴露的 API 接口 */
@@ -28,6 +29,7 @@ export interface AssistantWindowApi extends CommonApi {
   }
 
   assistant: AssistantApi
+  chat: ChatApi
   system: SystemApi
   ws: ws
 }

@@ -6,6 +6,7 @@
 
 import { ipcRenderer } from 'electron'
 import { commonApi } from './builders/common'
+import { chatApi } from './builders/chatApi'
 import { ipc } from './builders/ipc'
 import { assistantApi } from './builders/assistantApi'
 import { systemApi } from './builders/systemApi'
@@ -42,6 +43,7 @@ export function buildAssistantWindowApi(): AssistantWindowApi {
     },
 
     assistant: assistantApi,
+    chat: chatApi,
     system: systemApi,
     ws: wsApi
   }

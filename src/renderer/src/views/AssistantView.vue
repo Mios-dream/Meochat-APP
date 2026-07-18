@@ -73,6 +73,8 @@ let tipsUpdateInterval: ReturnType<typeof setTimeout> | null = null
 let currentAssistantName = ''
 // 窗口 resize 防抖定时器，用于在窗口尺寸变化后重新居中模型
 let resizeDebounceTimer: ReturnType<typeof setTimeout> | null = null
+// 聊天框 IPC 事件监听清理函数
+let removeChatBoxListeners: Array<() => void> = []
 
 /**
  * 注册由事件系统驱动的 Live2D 表现副作用。
@@ -341,7 +343,7 @@ function registerWakewordService(): void {
     },
     onDetected: ({ keyword }) => {
       window.api.openChatBox()
-      window.api.ipcRenderer.send('chat-box:wakeword-detected', keyword)
+      window.api.chat.wakewordDetected(keyword)
     },
     onError: (message) => {
       console.error('唤醒服务错误:', message)
@@ -350,46 +352,42 @@ function registerWakewordService(): void {
 }
 
 function installChatBoxListener(): void {
-  // 监听来自ChatBox的消息
-  window.api.ipcRenderer.on('chat-box:send-message', async (data) => {
-    try {
-      const chatData = data as { text: string; attachments?: { name: string; path: string }[] }
-      const isSleepMode = interactionSystem.isSleepMode()
-      await chatService.chat(chatData.text, isSleepMode, chatData.attachments)
-    } catch (error) {
-      console.error('[ChatBox] 聊天请求失败:', error)
-    } finally {
-      // 从主进程读取权威历史，同步回 ChatBox 窗口
+  // 监听主进程转发的聊天调用请求
+  removeChatBoxListeners.push(
+    window.api.chat.onInvokeRequest(async (data) => {
       try {
+        const isSleepMode = interactionSystem.isSleepMode()
+        await chatService.chat(data.text, isSleepMode, data.attachments)
         const history = await chatService.getChatHistory()
-        const lastMsg = history.length > 0 ? history[history.length - 1] : null
-        const reply = lastMsg?.role === 'assistant' ? lastMsg.content : undefined
-        window.api.ipcRenderer.send('chat-box:update-status', {
-          loading: false,
-          reply,
+        window.api.chat.sendInvokeResult({
+          requestId: data.requestId,
+          success: true,
           history
         })
-      } catch (err) {
-        console.error('[ChatBox] 获取历史失败:', err)
-        window.api.ipcRenderer.send('chat-box:update-status', { loading: false })
+      } catch (error) {
+        console.error('[ChatBox] 聊天请求失败:', error)
+        window.api.chat.sendInvokeResult({
+          requestId: data.requestId,
+          success: false,
+          error: String(error)
+        })
       }
-    }
-  })
+    })
+  )
 
   // 监听来自ChatBox的取消消息
-  window.api.ipcRenderer.on('chat-box:cancel-message', () => {
-    chatService.interruptCurrentPlayback()
-  })
+  removeChatBoxListeners.push(
+    window.api.chat.onCancelMessage(() => {
+      chatService.interruptCurrentPlayback()
+    })
+  )
 
   // 响应 ChatBox 窗口的清空历史请求（主进程已处理存储，此处仅清理本地播放状态）
-  window.api.ipcRenderer.on('chat-box:clear-history', () => {
-    chatService.interruptCurrentPlayback()
-  })
-
-  // 订阅工具状态变更，通过 IPC 广播给 ChatBox 窗口以展示当前工具调用状态
-  chatService.onToolStatusChange((data) => {
-    window.api.ipcRenderer.send('chat-box:update-tool-status', data)
-  })
+  removeChatBoxListeners.push(
+    window.api.chat.onClearHistory(() => {
+      chatService.interruptCurrentPlayback()
+    })
+  )
 }
 
 /**
@@ -507,9 +505,7 @@ onUnmounted(() => {
     clearTimeout(resizeDebounceTimer)
     resizeDebounceTimer = null
   }
-  window.api.ipcRenderer.removeAllListeners('chat-box:send-message')
-  window.api.ipcRenderer.removeAllListeners('chat-box:cancel-message')
-  window.api.ipcRenderer.removeAllListeners('chat-box:clear-history')
+  removeChatBoxListeners.forEach((cleanup) => cleanup())
   live2DManager.destroy()
   // 清除Tips更新定时器
   if (tipsUpdateInterval) {

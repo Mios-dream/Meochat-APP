@@ -2,7 +2,8 @@
 // WebSocket 聊天与工具调用协议 · 类型定义（主进程 / 渲染进程共享）
 //
 // 定义了 MoeChat 前端与服务端之间基于 WebSocket 双向通信的完整消息格式。
-// 包括：聊天流式消息（text / audio / motion / done / error）、
+// 包括：聊天结果消息（chat:result，统一承载 text / audio / motion / tool_calls）、
+// 传统拆分流消息（chat:text / audio / motion / done / error，已废弃但保留兼容）、
 // LLM 工具调用事件（仅 UI 展示）、客户端工具协议（协商 / 调用 / 结果 / 进度）。
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -68,6 +69,60 @@ export interface ChatMotionItem {
   fps?: number
   /** 表情名称列表，对应模型 .exp3.json 中定义的 expression。 */
   expression?: string[]
+}
+
+/** 工具调用项，兼容 OpenAI 格式。 */
+export interface ToolCallItem {
+  id: string
+  type: 'function'
+  function: {
+    name: string
+    arguments: string
+  }
+}
+
+/** 动作帧数据（嵌入 chat:result extras 中）。 */
+export interface MotionExtraData {
+  /** 动作总时长，单位毫秒。 */
+  duration: number
+  /** 曲线数据的帧率。 */
+  fps: number
+  /** 参数 ID 到完整参数值时间序列的映射，等间隔采样。 */
+  curves: Record<string, number[]>
+  /** 表情名称。 */
+  expression: string
+}
+
+/** 聊天结果额外数据（音频 / 动作）。 */
+export interface ChatResultExtras {
+  /** TTS 音频 base64 编码。 */
+  audio?: string
+  /** Live2D 动作帧曲线 + 表情。 */
+  motion?: MotionExtraData
+}
+
+/**
+ * 聊天结果消息（统一格式，替代原先的 chat:text / chat:audio / chat:motion）。
+ *
+ * 三种输出形态：
+ * 1. 文本 + 音频/动作 — content 非空，extras 可选
+ * 2. 工具调用 — tool_calls 非空，content 为 null
+ * 3. 仅 extras 增量更新 — content 为 null，仅有 extras（当前未使用，预留）
+ *
+ * 序列化规则：model_dump(exclude_none=True)，值为 null 的字段被自动移除。
+ */
+export interface ChatResultMessage {
+  type: 'chat:result'
+  /** 消息角色：assistant（普通回复/工具调用）或 tool（工具执行结果）。 */
+  role: 'assistant' | 'tool'
+  /** 回复文本内容，工具调用时为 null。 */
+  content: string | null
+  /** 工具调用列表，仅工具调用响应时非空。 */
+  tool_calls?: ToolCallItem[]
+  /** 工具调用 ID，仅 role='tool' 时存在。 */
+  tool_call_id?: string
+  /** 额外数据，包含音频 / 动作等。 */
+  extras?: ChatResultExtras
 }
 
 /** 本轮回复完成通知。 */
@@ -183,6 +238,7 @@ export interface ToolQueryMessage {
 
 /** 服务端下发的所有消息联合类型。 */
 export type ServerMessage =
+  | ChatResultMessage
   | ChatTextMessage
   | ChatAudioMessage
   | ChatMotionMessage

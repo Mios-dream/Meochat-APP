@@ -6,6 +6,7 @@
 
 import { ipcRenderer } from 'electron'
 import { commonApi } from './builders/common'
+import { chatApi } from './builders/chatApi'
 import { CHANNELS } from '@shared/ipc/channels'
 import type { ChatBoxWindowApi } from '@shared/ipc/api'
 import { assistantApi } from './builders/assistantApi'
@@ -20,6 +21,7 @@ export function buildChatBoxWindowApi(): ChatBoxWindowApi {
     showChatBox: () => ipcRenderer.send(CHANNELS.CHATBOX_SHOW),
     openChatBox: () => ipcRenderer.send(CHANNELS.CHATBOX_CREATE),
     closeChatBox: () => ipcRenderer.send(CHANNELS.CHATBOX_CLOSE),
-    assistant: assistantApi
+    assistant: assistantApi,
+    chat: chatApi
   }
 }
