@@ -19,38 +19,56 @@
           <div
             v-if="phase === 'flipping' && direction === 'next' && underRight"
             class="book-page right under-layer"
+            :style="{ '--thickness': flipRightThickness() + 'px' }"
             v-html="renderFace(underRight)"
           />
           <div
             v-if="phase === 'flipping' && direction === 'prev' && underLeft"
             class="book-page left under-layer"
+            :style="{ '--thickness': flipLeftThickness() + 'px' }"
             v-html="renderFace(underLeft)"
           />
 
           <div
             v-if="phase === 'flipping' && direction === 'next' && flipFromSpread > 0"
             class="book-page left static-page"
+            :style="{ '--thickness': flipFromLeftThickness() + 'px' }"
             v-html="renderFace(getLeftPage(flipFromSpread))"
           />
           <div
             v-if="phase === 'flipping' && direction === 'prev'"
             class="book-page right static-page"
+            :style="{ '--thickness': flipFromRightThickness() + 'px' }"
             v-html="renderFace(getRightPage(flipFromSpread))"
           />
 
           <template v-if="phase === 'idle'">
             <div v-if="isCoverCentered" class="book-cover-only" @click="openFromCover">
-              <div class="book-page cover" v-html="renderFace('cover')" />
+              <div
+                class="book-page cover"
+                :style="{ '--thickness': coverThickness + 'px' }"
+                v-html="renderFace('cover')"
+              />
             </div>
             <template v-else>
-              <div v-if="displaySpread > 0" class="book-page left" v-html="renderFace(curLeft)" />
-              <div class="book-page right" v-html="renderFace(curRight)" />
+              <div
+                v-if="displaySpread > 0"
+                class="book-page left"
+                :style="{ '--thickness': leftThickness + 'px' }"
+                v-html="renderFace(curLeft)"
+              />
+              <div
+                v-if="curRight"
+                class="book-page right"
+                :style="{ '--thickness': rightThickness + 'px' }"
+                v-html="renderFace(curRight)"
+              />
             </template>
           </template>
 
           <div
-            v-if="!isCoverCentered && (displaySpread > 0 || phase === 'flipping')"
             class="book-spine"
+            :class="{ 'spine-hidden': isCoverCentered }"
           />
 
           <div
@@ -163,6 +181,25 @@ const underRight = computed(() => {
   return getRightPage(flipToSpread.value)
 })
 
+// ==================== 书页厚度（按位置比例粗略计算） ====================
+const MAX_THICKNESS = 14
+
+function thickAt(spread: number, side: 'left' | 'right'): number {
+  if (spread <= 0) return 0
+  const ratio = side === 'left' ? spread / maxSpread.value : (maxSpread.value - spread) / maxSpread.value
+  return Math.round(ratio * MAX_THICKNESS)
+}
+
+const coverThickness = MAX_THICKNESS
+const leftThickness = computed(() => thickAt(displaySpread.value, 'left'))
+const rightThickness = computed(() => thickAt(displaySpread.value, 'right'))
+
+/** 翻页状态厚度辅助 */
+function flipRightThickness(): number { return thickAt(flipToSpread.value, 'right') }
+function flipLeftThickness(): number { return thickAt(flipToSpread.value, 'left') }
+function flipFromLeftThickness(): number { return thickAt(flipFromSpread.value, 'left') }
+function flipFromRightThickness(): number { return thickAt(flipFromSpread.value, 'right') }
+
 // ==================== 构建页面 ====================
 function buildPageHTML(page: DiaryPage): string {
   const entry = page.record
@@ -182,10 +219,7 @@ function buildPageHTML(page: DiaryPage): string {
     : `
       <h2 class="pf-title">日记</h2>
       <div class="pf-divider"><div class="pf-divider-line"></div><span class="pf-divider-dot">✦</span></div>
-      <div class="pf-memory-card">
-        <div class="pf-memory-glow"></div>
-        <span class="pf-memory-icon">${getMoodIcon(mood)}</span>
-      </div>`
+`
 
   return `
     <div class="pf-page-inner${isContinued ? ' is-continued' : ''}">
@@ -267,8 +301,7 @@ function buildCoverHTML(): string {
         <i class="pf-cover-corner bl"></i>
         <i class="pf-cover-corner br"></i>
         <div class="pf-cover-portrait">
-          <span class="pf-cover-ear left"></span>
-          <span class="pf-cover-ear right"></span>
+  
           <img class="pf-cover-avatar" src="${coverAvatar}" alt="助手Q版头像" />
         </div>
         <h1 class="pf-cover-title">治愈日记</h1>
@@ -370,7 +403,7 @@ function getPageCharLimits(): { first: number; continued: number } {
   if (typeof window === 'undefined') return { first: 220, continued: 320 }
   const base = Math.max(200, Math.min(360, Math.floor(window.innerWidth / 3)))
   return {
-    first: Math.floor(base * 0.56),
+    first: Math.floor(base * 0.9),
     continued: base
   }
 }
@@ -710,7 +743,6 @@ async function openFromCover(): Promise<void> {
   top: 0;
   width: 50%;
   height: 100%;
-  overflow: hidden;
   background: #fffdfd;
   transform-style: preserve-3d;
   box-shadow:
@@ -734,7 +766,8 @@ async function openFromCover(): Promise<void> {
 
 .book-page.cover {
   width: 50%;
-  border-radius: 12px;
+  border-radius: 0 12px 0 0;
+  overflow: visible;
   box-shadow:
     inset 0 0 40px rgba(0, 0, 0, 0.03),
     0 12px 32px rgba(0, 0, 0, 0.08);
@@ -755,6 +788,61 @@ async function openFromCover(): Promise<void> {
   height: 100%;
 }
 
+/* 正文左右页底部书页厚度 */
+.book-page.left::after,
+.book-page.right::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(var(--thickness) * -1);
+  height: var(--thickness);
+  background: repeating-linear-gradient(
+    0deg,
+    #ede4e8 0px,
+    #ede4e8 1px,
+    #f5eef2 1px,
+    #f5eef2 3px,
+    #fcf8fa 3px,
+    #fcf8fa 5px
+  );
+  border-radius: 0 0 6px 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+  z-index: -1;
+  pointer-events: none;
+  transition: opacity 0.35s ease;
+}
+
+/* 封面底部书页厚度 */
+.book-page.cover::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(var(--thickness) * -1);
+  height: var(--thickness);
+  background: repeating-linear-gradient(
+    0deg,
+    #ede4e8 0px,
+    #ede4e8 1px,
+    #f5eef2 1px,
+    #f5eef2 3px,
+    #fcf8fa 3px,
+    #fcf8fa 5px
+  );
+  border-radius: 0 0 6px 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+  z-index: -1;
+  pointer-events: none;
+  transition: opacity 0.35s ease;
+}
+
+/* 封底页隐藏书页厚度（cover 可能在左或右页） */
+.book-page.right:has(.pf-cover-back)::after,
+.book-page.left:has(.pf-cover-back)::after {
+  opacity: 0;
+}
+
 .static-page {
   z-index: 3;
 }
@@ -769,17 +857,27 @@ async function openFromCover(): Promise<void> {
   top: 0;
   bottom: 0;
   z-index: 10;
-  width: 3px;
+  width: 8px;
   transform: translateX(-50%);
-  background: linear-gradient(
+  /* background: linear-gradient(
     to bottom,
     transparent 0%,
-    rgba(0, 0, 0, 0.06) 20%,
-    rgba(0, 0, 0, 0.08) 50%,
-    rgba(0, 0, 0, 0.06) 80%,
+    #e8cad8 8%,
+    #d8b8c8 25%,
+    #d4b0c4 50%,
+    #d8b8c8 75%,
+    #e8cad8 92%,
     transparent 100%
-  );
+  ); */
+  box-shadow:
+    0 0 10px rgba(180, 140, 160, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.04);
   pointer-events: none;
+  transition: opacity 0.35s ease;
+}
+.book-spine.spine-hidden {
+  opacity: 0;
 }
 
 .flipper {
@@ -925,7 +1023,7 @@ async function openFromCover(): Promise<void> {
 }
 
 .book-container.is-cover-spread :global(.pf-cover-front) {
-  border-radius: 10px;
+  border-radius: 0 10px 0 0;
   box-shadow:
     inset -18px 0 28px -18px rgba(0, 0, 0, 0.18),
     0 20px 60px rgba(247, 199, 217, 0.25),
@@ -934,7 +1032,7 @@ async function openFromCover(): Promise<void> {
 
 .book-cover-only :global(.pf-cover-front) {
   border-right: 0;
-  border-radius: 12px;
+  /* border-radius: 12px; */
   box-shadow:
     inset 0 0 28px rgba(0, 0, 0, 0.12),
     0 24px 60px rgba(247, 199, 217, 0.3);
@@ -1320,6 +1418,7 @@ async function openFromCover(): Promise<void> {
   margin: 0;
   white-space: pre-wrap;
   word-break: break-word;
+  font-family: 'SanJiFangYuanFont', serif;
 }
 
 :global(.pf-text::first-letter) {
@@ -1327,7 +1426,8 @@ async function openFromCover(): Promise<void> {
   font-size: 3rem;
   line-height: 1.1;
   margin-right: 0.1em;
-  font-family: 'ZhiMangXingFont', serif;
+  /* font-family: 'ZhiMangXingFont', serif; */
+  font-family: 'LoliFont', serif;
   color: #fca5b9;
 }
 
