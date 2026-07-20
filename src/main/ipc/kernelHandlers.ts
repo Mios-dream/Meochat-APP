@@ -1,9 +1,8 @@
-import { shell } from 'electron'
+import { shell, dialog } from 'electron'
 import { CHANNELS } from '@shared/ipc/channels'
 import { registerHandle } from '../utils/registerIpcHandler'
 import { KernelManager, KernelServiceManager } from '../services/kernelManager'
 import log from '../utils/logger'
-import pathLib from 'path'
 import { resolveLogDir } from '../utils/pathResolve'
 import { request } from '@shared/api/request'
 
@@ -21,38 +20,6 @@ function setupKernelIPC(): void {
     return kernelManager.getState()
   })
 
-  /** 获取当前内核版本 */
-  registerHandle(CHANNELS.KERNEL_GET_CURRENT_VERSION, () => {
-    return kernelManager.getCurrentVersion()
-  })
-
-  /** 获取当前激活内核的路径 */
-  registerHandle(CHANNELS.KERNEL_GET_ACTIVE_PATH, async () => {
-    return kernelManager.getActiveKernelPath()
-  })
-
-  /** 获取当前激活内核的 Python 配置（venv路径、工作目录等） */
-  registerHandle(CHANNELS.KERNEL_GET_PYTHON_CONFIG, async () => {
-    const kernelPath = await kernelManager.getActiveKernelPath()
-    if (!kernelPath) {
-      return { success: false, error: '没有激活的内核' }
-    }
-
-    const isWin = process.platform === 'win32'
-    const venvPython = isWin
-      ? pathLib.join(kernelPath, '.venv', 'Scripts', 'python.exe')
-      : pathLib.join(kernelPath, '.venv', 'bin', 'python')
-
-    return {
-      success: true,
-      data: {
-        workDir: kernelPath,
-        venvPython,
-        scriptPath: 'main_web.py'
-      }
-    }
-  })
-
   // ─── 更新操作 ────────────────────────────────────
 
   /** 检查内核更新 */
@@ -67,7 +34,7 @@ function setupKernelIPC(): void {
     }
   })
 
-  /** 更新到最新版本内核（下载、解压、安装依赖，保留数据） */
+  /** 更新到最新版本内核（从 GitHub Releases 下载，保留用户数据） */
   registerHandle(CHANNELS.KERNEL_UPDATE_TO_LATEST, async () => {
     try {
       const success = await kernelManager.downloadAndInstall()
@@ -105,19 +72,7 @@ function setupKernelIPC(): void {
     }
   })
 
-  /** 下载 AI 模型（运行 download.py） */
-  registerHandle(CHANNELS.KERNEL_DOWNLOAD_MODELS, async () => {
-    try {
-      const result = await kernelManager.downloadModels()
-      return result
-    } catch (error) {
-      const msg = (error as Error).message
-      log.error('模型下载失败:', msg)
-      return { success: false, error: msg }
-    }
-  })
-
-  /** 获取操作流日志（uv sync、模型下载等） */
+  /** 获取操作流日志（uv sync 等） */
   registerHandle(CHANNELS.KERNEL_GET_OPERATION_LOGS, () => {
     try {
       const logs = kernelManager.getOperationLogs()
@@ -127,20 +82,6 @@ function setupKernelIPC(): void {
       log.error('获取操作流日志失败:', msg)
       return []
     }
-  })
-
-  // ─── 事件监听（供渲染进程注册） ─────────────────
-
-  /** 注册内核状态监听 */
-  registerHandle(CHANNELS.KERNEL_LISTEN_STATE, (event) => {
-    const state = kernelManager.getState()
-    event.sender.send('kernel:state-update', state)
-    return { success: true }
-  })
-
-  /** 注册内核日志监听（接收主进程 logger 输出的日志） */
-  registerHandle(CHANNELS.KERNEL_LISTEN_LOGS, () => {
-    return { success: true }
   })
 
   // ─── 后端服务管理 ─────────────────────────────────
@@ -239,6 +180,78 @@ function setupKernelIPC(): void {
       const msg = (error as Error).message
       log.error('API健康检查失败:', msg)
       return { success: false, healthy: false, error: msg }
+    }
+  })
+
+  // ─── 资源管理 ────────────────────────────────────
+
+  /** 导入资源包（用户选择 zip 文件后调用） */
+  registerHandle(CHANNELS.KERNEL_IMPORT_ASSETS, async () => {
+    try {
+      const result = await dialog.showOpenDialog({
+        title: '选择资源包',
+        filters: [{ name: '资源包', extensions: ['zip'] }],
+        properties: ['openFile']
+      })
+
+      if (result.canceled || result.filePaths.length === 0) {
+        return { success: false, error: '用户取消了选择' }
+      }
+
+      const zipPath = result.filePaths[0]
+      const importResult = await kernelManager.importAssetBundle(zipPath)
+      return importResult
+    } catch (error) {
+      const msg = (error as Error).message
+      log.error('导入资源包失败:', msg)
+      return { success: false, error: msg }
+    }
+  })
+
+  /** 检查资源完整性 */
+  registerHandle(CHANNELS.KERNEL_CHECK_RESOURCES, async () => {
+    try {
+      const result = await kernelManager.checkResources()
+      return { success: true, data: result }
+    } catch (error) {
+      const msg = (error as Error).message
+      log.error('检查资源完整性失败:', msg)
+      return { success: false, error: msg }
+    }
+  })
+
+  /** 检查数据资源完整性（models + agents） */
+  registerHandle(CHANNELS.KERNEL_CHECK_DATA_RESOURCES, async () => {
+    try {
+      const result = await kernelManager.checkDataResources()
+      return { success: true, data: result }
+    } catch (error) {
+      const msg = (error as Error).message
+      log.error('检查数据资源完整性失败:', msg)
+      return { success: false, error: msg }
+    }
+  })
+
+  /** 导入数据资源包（用户选择 zip 文件后调用） */
+  registerHandle(CHANNELS.KERNEL_IMPORT_DATA_ASSETS, async () => {
+    try {
+      const result = await dialog.showOpenDialog({
+        title: '选择数据资源包',
+        filters: [{ name: '数据资源包', extensions: ['zip'] }],
+        properties: ['openFile']
+      })
+
+      if (result.canceled || result.filePaths.length === 0) {
+        return { success: false, error: '用户取消了选择' }
+      }
+
+      const zipPath = result.filePaths[0]
+      const importResult = await kernelManager.importDataBundle(zipPath)
+      return importResult
+    } catch (error) {
+      const msg = (error as Error).message
+      log.error('导入数据资源包失败:', msg)
+      return { success: false, error: msg }
     }
   })
 }

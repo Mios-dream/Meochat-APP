@@ -48,7 +48,7 @@ export interface EnvironmentCheckItem {
   passed: boolean
   // 错误信息
   message: string
-  key: 'runtime' | 'uv' | 'venv' | 'disk' | 'kernel'
+  key: 'uv' | 'venv' | 'disk' | 'kernel' | 'data'
 }
 
 export interface EnvironmentCheckResult {
@@ -58,4 +58,12 @@ export interface EnvironmentCheckResult {
   allPassed: boolean
   // 是否需要进行环境安装
   needsSetup: boolean
+}
+
+/** 数据资源包完整性检查结果 */
+export interface DataResourceCheckResult {
+  // 数据资源是否完整
+  ready: boolean
+  // 各检查项详情
+  items: { name: string; key: string; exists: boolean }[]
 }

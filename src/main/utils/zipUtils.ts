@@ -16,7 +16,7 @@ import StreamZip from 'node-stream-zip'
  * @returns 探测到的编码类型：'utf8' 或 'gbk'
  */
 async function detectZipNameEncoding(zipPath: string): Promise<'utf8' | 'gbk'> {
-  const probe = new StreamZip.async({ file: zipPath, nameEncoding: 'utf8' })
+  const probe = new StreamZip.async({ file: zipPath, nameEncoding: 'utf8', skipEntryNameValidation: true })
   try {
     const entries = Object.values(await probe.entries())
     for (const entry of entries) {

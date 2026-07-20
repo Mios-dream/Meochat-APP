@@ -30,104 +30,177 @@
           <div class="status-sub">检测到苏醒信号...</div>
         </div>
 
-        <!-- LOG_STREAM -->
-        <div v-else-if="currentState === 'LOG_STREAM'" key="logstream" class="screen center-screen">
-          <!-- Regular kernel setup display -->
-          <template v-if="!isDownloadingModels">
-            <div class="status-title">{{ logStatusTitle }}</div>
-            <div class="status-sub">{{ logStatusSub }}</div>
-            <div v-if="kernelProgress > 0" class="kernel-progress-wrap">
-              <div class="kernel-progress-bar">
-                <div class="kernel-progress-fill" :style="{ width: `${kernelProgress}%` }"></div>
-              </div>
-              <span class="kernel-progress-pct">{{ kernelProgress }}%</span>
-            </div>
-            <div v-else class="progress-indicator">
-              <div
-                v-for="i in 5"
-                :key="i"
-                class="progress-dot"
-                :class="{ active: i <= logProgressDot }"
-              ></div>
-            </div>
-          </template>
+        <!-- LOG_STREAM - 意识唤醒协议 -->
+        <div v-else-if="currentState === 'LOG_STREAM'" key="logstream" class="screen awaken-screen">
+          <!-- 背景辉光层 -->
+          <div
+            class="awaken-glow"
+            :class="{
+              'glow-system': systemStatus === 'ready',
+              'glow-data': dataStatus === 'ready',
+              'glow-all': systemStatus === 'ready' && dataStatus === 'ready'
+            }"
+          ></div>
 
-          <!-- Elegant model download display -->
-          <template v-else>
-            <div class="model-download-section">
-              <div class="md-icon-wrap">
-                <div class="md-pulse-ring"></div>
-                <span class="md-icon-inner">◈</span>
-              </div>
-              <div class="status-title">{{ logStatusTitle }}</div>
-              <p class="md-status-hint">{{ logStatusSub }}</p>
+          <!-- 核心唤醒指示器 -->
+          <div class="awaken-core">
+            <div
+              class="core-ring"
+              :class="{
+                'is-pulsing': systemStatus === 'checking' || dataStatus === 'checking',
+                'is-steady': systemStatus === 'ready' && dataStatus === 'ready'
+              }"
+            >
+              <div class="core-ring-inner"></div>
+            </div>
+            <div class="core-star">✦</div>
+          </div>
 
-              <div class="md-model-cards">
-                <div class="md-card" :class="modelCardClass('embedding')">
-                  <span class="md-card-icon" :class="modelCardClass('embedding')">
-                    {{ modelCardIcon('embedding') }}
-                  </span>
-                  <div class="md-card-info">
-                    <span class="md-card-name">语义嵌入模型</span>
-                    <span class="md-card-desc">Embedding · 文本理解</span>
+          <!-- 标题区 -->
+          <div class="awaken-header">
+            <h2 class="awaken-title">意识唤醒协议</h2>
+            <p class="awaken-sub">{{ awakenSubtitle }}</p>
+          </div>
+
+          <!-- 晶体装配面板 -->
+          <div class="crystal-panel">
+            <!-- 系统晶体 -->
+            <div class="crystal-card" :class="`crystal--${systemStatus}`">
+              <div class="crystal-card-bg"></div>
+              <div class="crystal-card-glow"></div>
+              <div class="crystal-card-content">
+                <div class="crystal-card-icon">
+                  <font-awesome-icon icon="fa-solid fa-cubes" />
+                </div>
+                <h3 class="crystal-card-title">装载助手系统</h3>
+                <p class="crystal-card-status">{{ systemStatusText }}</p>
+                <div v-if="systemStatus === 'importing'" class="crystal-progress-wrap">
+                  <div class="crystal-progress-bar">
+                    <div
+                      class="crystal-progress-fill"
+                      :style="{ width: `${kernelProgress}%` }"
+                    ></div>
                   </div>
+                  <span class="crystal-progress-pct">{{ kernelProgress }}%</span>
                 </div>
-                <div class="md-card" :class="modelCardClass('asr')">
-                  <span class="md-card-icon" :class="modelCardClass('asr')">
-                    {{ modelCardIcon('asr') }}
-                  </span>
-                  <div class="md-card-info">
-                    <span class="md-card-name">语音识别模型</span>
-                    <span class="md-card-desc">ASR · 语音转文字</span>
-                  </div>
+                <button
+                  v-if="systemStatus === 'missing'"
+                  class="crystal-btn"
+                  :disabled="isImportingAssets"
+                  @click="handleImportAssets"
+                >
+                  <span class="crystal-btn-glow"></span>
+                  <span>{{ isImportingAssets ? '装配中...' : '选择系统包' }}</span>
+                </button>
+                <div v-if="systemStatus === 'ready'" class="crystal-card-badge">
+                  <span class="badge-icon">✦</span>
+                  <span>已装载</span>
                 </div>
-              </div>
-
-              <div class="kernel-progress-wrap md-progress">
-                <div class="kernel-progress-bar">
-                  <div class="kernel-progress-fill" :style="{ width: `${kernelProgress}%` }"></div>
-                </div>
-                <span class="kernel-progress-pct">{{ kernelProgress }}%</span>
               </div>
             </div>
-          </template>
 
-          <div class="log-toggle log-toggle-corner">
-            <button class="btn-log" @click="toggleLogDrawer">
-              {{ showLogDrawer ? '收起日志' : '查看日志' }}
+            <!-- 连接线装饰 -->
+            <div class="crystal-divider" :class="{ linked: systemStatus === 'ready' && dataStatus !== 'pending' }">
+              <div class="divider-line"></div>
+              <div class="divider-orb"></div>
+              <div class="divider-line"></div>
+            </div>
+
+            <!-- 数据晶体 -->
+            <div class="crystal-card" :class="`crystal--${dataStatus}`">
+              <div class="crystal-card-bg"></div>
+              <div class="crystal-card-glow"></div>
+              <div class="crystal-card-content">
+                <div class="crystal-card-icon">
+                  <font-awesome-icon icon="fa-solid fa-database" />
+                </div>
+                <h3 class="crystal-card-title">装载助手数据</h3>
+                <p class="crystal-card-status">{{ dataStatusText }}</p>
+                <div v-if="dataStatus === 'importing'" class="crystal-progress-wrap">
+                  <div class="crystal-progress-bar">
+                    <div
+                      class="crystal-progress-fill"
+                      :style="{ width: `${kernelProgress}%` }"
+                    ></div>
+                  </div>
+                  <span class="crystal-progress-pct">{{ kernelProgress }}%</span>
+                </div>
+                <button
+                  v-if="dataStatus === 'missing'"
+                  class="crystal-btn"
+                  :disabled="isImportingDataAssets"
+                  @click="handleImportDataAssets"
+                >
+                  <span class="crystal-btn-glow"></span>
+                  <span>{{ isImportingDataAssets ? '装配中...' : '选择数据包' }}</span>
+                </button>
+                <div v-if="dataStatus === 'ready'" class="crystal-card-badge">
+                  <span class="badge-icon">✦</span>
+                  <span>已装载</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 仍然启动中的提示 -->
+          <div v-if="backendStillStarting" class="awaken-notice">
+            <div class="notice-dots">
+              <span></span><span></span><span></span>
+            </div>
+            <p>核心正在苏醒中... 已等待 {{ healthCheckElapsed }} 秒</p>
+            <button class="notice-btn" @click="restartBackendService">重启服务</button>
+          </div>
+
+          <!-- 非资源缺失的一般错误 -->
+          <div
+            v-if="backendError && !isKernelMissing"
+            class="awaken-notice is-error"
+          >
+            <p>{{ backendError }}</p>
+          </div>
+
+          <!-- 数据资源导入错误 -->
+          <div
+            v-if="dataError && isDataMissing"
+            class="awaken-notice is-error"
+          >
+            <p>{{ dataError }}</p>
+          </div>
+
+          <!-- 底部工具栏 -->
+          <div class="awaken-toolbar">
+            <button class="tool-btn" @click="toggleLogDrawer">
+              <font-awesome-icon icon="fa-solid fa-terminal" />
+              <span>日志</span>
+            </button>
+            <button class="tool-btn" @click="switchMode">
+              <font-awesome-icon icon="fa-solid fa-arrows-rotate" />
+              <span>{{ currentMode === 'api' ? '本地模式' : 'API 模式' }}</span>
+            </button>
+            <button class="tool-btn" @click="retryBackend">
+              <font-awesome-icon icon="fa-solid fa-rotate-right" />
+              <span>重试</span>
             </button>
           </div>
-          <div v-if="showLogDrawer" class="log-modal" @click.self="toggleLogDrawer">
-            <div class="log-dialog">
-              <div class="log-dialog-header">
+
+          <!-- 日志抽屉 -->
+          <div v-if="showLogDrawer" class="log-overlay" @click.self="toggleLogDrawer">
+            <div class="log-panel">
+              <div class="log-panel-header">
                 <span>启动日志</span>
-                <span class="log-drawer-sub">{{ logSourceText }}</span>
-                <button class="log-dialog-action" title="打开日志目录" @click="openLogDir">
-                  <font-awesome-icon icon="fa-solid fa-folder-open" />
-                </button>
+                <span class="log-panel-sub">{{ logSourceText }}</span>
+                <div class="log-panel-actions">
+                  <button class="log-panel-btn" title="打开日志目录" @click="openLogDir">
+                    <font-awesome-icon icon="fa-solid fa-folder-open" />
+                  </button>
+                  <button class="log-panel-btn" @click="toggleLogDrawer">
+                    <font-awesome-icon icon="fa-solid fa-xmark" />
+                  </button>
+                </div>
               </div>
-              <div class="log-dialog-body-terminal">
+              <div class="log-panel-body">
                 <KernelLogTerminal :visible="showLogDrawer" />
               </div>
-            </div>
-          </div>
-          <!-- still starting hint -->
-          <div v-if="backendStillStarting" class="hint-block">
-            <p class="hint-text">澪的意识核心正在苏醒中...已等待 {{ healthCheckElapsed }} 秒</p>
-            <p class="hint-sub">请查看日志了解进度，澪会持续尝试连接</p>
-            <div class="hint-actions">
-              <button class="btn-cold" @click="restartBackendService">重启服务</button>
-            </div>
-          </div>
-
-          <!-- error -->
-          <div v-else-if="backendError" class="error-block">
-            <p class="error-text">{{ backendError }}</p>
-            <div class="error-actions">
-              <button class="btn-cold btn-ghost-cold" @click="switchMode">
-                {{ currentMode === 'api' ? '切换本地模式' : '切换 API 模式' }}
-              </button>
-              <button class="btn-cold" @click="retryBackend">重试</button>
             </div>
           </div>
         </div>
@@ -377,6 +450,11 @@ const kernelState = ref<KernelUpdateState | null>(null)
 const backendRunning = ref(false)
 const backendPid = ref(-1)
 const backendError = ref('')
+const isKernelMissing = ref(false)
+const isImportingAssets = ref(false)
+const isDataMissing = ref(false)
+const dataError = ref('')
+const isImportingDataAssets = ref(false)
 const backendStillStarting = ref(false) // 健康检查超时但进程仍在运行
 const healthCheckAbort = ref(false) // 取消健康检查轮询
 const healthCheckElapsed = ref(0) // 健康检查已等待秒数
@@ -387,12 +465,48 @@ const logStatusTitle = ref('正在初始化内核...')
 const logStatusSub = ref('正在检查运行环境')
 const logProgressDot = ref(1)
 const kernelProgress = ref(0)
-const isDownloadingModels = ref(false)
-const modelDownloadStage = ref<'idle' | 'embedding' | 'asr' | 'tts' | 'complete'>('idle')
 let logDotTimer: ReturnType<typeof setInterval> | null = null
 let kernelStateUnlisten: (() => void) | null = null
 let serviceStateUnlisten: (() => void) | null = null
 let assistantDownloadResolve: (() => void) | null = null
+
+// ─── 晶体状态机 ─────────────────────────────────────────────────────────
+type ModuleStatus = 'pending' | 'checking' | 'missing' | 'importing' | 'ready'
+const systemStatus = ref<ModuleStatus>('pending')
+const dataStatus = ref<ModuleStatus>('pending')
+
+const systemStatusText = computed(() => {
+  switch (systemStatus.value) {
+    case 'pending': return '等待检测...'
+    case 'checking': return '正在扫描系统组件...'
+    case 'missing': return '需要装载系统核心'
+    case 'importing': return '正在装配系统组件...'
+    case 'ready': return '系统已就绪'
+  }
+})
+
+const dataStatusText = computed(() => {
+  switch (dataStatus.value) {
+    case 'pending': return '等待检测...'
+    case 'checking': return '正在验证数据完整性...'
+    case 'missing': return '需要装载数据核心'
+    case 'importing': return '正在装载数据...'
+    case 'ready': return '数据已就绪'
+  }
+})
+
+const awakenSubtitle = computed(() => {
+  if (systemStatus.value === 'ready' && dataStatus.value === 'ready') {
+    return '所有组件已就绪，正在启动核心...'
+  }
+  if (systemStatus.value === 'ready' && dataStatus.value !== 'pending') {
+    return '系统核心已就绪，等待数据组件...'
+  }
+  if (systemStatus.value === 'ready') {
+    return '系统核心已就绪，正在检测数据组件...'
+  }
+  return '澪的意识核心正在苏醒，请依序装载组件'
+})
 
 // ─── profile ────────────────────────────────────────────────────────────────
 
@@ -521,16 +635,17 @@ async function startSystemWake(): Promise<void> {
 async function ensureKernelReady(): Promise<boolean> {
   currentState.value = 'LOG_STREAM'
   backendError.value = ''
-  startLogDots()
+  isKernelMissing.value = false
+  systemStatus.value = 'checking'
 
-  logStatusTitle.value = '正在检查内核环境...'
-  logStatusSub.value = '扫描运行环境与依赖'
+  logStatusTitle.value = '正在检查环境...'
+  logStatusSub.value = '扫描运行环境与资源'
 
-  // 1. 检查环境
+  // 1. 检查环境（含资源完整性）
   const envResult = await window.api.kernel.checkEnvironment()
   if (!envResult.success) {
     backendError.value = `环境检查失败: ${envResult.error || '未知错误'}`
-    stopLogDots()
+    systemStatus.value = 'missing'
     return false
   }
 
@@ -539,67 +654,65 @@ async function ensureKernelReady(): Promise<boolean> {
   const venvReady = env.items.find((i) => i.key === 'venv')?.passed ?? false
 
   if (!kernelInstalled) {
-    // 2a. 未安装内核 → 下载并安装
-    logStatusTitle.value = '正在获取内核信息...'
-    logStatusSub.value = '从 GitHub 获取最新版本'
+    // 2a. 内核未安装 → 引导用户导入后端资源包
+    backendError.value = '未检测到后端文件，请导入后端资源包。'
+    isKernelMissing.value = true
+    systemStatus.value = 'missing'
+    return false
+  }
 
-    const checkResult = await window.api.kernel.checkUpdate()
-    if (!checkResult.success) {
-      backendError.value = `获取内核版本失败: ${checkResult.error || '未知错误'}`
-      stopLogDots()
-      return false
-    }
-
-    logStatusTitle.value = '正在下载内核源码...'
-    logStatusSub.value = '首次下载约需数分钟，请耐心等待'
-
-    const installResult = await window.api.kernel.updateToLatest()
-    if (!installResult.success) {
-      backendError.value = `内核安装失败: ${(installResult as { error?: string }).error || '未知错误'}`
-      stopLogDots()
-      return false
-    }
-
-    logStatusTitle.value = '内核安装完成'
-    logStatusSub.value = '正在准备下载 AI 模型...'
-    await wait(800)
-  } else if (!venvReady) {
-    // 2b. 内核已安装但 venv 未就绪 → 运行 uv sync
+  if (!venvReady) {
+    // 2b. 内核已安装但 venv 未就绪 → 运行 uv sync（自动使用本地 wheels）
     logStatusTitle.value = '正在安装 Python 依赖...'
-    logStatusSub.value = '首次安装约需下载 5GB，请耐心等待'
+    logStatusSub.value = '首次安装约需数分钟，请耐心等待'
+    systemStatus.value = 'importing'
 
     const setupResult = await window.api.kernel.setupEnvironment()
     if (!setupResult.success) {
       backendError.value = `环境安装失败: ${setupResult.error || '未知错误'}`
-      stopLogDots()
+      systemStatus.value = 'missing'
       return false
     }
 
     logStatusTitle.value = '依赖安装完成'
-    logStatusSub.value = '正在准备下载 AI 模型...'
+    logStatusSub.value = '环境已就绪'
+    systemStatus.value = 'ready'
     await wait(800)
+  } else {
+    systemStatus.value = 'ready'
   }
-
-  // 3. 下载 AI 模型（embedding, ASR 等）
-  isDownloadingModels.value = true
-  stopLogDots()
-  logStatusTitle.value = '正在同步 AI 模型...'
-  logStatusSub.value = '首次下载语音识别与语义模型，预计约需 5 分钟'
-
-  const modelResult = await window.api.kernel.downloadModels()
-  if (!modelResult.success) {
-    isDownloadingModels.value = false
-    backendError.value = `模型下载失败: ${modelResult.error || '未知错误'}`
-    return false
-  }
-
-  isDownloadingModels.value = false
-  modelDownloadStage.value = 'complete'
-  logStatusTitle.value = '模型同步完成'
-  logStatusSub.value = '内核环境已就绪'
 
   await wait(600)
   return true
+}
+
+/**
+ * 检查数据资源完整性（模型文件 + 角色数据）
+ * 返回 true 表示数据资源已就绪
+ */
+async function ensureDataReady(): Promise<boolean> {
+  isDataMissing.value = false
+  dataError.value = ''
+  dataStatus.value = 'checking'
+
+  logStatusTitle.value = '正在检查数据资源...'
+  logStatusSub.value = '验证模型与角色数据完整性'
+
+  const result = await window.api.kernel.checkDataResources()
+  if (result.success && result.data?.ready) {
+    logStatusTitle.value = '数据资源完整'
+    logStatusSub.value = '模型与角色数据已就绪'
+    dataStatus.value = 'ready'
+    await wait(500)
+    return true
+  }
+
+  dataError.value = '数据资源不完整，请导入数据资源包。'
+  isDataMissing.value = true
+  dataStatus.value = 'missing'
+  logStatusTitle.value = '数据资源不完整'
+  logStatusSub.value = '需要导入数据资源包'
+  return false
 }
 
 // ─── backend: start service & health check ──────────────────────────────────
@@ -711,6 +824,79 @@ async function restartBackendService(): Promise<void> {
   await advanceAfterAssistantLoaded()
 }
 
+async function handleImportAssets(): Promise<void> {
+  isImportingAssets.value = true
+  systemStatus.value = 'importing'
+  try {
+    const result = await window.api.kernel.importAssets()
+    if (result.success) {
+      backendError.value = ''
+      isKernelMissing.value = false
+      // 导入后端资源包后重新检查环境
+      const kernelReady = await ensureKernelReady()
+      if (!kernelReady) return
+
+      // 检查数据资源
+      const dataReady = await ensureDataReady()
+      if (!dataReady) return
+
+      const backendOk = await startBackendService()
+      if (!backendOk) return
+
+      currentMode.value = 'local'
+      await window.api.onboarding.setMode('local')
+      await loadAssistant()
+      await advanceAfterAssistantLoaded()
+    } else {
+      // 用户取消或导入失败，回到缺失状态
+      systemStatus.value = 'missing'
+      if (result.error !== '用户取消了选择') {
+        backendError.value = `后端资源包导入失败: ${result.error || '未知错误'}`
+      }
+    }
+  } catch (e) {
+    backendError.value = `后端资源包导入异常: ${(e as Error).message}`
+    systemStatus.value = 'missing'
+  } finally {
+    isImportingAssets.value = false
+  }
+}
+
+async function handleImportDataAssets(): Promise<void> {
+  isImportingDataAssets.value = true
+  dataStatus.value = 'importing'
+  try {
+    const result = await window.api.kernel.importDataAssets()
+    if (result.success) {
+      isDataMissing.value = false
+      dataError.value = ''
+      // 导入数据资源包后重新检查数据完整性
+      const dataReady = await ensureDataReady()
+      if (!dataReady) return
+
+      // 继续启动后端
+      const backendOk = await startBackendService()
+      if (!backendOk) return
+
+      currentMode.value = 'local'
+      await window.api.onboarding.setMode('local')
+      await loadAssistant()
+      await advanceAfterAssistantLoaded()
+    } else {
+      // 用户取消或导入失败，回到缺失状态
+      dataStatus.value = 'missing'
+      if (result.error !== '用户取消了选择') {
+        dataError.value = `数据资源包导入失败: ${result.error || '未知错误'}`
+      }
+    }
+  } catch (e) {
+    dataError.value = `数据资源包导入异常: ${(e as Error).message}`
+    dataStatus.value = 'missing'
+  } finally {
+    isImportingDataAssets.value = false
+  }
+}
+
 async function retryBackend(): Promise<void> {
   if (currentMode.value === 'api') {
     const ok = await connectApiMode()
@@ -719,13 +905,21 @@ async function retryBackend(): Promise<void> {
       await advanceAfterAssistantLoaded()
     }
   } else {
-    // 重试完整流程：检查内核环境 → 安装依赖 → 下载模型 → 启动后端服务
+    // 重试完整流程：检查内核环境 → 数据资源 → 启动后端服务
     backendError.value = ''
+    isKernelMissing.value = false
+    isDataMissing.value = false
+    dataError.value = ''
     backendStillStarting.value = false
+    systemStatus.value = 'pending'
+    dataStatus.value = 'pending'
     currentState.value = 'LOG_STREAM'
 
     const kernelReady = await ensureKernelReady()
     if (!kernelReady) return
+
+    const dataReady = await ensureDataReady()
+    if (!dataReady) return
 
     const backendOk = await startBackendService()
     if (!backendOk) return
@@ -742,6 +936,7 @@ async function switchMode(): Promise<void> {
     currentMode.value = 'api'
     currentState.value = 'LOG_STREAM'
     backendError.value = ''
+    isKernelMissing.value = false
     backendStillStarting.value = false
     apiAddress.value = configStore.config.baseUrl || 'http://127.0.0.1:8001'
     logStatusTitle.value = 'API 模式'
@@ -756,11 +951,19 @@ async function switchMode(): Promise<void> {
     currentMode.value = 'local'
     currentState.value = 'LOG_STREAM'
     backendError.value = ''
+    isKernelMissing.value = false
+    isDataMissing.value = false
+    dataError.value = ''
     backendStillStarting.value = false
+    systemStatus.value = 'pending'
+    dataStatus.value = 'pending'
     await window.api.onboarding.setMode('local')
 
     const kernelReady = await ensureKernelReady()
     if (!kernelReady) return
+
+    const dataReady = await ensureDataReady()
+    if (!dataReady) return
 
     const ok = await startBackendService()
     if (ok) {
@@ -916,7 +1119,8 @@ async function submitModelConfig(): Promise<void> {
     modelConfigError.value = ''
 
     try {
-      await request.post('/api/llm_chat',
+      await request.post(
+        '/api/llm_chat',
         { msg: [{ role: 'user', content: 'hi' }] },
         { timeout: 30000 }
       )
@@ -989,27 +1193,6 @@ function syncSparkleStyle(i: number): Record<string, string> {
   }
 }
 
-// ─── model download card helpers ─────────────────────────────────────────
-
-function modelCardClass(stage: 'embedding' | 'asr' | 'tts'): string {
-  const current = modelDownloadStage.value
-  const order = { idle: 0, embedding: 1, asr: 2, tts: 3, complete: 4 }
-  const stageOrder = { embedding: 1, asr: 2, tts: 3 }
-  const stageIdx = stageOrder[stage]
-  const currentIdx = order[current]
-
-  if (currentIdx > stageIdx) return 'done'
-  if (currentIdx === stageIdx) return 'active'
-  return 'pending'
-}
-
-function modelCardIcon(stage: 'embedding' | 'asr' | 'tts'): string {
-  const cls = modelCardClass(stage)
-  if (cls === 'done') return '✓'
-  if (cls === 'active') return '◈'
-  return '○'
-}
-
 // ─── CONTRACT ───────────────────────────────────────────────────────────────
 
 async function startContract(): Promise<void> {
@@ -1031,9 +1214,7 @@ async function acceptContract(): Promise<void> {
 
 // ─── IPC listeners ──────────────────────────────────────────────────────────
 
-function onAssistantDownloadProgress(
-  payload: unknown
-): void {
+function onAssistantDownloadProgress(payload: unknown): void {
   const progressData = payload as { status: string; assistantName?: string; progress?: number }
   if (progressData.status === 'completed' || progressData.status === 'idle') {
     assistantProgress.value = 100
@@ -1050,28 +1231,9 @@ function onKernelStateUpdate(state: KernelUpdateState): void {
   kernelState.value = state
   kernelProgress.value = state.progress
 
-  // 根据操作状态更新 LOG_STREAM 显示
   if (state.operationStatus !== 'idle' && state.operationStatus !== 'done') {
-    // 如果是模型下载阶段，使用优雅的状态文本而非原始日志
-    if (isDownloadingModels.value) {
-      const rawText = state.statusText || ''
-      // 根据 stdout 内容推断当前下载的模型类型
-      if (rawText.includes('embedding') || rawText.includes('sentence')) {
-        modelDownloadStage.value = 'embedding'
-      } else if (
-        rawText.includes('asr') ||
-        rawText.includes('whisper') ||
-        rawText.includes('speech')
-      ) {
-        modelDownloadStage.value = 'asr'
-      } else if (rawText.includes('tts') || rawText.includes('vits') || rawText.includes('bert')) {
-        modelDownloadStage.value = 'tts'
-      }
-      // 不更新 logStatusTitle/Sub，保持优雅的阶段标题
-    } else {
-      logStatusTitle.value = state.statusText || logStatusTitle.value
-      logStatusSub.value = state.progress > 0 ? `进度: ${state.progress}%` : '请稍候...'
-    }
+    logStatusTitle.value = state.statusText || logStatusTitle.value
+    logStatusSub.value = state.progress > 0 ? `进度: ${state.progress}%` : '请稍候...'
   }
 }
 
@@ -1089,14 +1251,18 @@ async function runFlow(): Promise<void> {
   // 2. SYSTEM_WAKE
   await startSystemWake()
 
-  // 3. LOG_STREAM → ensure kernel ready (install/setup/models if needed)
+  // 3. LOG_STREAM → ensure kernel ready (install/setup if needed)
   currentMode.value = 'local'
   await window.api.onboarding.setMode('local')
 
   const kernelReady = await ensureKernelReady()
   if (!kernelReady) return // stay in LOG_STREAM showing error
 
-  // 4. LOG_STREAM → start backend service & wait for health
+  // 4. LOG_STREAM → check data resources (models + agents)
+  const dataReady = await ensureDataReady()
+  if (!dataReady) return // stay in LOG_STREAM showing data error
+
+  // 5. LOG_STREAM → start backend service & wait for health
   const backendOk = await startBackendService()
   if (!backendOk) return // stay in LOG_STREAM showing error
 
@@ -2159,6 +2325,805 @@ onUnmounted(() => {
     opacity: 0;
     filter: blur(16px);
     transform: scale(1.03);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   意识唤醒协议 - 晶体装配界面
+   设计理念：将系统/数据装载抽象为"晶体唤醒"，融入苏醒仪式感
+   主题色：#fb7299（粉樱）+ 白色
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ─── 屏幕容器 ───────────────────────────────────────────────────────── */
+
+.awaken-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  overflow: hidden;
+  background: radial-gradient(ellipse at 50% 30%, rgba(251, 114, 153, 0.06) 0%, transparent 60%),
+    linear-gradient(180deg, #fff5f7 0%, #fff 50%, #fef0f5 100%);
+}
+
+/* ─── 背景辉光 ───────────────────────────────────────────────────────── */
+
+.awaken-glow {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(ellipse at 50% 30%, transparent 0%, transparent 100%);
+  transition: background 1.2s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.awaken-glow.glow-system {
+  background: radial-gradient(ellipse at 40% 50%, rgba(251, 114, 153, 0.10) 0%, transparent 55%);
+}
+
+.awaken-glow.glow-data {
+  background: radial-gradient(ellipse at 60% 50%, rgba(251, 114, 153, 0.10) 0%, transparent 55%);
+}
+
+.awaken-glow.glow-all {
+  background: radial-gradient(ellipse at 50% 50%, rgba(251, 114, 153, 0.15) 0%, rgba(249, 90, 138, 0.08) 35%, transparent 60%);
+}
+
+/* ─── 核心唤醒指示器 ──────────────────────────────────────────────────── */
+
+.awaken-core {
+  position: relative;
+  width: 72px;
+  height: 72px;
+  margin-bottom: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.core-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid rgba(251, 114, 153, 0.20);
+  animation: coreRingIdle 3s ease-in-out infinite;
+}
+
+.core-ring.is-pulsing {
+  border-color: rgba(251, 114, 153, 0.45);
+  animation: coreRingPulse 1.2s ease-out infinite;
+}
+
+.core-ring.is-steady {
+  border-color: rgba(251, 114, 153, 0.50);
+  animation: coreRingSteady 2s ease-in-out infinite;
+  box-shadow:
+    0 0 20px rgba(251, 114, 153, 0.15),
+    inset 0 0 20px rgba(251, 114, 153, 0.08);
+}
+
+.core-ring-inner {
+  position: absolute;
+  inset: 6px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(251, 114, 153, 0.12);
+}
+
+.core-ring.is-pulsing .core-ring-inner {
+  animation: coreRingPulse 1.2s ease-out infinite 0.3s;
+}
+
+.core-star {
+  font-size: 22px;
+  color: #fb7299;
+  text-shadow: 0 0 16px rgba(251, 114, 153, 0.40);
+  animation: starFloat 2.5s ease-in-out infinite;
+}
+
+/* ─── 标题区 ──────────────────────────────────────────────────────────── */
+
+.awaken-header {
+  text-align: center;
+  margin-bottom: 28px;
+}
+
+.awaken-title {
+  margin: 0;
+  font-family: 'LoliFont', 'Microsoft YaHei', sans-serif;
+  font-size: clamp(1.2rem, 2.2vw, 1.6rem);
+  font-weight: 700;
+  color: #7d2444;
+  letter-spacing: 0.15em;
+}
+
+.awaken-sub {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: rgba(160, 100, 120, 0.65);
+  letter-spacing: 0.04em;
+  animation: textFade 0.6s ease;
+}
+
+/* ─── 晶体装配面板 ────────────────────────────────────────────────────── */
+
+.crystal-panel {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  width: min(620px, 88vw);
+}
+
+/* ─── 单个晶体卡 ──────────────────────────────────────────────────────── */
+
+.crystal-card {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  border-radius: 20px;
+  padding: 22px 18px 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  transition:
+    background 0.8s ease,
+    border-color 0.8s ease,
+    box-shadow 0.8s ease,
+    transform 0.4s ease;
+  overflow: hidden;
+}
+
+.crystal-card-bg {
+  position: absolute;
+  inset: 0;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.70);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(251, 114, 153, 0.10);
+  transition:
+    background 0.8s ease,
+    border-color 0.8s ease;
+  z-index: 0;
+}
+
+.crystal-card-glow {
+  position: absolute;
+  inset: -2px;
+  border-radius: 22px;
+  opacity: 0;
+  transition: opacity 0.8s ease;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.crystal-card-content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+}
+
+/* ─── 晶体图标 ──────────────────────────────────────────────────────── */
+
+.crystal-card-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  margin-bottom: 10px;
+  background: rgba(251, 114, 153, 0.08);
+  color: #fb7299;
+  transition:
+    background 0.6s ease,
+    color 0.6s ease,
+    box-shadow 0.6s ease;
+}
+
+/* ─── 晶体标题与状态 ────────────────────────────────────────────────── */
+
+.crystal-card-title {
+  margin: 0 0 4px;
+  font-family: 'LoliFont', 'Microsoft YaHei', sans-serif;
+  font-size: 15px;
+  font-weight: 600;
+  color: #6f2c48;
+  letter-spacing: 0.06em;
+}
+
+.crystal-card-status {
+  margin: 0;
+  font-size: 12px;
+  color: rgba(160, 100, 120, 0.55);
+  letter-spacing: 0.03em;
+  min-height: 1.2em;
+  transition: color 0.4s ease;
+}
+
+/* ─── 各状态样式 ────────────────────────────────────────────────────── */
+
+/* pending - 暗淡等待 */
+.crystal-card.crystal--pending .crystal-card-bg {
+  background: rgba(255, 255, 255, 0.45);
+}
+
+.crystal-card.crystal--pending .crystal-card-icon {
+  background: rgba(180, 140, 150, 0.10);
+  color: rgba(180, 140, 150, 0.40);
+}
+
+.crystal-card.crystal--pending .crystal-card-title {
+  color: rgba(140, 100, 115, 0.50);
+}
+
+.crystal-card.crystal--pending .crystal-card-status {
+  color: rgba(140, 100, 115, 0.30);
+}
+
+/* checking - 脉冲扫描 */
+.crystal-card.crystal--checking .crystal-card-glow {
+  opacity: 1;
+  background: radial-gradient(ellipse at 50% 50%, rgba(251, 114, 153, 0.06) 0%, transparent 70%);
+  animation: glowPulse 1.6s ease-in-out infinite;
+}
+
+.crystal-card.crystal--checking .crystal-card-icon {
+  animation: iconScan 1.6s ease-in-out infinite;
+}
+
+/* missing - 需要导入 */
+.crystal-card.crystal--missing .crystal-card-bg {
+  background: rgba(255, 248, 245, 0.85);
+  border-color: rgba(243, 168, 120, 0.25);
+}
+
+.crystal-card.crystal--missing .crystal-card-glow {
+  opacity: 1;
+  background: radial-gradient(ellipse at 50% 50%, rgba(243, 168, 120, 0.08) 0%, transparent 70%);
+  animation: glowPulse 2s ease-in-out infinite;
+}
+
+.crystal-card.crystal--missing .crystal-card-icon {
+  background: rgba(243, 168, 120, 0.12);
+  color: #d4945a;
+}
+
+.crystal-card.crystal--missing .crystal-card-title {
+  color: #7d5538;
+}
+
+.crystal-card.crystal--missing .crystal-card-status {
+  color: rgba(200, 140, 80, 0.60);
+}
+
+/* importing - 正在装载 */
+.crystal-card.crystal--importing .crystal-card-bg {
+  background: rgba(255, 255, 255, 0.85);
+  border-color: rgba(251, 114, 153, 0.25);
+}
+
+.crystal-card.crystal--importing .crystal-card-glow {
+  opacity: 1;
+  background: radial-gradient(ellipse at 50% 50%, rgba(251, 114, 153, 0.10) 0%, transparent 65%);
+  animation: glowPulse 1s ease-in-out infinite;
+}
+
+.crystal-card.crystal--importing .crystal-card-icon {
+  background: rgba(251, 114, 153, 0.15);
+  color: #fb7299;
+  box-shadow: 0 0 16px rgba(251, 114, 153, 0.15);
+  animation: iconActive 1.2s ease-in-out infinite;
+}
+
+/* ready - 已就绪 */
+.crystal-card.crystal--ready .crystal-card-bg {
+  background: rgba(255, 255, 255, 0.90);
+  border-color: rgba(251, 114, 153, 0.20);
+}
+
+.crystal-card.crystal--ready .crystal-card-glow {
+  opacity: 1;
+  background: radial-gradient(ellipse at 50% 50%, rgba(251, 114, 153, 0.12) 0%, rgba(249, 90, 138, 0.06) 40%, transparent 70%);
+}
+
+.crystal-card.crystal--ready .crystal-card-icon {
+  background: rgba(251, 114, 153, 0.15);
+  color: #fb7299;
+  box-shadow: 0 0 20px rgba(251, 114, 153, 0.12);
+}
+
+.crystal-card.crystal--ready .crystal-card-title {
+  color: #7d2444;
+}
+
+.crystal-card.crystal--ready .crystal-card-status {
+  color: rgba(80, 170, 110, 0.65);
+}
+
+/* ─── 进度条 ────────────────────────────────────────────────────────── */
+
+.crystal-progress-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  margin-top: 12px;
+}
+
+.crystal-progress-bar {
+  flex: 1;
+  height: 4px;
+  border-radius: 4px;
+  background: rgba(251, 114, 153, 0.10);
+  overflow: hidden;
+}
+
+.crystal-progress-fill {
+  height: 100%;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #fb7299, #f95a8a);
+  transition: width 0.4s ease;
+  box-shadow: 0 0 8px rgba(251, 114, 153, 0.35);
+}
+
+.crystal-progress-pct {
+  font-family: 'Consolas', monospace;
+  font-size: 11px;
+  color: #c2516b;
+  min-width: 32px;
+  text-align: right;
+}
+
+/* ─── 操作按钮 ──────────────────────────────────────────────────────── */
+
+.crystal-btn {
+  position: relative;
+  margin-top: 14px;
+  border: none;
+  border-radius: 14px;
+  padding: 9px 22px;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  color: #fff;
+  background: linear-gradient(135deg, #fb7299, #f95a8a);
+  cursor: pointer;
+  letter-spacing: 0.06em;
+  overflow: hidden;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    opacity 0.2s ease;
+  box-shadow:
+    0 4px 16px rgba(251, 114, 153, 0.25),
+    0 0 0 1px rgba(255, 255, 255, 0.20) inset;
+}
+
+.crystal-btn:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    0 6px 24px rgba(251, 114, 153, 0.35),
+    0 0 0 1px rgba(255, 255, 255, 0.25) inset;
+}
+
+.crystal-btn:active {
+  transform: translateY(0);
+}
+
+.crystal-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.crystal-btn-glow {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, transparent 30%, rgba(255, 255, 255, 0.15) 50%, transparent 70%);
+  animation: btnShimmer 2.5s ease-in-out infinite;
+}
+
+/* ─── 就绪徽章 ──────────────────────────────────────────────────────── */
+
+.crystal-card-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+  font-size: 13px;
+  color: rgba(80, 170, 110, 0.80);
+  letter-spacing: 0.06em;
+  animation: badgeAppear 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.badge-icon {
+  font-size: 14px;
+  animation: badgeSparkle 1.5s ease-in-out infinite;
+}
+
+/* ─── 晶体分割器 ────────────────────────────────────────────────────── */
+
+.crystal-divider {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  flex-shrink: 0;
+  gap: 4px;
+}
+
+.divider-line {
+  width: 1px;
+  flex: 1;
+  min-height: 20px;
+  background: linear-gradient(180deg, rgba(251, 114, 153, 0.08), rgba(251, 114, 153, 0.15), rgba(251, 114, 153, 0.08));
+  transition: background 0.8s ease;
+}
+
+.crystal-divider.linked .divider-line {
+  background: linear-gradient(180deg, rgba(251, 114, 153, 0.25), rgba(251, 114, 153, 0.40), rgba(251, 114, 153, 0.25));
+}
+
+.divider-orb {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: rgba(251, 114, 153, 0.15);
+  transition:
+    background 0.6s ease,
+    box-shadow 0.6s ease;
+}
+
+.crystal-divider.linked .divider-orb {
+  background: #fb7299;
+  box-shadow: 0 0 10px rgba(251, 114, 153, 0.40);
+  animation: orbPulse 1.5s ease-in-out infinite;
+}
+
+/* ─── 等待提示 ────────────────────────────────────────────────────────── */
+
+.awaken-notice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 20px;
+  padding: 8px 16px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.65);
+  border: 1px solid rgba(251, 114, 153, 0.08);
+  font-size: 12px;
+  color: rgba(160, 100, 120, 0.65);
+  animation: textFade 0.5s ease;
+}
+
+.awaken-notice.is-error {
+  border-color: rgba(230, 100, 100, 0.20);
+  background: rgba(255, 245, 245, 0.70);
+  color: rgba(200, 80, 80, 0.75);
+}
+
+.notice-dots {
+  display: flex;
+  gap: 4px;
+}
+
+.notice-dots span {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #fb7299;
+  animation: dotBounce 1.2s ease-in-out infinite;
+}
+
+.notice-dots span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.notice-dots span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+.notice-btn {
+  margin-left: auto;
+  border: 1px solid rgba(251, 114, 153, 0.20);
+  border-radius: 10px;
+  padding: 4px 12px;
+  background: rgba(255, 255, 255, 0.70);
+  color: #b05473;
+  font-size: 11px;
+  cursor: pointer;
+  font-family: inherit;
+  transition:
+    border-color 0.2s,
+    background 0.2s;
+}
+
+.notice-btn:hover {
+  border-color: rgba(251, 114, 153, 0.40);
+  background: rgba(255, 255, 255, 0.85);
+}
+
+/* ─── 底部工具栏 ──────────────────────────────────────────────────────── */
+
+.awaken-toolbar {
+  position: absolute;
+  bottom: 22px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 8px;
+}
+
+.tool-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid rgba(251, 114, 153, 0.12);
+  border-radius: 12px;
+  padding: 6px 14px;
+  background: rgba(255, 255, 255, 0.55);
+  color: rgba(180, 100, 120, 0.55);
+  font-size: 11px;
+  cursor: pointer;
+  font-family: inherit;
+  letter-spacing: 0.03em;
+  backdrop-filter: blur(4px);
+  transition:
+    background 0.25s ease,
+    border-color 0.25s ease,
+    color 0.25s ease,
+    transform 0.15s ease;
+}
+
+.tool-btn:hover {
+  background: rgba(255, 255, 255, 0.80);
+  border-color: rgba(251, 114, 153, 0.25);
+  color: #b05473;
+  transform: translateY(-1px);
+}
+
+.tool-btn:active {
+  transform: translateY(0);
+}
+
+.tool-btn svg {
+  font-size: 12px;
+}
+
+/* ─── 日志面板 ──────────────────────────────────────────────────────────── */
+
+.log-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 245, 247, 0.50);
+  backdrop-filter: blur(3px);
+  z-index: 20;
+  animation: logFadeIn 0.3s ease;
+}
+
+.log-panel {
+  width: min(660px, 90vw);
+  max-height: min(55vh, 440px);
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(251, 114, 153, 0.15);
+  border-radius: 20px;
+  box-shadow:
+    0 16px 48px rgba(180, 60, 90, 0.12),
+    0 0 0 1px rgba(255, 255, 255, 0.30) inset;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.log-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 18px;
+  font-size: 12px;
+  color: #b05473;
+  background: rgba(255, 255, 255, 0.60);
+  border-bottom: 1px solid rgba(251, 114, 153, 0.08);
+  letter-spacing: 0.06em;
+}
+
+.log-panel-sub {
+  color: rgba(176, 84, 115, 0.50);
+  font-size: 11px;
+  margin-right: auto;
+}
+
+.log-panel-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.log-panel-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 8px;
+  background: rgba(251, 114, 153, 0.06);
+  color: #b05473;
+  cursor: pointer;
+  font-size: 12px;
+  transition:
+    background 0.2s,
+    color 0.2s,
+    transform 0.15s;
+}
+
+.log-panel-btn:hover {
+  background: rgba(251, 114, 153, 0.15);
+  color: #fb7299;
+  transform: scale(1.08);
+}
+
+.log-panel-body {
+  flex: 1;
+  overflow: hidden;
+  min-height: 240px;
+  border-radius: 0 0 16px 16px;
+}
+
+/* ─── 关键帧动画 ────────────────────────────────────────────────────── */
+
+@keyframes coreRingIdle {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.4;
+  }
+  50% {
+    transform: scale(1.04);
+    opacity: 0.7;
+  }
+}
+
+@keyframes coreRingPulse {
+  0% {
+    transform: scale(0.95);
+    opacity: 0.3;
+  }
+  50% {
+    transform: scale(1.06);
+    opacity: 0.8;
+  }
+  100% {
+    transform: scale(0.95);
+    opacity: 0.3;
+  }
+}
+
+@keyframes coreRingSteady {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.5;
+  }
+  50% {
+    transform: scale(1.03);
+    opacity: 0.8;
+  }
+}
+
+@keyframes starFloat {
+  0%, 100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-4px) rotate(10deg);
+  }
+}
+
+@keyframes glowPulse {
+  0%, 100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes iconScan {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.7;
+  }
+  50% {
+    transform: scale(1.06);
+    opacity: 1;
+  }
+}
+
+@keyframes iconActive {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-3px);
+  }
+}
+
+@keyframes btnShimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes badgeAppear {
+  0% {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes badgeSparkle {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1) rotate(0deg);
+  }
+  50% {
+    opacity: 0.7;
+    transform: scale(1.2) rotate(20deg);
+  }
+}
+
+@keyframes orbPulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.6;
+  }
+  50% {
+    transform: scale(1.5);
+    opacity: 1;
+  }
+}
+
+@keyframes dotBounce {
+  0%, 100% {
+    transform: translateY(0);
+    opacity: 0.3;
+  }
+  50% {
+    transform: translateY(-6px);
+    opacity: 1;
+  }
+}
+
+@keyframes textFade {
+  0% {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes logFadeIn {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
   }
 }
 </style>

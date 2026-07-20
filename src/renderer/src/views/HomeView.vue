@@ -557,7 +557,7 @@ const coreStateClass = computed(() => {
   if (s === 'error') return 'core-error'
   if (isServiceStarting.value) return 'core-evolving'
   if (isBackendLoading.value) return 'core-evolving'
-  if (isOperating.value || isUpdating.value) return 'core-evolving'
+  if (isOperating.value) return 'core-evolving'
   if (isServiceDown.value) return 'core-dormant'
   // 完成状态保持宁静状态样式
   if (kernelState.value.updateAvailable) return 'core-awakening'
@@ -590,9 +590,9 @@ const statusText = computed(() => {
   // 后端进程已运行但健康检查尚未通过（数据加载中）
   if (isBackendLoading.value) return '苏醒中...'
   const s = kernelState.value.operationStatus
-  if (isOperating.value || isUpdating.value) {
+  if (isOperating.value) {
     const map: Record<string, string> = {
-      idle: '更新中...',
+      idle: '运行中...',
       checking: '感知中',
       downloading: '下载中',
       installing: '安装中',
@@ -601,7 +601,7 @@ const statusText = computed(() => {
       done: '完成',
       error: '错误！'
     }
-    return map[s] || kernelState.value.statusText || '更新中...'
+    return map[s] || kernelState.value.statusText || '运行中...'
   }
   if (isServiceDown.value) return '沉眠中'
   const map: Record<string, string> = {
@@ -624,7 +624,7 @@ const statusClass = computed(() => {
   // 本地模式下的状态样式
   if (isServiceStarting.value) return 'status-evolving'
   if (isBackendLoading.value) return 'status-evolving'
-  if (isOperating.value || isUpdating.value) {
+  if (isOperating.value) {
     const s = kernelState.value.operationStatus
     if (s === 'error') return 'status-error'
     return 'status-evolving'
@@ -649,8 +649,7 @@ const heartColorPrimary = computed(() => {
   // 本地模式下的颜色
   const s = kernelState.value.operationStatus
   if (s === 'error') return '#f0a0a8'
-  if (isServiceStarting.value || isBackendLoading.value || isOperating.value || isUpdating.value)
-    return '#c8a0e0'
+  if (isServiceStarting.value || isBackendLoading.value || isOperating.value) return '#c8a0e0'
   if (isServiceDown.value) return '#c8bdd8'
   // 完成状态使用默认颜色
   if (kernelState.value.updateAvailable) return '#f59e8b'
@@ -669,8 +668,7 @@ const heartColorSecondary = computed(() => {
   // 本地模式下的颜色
   const s = kernelState.value.operationStatus
   if (s === 'error') return '#fad0d5'
-  if (isServiceStarting.value || isBackendLoading.value || isOperating.value || isUpdating.value)
-    return '#e0c8f5'
+  if (isServiceStarting.value || isBackendLoading.value || isOperating.value) return '#e0c8f5'
   if (isServiceDown.value) return '#e0d8f0'
   // 完成状态使用默认颜色
   if (kernelState.value.updateAvailable) return '#fcc8b5'
@@ -727,7 +725,6 @@ async function handleCheckUpdate(): Promise<void> {
 async function handleUpdateToLatest(): Promise<void> {
   isUpdating.value = true
   try {
-    // 1. 停止后端服务，避免文件锁定导致更新失败
     if (backendService.value.running) {
       notificationService.info({
         title: '内核更新',
@@ -740,7 +737,6 @@ async function handleUpdateToLatest(): Promise<void> {
       }
     }
 
-    // 2. 下载并安装内核更新（主进程执行完整流程：下载→解压→安装依赖）
     notificationService.info({
       title: '内核更新',
       message: '开始下载并安装内核更新...',
@@ -758,7 +754,6 @@ async function handleUpdateToLatest(): Promise<void> {
       return
     }
 
-    // 3. 重启后端服务，使用新内核
     notificationService.info({
       title: '内核更新',
       message: '正在重启后端服务...',
@@ -775,7 +770,6 @@ async function handleUpdateToLatest(): Promise<void> {
       })
     }
 
-    // 4. 重置内核状态到默认状态（idle）
     await window.api.kernel.resetState()
 
     notificationService.success({
@@ -784,7 +778,6 @@ async function handleUpdateToLatest(): Promise<void> {
       key: 'kernel-update'
     })
 
-    // 等待后端服务稳定后检查状态
     setTimeout(() => {
       void checkBackendStatus()
     }, 3000)

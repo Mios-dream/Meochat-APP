@@ -6,9 +6,6 @@ import { ipc } from './ipc'
 
 export const kernelApi: KernelApi = {
   getState: () => ipcRenderer.invoke(CHANNELS.KERNEL_GET_STATE),
-  getCurrentVersion: () => ipcRenderer.invoke(CHANNELS.KERNEL_GET_CURRENT_VERSION),
-  getActivePath: () => ipcRenderer.invoke(CHANNELS.KERNEL_GET_ACTIVE_PATH),
-  getPythonConfig: () => ipcRenderer.invoke(CHANNELS.KERNEL_GET_PYTHON_CONFIG),
   checkUpdate: () => ipcRenderer.invoke(CHANNELS.KERNEL_CHECK_UPDATE),
   updateToLatest: () => ipcRenderer.invoke(CHANNELS.KERNEL_UPDATE_TO_LATEST),
   onStateUpdate: (callback: (state: KernelUpdateState) => void) =>
@@ -16,7 +13,6 @@ export const kernelApi: KernelApi = {
   resetState: () => ipcRenderer.invoke(CHANNELS.KERNEL_RESET_STATE),
   checkEnvironment: () => ipcRenderer.invoke(CHANNELS.KERNEL_CHECK_ENVIRONMENT),
   setupEnvironment: () => ipcRenderer.invoke(CHANNELS.KERNEL_SETUP_ENVIRONMENT),
-  downloadModels: () => ipcRenderer.invoke(CHANNELS.KERNEL_DOWNLOAD_MODELS),
   startBackend: () => ipcRenderer.invoke(CHANNELS.KERNEL_START_BACKEND),
   stopBackend: () => ipcRenderer.invoke(CHANNELS.KERNEL_STOP_BACKEND),
   restartBackend: () => ipcRenderer.invoke(CHANNELS.KERNEL_RESTART_BACKEND),
@@ -29,5 +25,9 @@ export const kernelApi: KernelApi = {
   onServiceStream: (callback: (data: ArrayBuffer) => void) =>
     ipc.on(CHANNELS.KERNEL_SERVICE_STREAM_EVENT, callback),
   openLogDir: () => ipcRenderer.invoke(CHANNELS.KERNEL_OPEN_LOG_DIR),
-  checkApiHealth: () => ipcRenderer.invoke(CHANNELS.KERNEL_CHECK_API_HEALTH)
+  checkApiHealth: () => ipcRenderer.invoke(CHANNELS.KERNEL_CHECK_API_HEALTH),
+  importAssets: () => ipcRenderer.invoke(CHANNELS.KERNEL_IMPORT_ASSETS),
+  checkResources: () => ipcRenderer.invoke(CHANNELS.KERNEL_CHECK_RESOURCES),
+  checkDataResources: () => ipcRenderer.invoke(CHANNELS.KERNEL_CHECK_DATA_RESOURCES),
+  importDataAssets: () => ipcRenderer.invoke(CHANNELS.KERNEL_IMPORT_DATA_ASSETS)
 }

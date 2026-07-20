@@ -1,6 +1,7 @@
 import { app, BrowserWindow } from 'electron'
-import { spawn, exec, ChildProcessWithoutNullStreams } from 'child_process'
+import { exec } from 'child_process'
 import { promisify } from 'util'
+import pty from 'node-pty'
 import fs from 'fs'
 import path from 'path'
 import axios from 'axios'
@@ -8,8 +9,13 @@ import StreamZip from 'node-stream-zip'
 import log from '../utils/logger'
 import type { KernelRemoteVersion, KernelUpdateState } from '@shared/types/kernel'
 import { resolveAppDataDir, resolveLogDir } from '../utils/pathResolve'
-import type { EnvironmentCheckResult, EnvironmentCheckItem } from '@shared/types/kernel'
+import type {
+  EnvironmentCheckResult,
+  EnvironmentCheckItem,
+  DataResourceCheckResult
+} from '@shared/types/kernel'
 import { decodeBuffer } from '../utils/buffer'
+import { detectZipNameEncoding } from '../utils/zipUtils'
 
 const execAsync = promisify(exec)
 
@@ -24,11 +30,8 @@ const SERVICE_STREAM_CHANNEL = 'kernel:service-stream'
 
 /**
  * 升级时需要保留的用户数据目录，这些目录不会被新版本覆盖。
- * 后端会将虚拟环境、数据、配置文件都保存在内核目录中，
- * 因此升级时必须保留这些目录以避免数据丢失。
  */
 const PRESERVED_DATA_DIRS = ['data', '.venv']
-// 需要保留的文件
 const PRESERVED_DATA_FILES = ['config.yaml']
 
 /** 向所有窗口广播原始数据流 */
@@ -192,54 +195,66 @@ class KernelManager {
   }
 
   /**
-   * 检查内核运行环境（内嵌运行时、venv、磁盘空间等）
+   * 检查内核运行环境（资源完整性、运行时、venv、磁盘空间）
    * 使用内嵌便携 Python + uv，不再依赖系统级 uv 安装
    */
   async checkEnvironment(): Promise<EnvironmentCheckResult> {
     const items: EnvironmentCheckItem[] = []
 
-    // 1. 检查内嵌 Python 运行时完整性（替代系统 uv 检查）
-    const runtimeOk = fs.existsSync(this.portableUvExe)
+    let runtimeOk = false
+    let venvReady = false
+    let kernelOk = false
+    let modelOk = false
+    // 1. 检查内嵌 Python 运行时完整性
+    runtimeOk = fs.existsSync(this.portableUvExe)
     items.push({
-      name: '内嵌 Python 运行时',
+      name: '内嵌 uv 管理器',
       passed: runtimeOk,
-      message: runtimeOk ? `就绪 (${this.portableRuntimeDir})` : '内嵌运行时损坏，请重新安装应用',
-      key: 'runtime'
+      message: runtimeOk ? `就绪 (${this.portableRuntimeDir})` : '内嵌管理器损坏，请重新安装应用',
+      key: 'uv'
     })
-
-    // 2. 检查内核是否已安装
-    const kernelPath = await this.getActiveKernelPath()
-    const kernelInstalled = kernelPath !== null
+    // 2. 检查 内核源码完整性（pyproject.toml 存在）
+    if (fs.existsSync(this.kernelDir)) {
+      kernelOk = fs.existsSync(path.join(this.kernelDir, 'pyproject.toml'))
+    }
     items.push({
-      name: 'MoeChat 内核',
-      passed: kernelInstalled,
-      message: kernelInstalled
-        ? `已安装 (v${this.state.currentVersion})\n${kernelPath}`
-        : '未安装，请下载内核',
+      name: '系统完整性',
+      passed: kernelOk,
+      message: kernelOk ? '系统数据已就绪，核心正在运行' : '未检测到系统数据包，需要导入',
       key: 'kernel'
     })
-
-    // 3. 检查 venv 是否已配置
-    let venvReady = false
-    if (kernelPath) {
-      const venvPythonPath =
-        process.platform === 'win32'
-          ? path.join(kernelPath, '.venv', 'Scripts', 'python.exe')
-          : path.join(kernelPath, '.venv', 'bin', 'python')
-      venvReady = fs.existsSync(venvPythonPath)
+    // 3. 检查虚拟环境是否就绪（.venv/bin/python 存在）
+    if (kernelOk) {
+      const kernelPath = await this.getActiveKernelPath()
+      if (kernelPath) {
+        const venvPythonPath =
+          process.platform === 'win32'
+            ? path.join(kernelPath, '.venv', 'Scripts', 'python.exe')
+            : path.join(kernelPath, '.venv', 'bin', 'python')
+        venvReady = fs.existsSync(venvPythonPath)
+      }
     }
+
     items.push({
       name: '虚拟环境 (.venv)',
       passed: venvReady,
       message: venvReady
         ? '虚拟环境已就绪'
-        : kernelInstalled
+        : kernelOk
           ? '虚拟环境未配置，需要运行 uv sync'
-          : '需要先安装内核',
+          : '需要先导入后端资源包',
       key: 'venv'
     })
+    // 4. 检查助手模型文件是否完整
+    modelOk = fs.existsSync(path.join(this.kernelDir, 'data', 'models'))
+    items.push({
+      name: '核心数据',
+      passed: modelOk,
+      message: modelOk ? '助手核心数据被保护中' : '助手核心数据缺失，需要导入数据资源包',
+      key: 'data'
+    })
 
-    // 4. 检查磁盘空间（建议 ≥20GB，PyTorch + 依赖约需 14GB）
+    // 5. 检查磁盘空间（建议 ≥20GB，PyTorch + 依赖约需 14GB）
     const kernelRoot = this.kernelRoot
     let diskSpaceOk = true
     let diskMessage = '磁盘空间充足'
@@ -265,7 +280,7 @@ class KernelManager {
     })
 
     const allPassed = items.every((item) => item.passed)
-    const needsSetup = kernelInstalled && !venvReady && runtimeOk
+    const needsSetup = kernelOk && !venvReady && !modelOk && runtimeOk
 
     return { items, allPassed, needsSetup }
   }
@@ -289,6 +304,9 @@ class KernelManager {
     this.notifyState()
 
     try {
+      // 确保 Python 版本与 wheels 匹配（根据 wheel ABI 标签锁定版本）
+      await this.ensurePythonVersionPinned()
+
       await this.setupEnvironment((progress) => {
         this.state.progress = Math.round(progress * 100)
         this.notifyState()
@@ -307,104 +325,245 @@ class KernelManager {
   }
 
   /**
-   * 下载模型数据（运行 download.py）
-   * 用于首次安装后下载 embedding、ASR 等 ML 模型
+   * 校验资源包 zip 合法性（检查 manifest.json 是否存在）
+   * @returns 校验通过返回 true，否则返回错误信息
    */
-  async downloadModels(): Promise<{ success: boolean; error?: string }> {
-    const version = this.state.currentVersion
-    if (!version) {
-      return { success: false, error: '没有安装内核' }
+  private async validateAssetZip(zipPath: string): Promise<{ valid: boolean; error?: string }> {
+    let zip: InstanceType<typeof StreamZip.async> | null = null
+    try {
+      zip = new StreamZip.async({ file: zipPath, skipEntryNameValidation: true })
+      const entries = await zip.entries()
+      const entryNames = Object.values(entries).map((e: { name: string }) =>
+        e.name.replace(/\\/g, '/')
+      )
+
+      const topLevelDir = this.detectSingleTopLevelDir(entries)
+
+      // 检查 manifest.json 是否存在（考虑可能的外层目录）
+      const hasManifest = entryNames.some((name) => {
+        const relative = topLevelDir
+          ? name.startsWith(`${topLevelDir}/`)
+            ? name.slice(topLevelDir.length + 1)
+            : null
+          : name
+        return relative === 'manifest.json'
+      })
+
+      if (!hasManifest) {
+        return { valid: false, error: '无效的资源包：未找到 manifest.json' }
+      }
+
+      return { valid: true }
+    } catch (error) {
+      const msg = (error as Error).message
+      return { valid: false, error: `无法读取资源包：${msg}` }
+    } finally {
+      if (zip) {
+        await zip.close().catch(() => {})
+      }
     }
-
-    const downloadScript = path.join(this.kernelDir, 'download.py')
-    if (!fs.existsSync(downloadScript)) {
-      return { success: false, error: '未找到模型下载脚本 download.py' }
-    }
-
-    const uvExe = this.portableUvExe
-    if (!fs.existsSync(uvExe)) {
-      return { success: false, error: '内嵌 uv 未找到，请重新安装应用' }
-    }
-
-    const pythonPath =
-      process.platform === 'win32'
-        ? path.join(this.kernelDir, '.venv', 'Scripts', 'python.exe')
-        : path.join(this.kernelDir, '.venv', 'bin', 'python')
-
-    if (!fs.existsSync(pythonPath)) {
-      return { success: false, error: '虚拟环境未配置，请先安装环境依赖' }
-    }
-
-    this.setOperation('settingUpEnv', '正在下载 AI 模型...')
-    this.state.progress = 0
-    this.notifyState()
-
-    log.info(`[KernelManager] 开始下载模型: uv run download.py (cwd: ${this.kernelDir})`)
-
-    return new Promise((resolve) => {
-      const child = spawn(uvExe, ['run', 'download.py'], {
-        cwd: this.kernelDir,
-        stdio: 'pipe',
-        env: { ...process.env }
-      })
-
-      let settled = false
-      const errorLines: string[] = []
-
-      child.stdout.on('data', (data: Buffer) => {
-        broadcastToAllWindows(SERVICE_STREAM_CHANNEL, data)
-        this.addOperationLog(data)
-        const text = data.toString('utf-8').trim()
-        if (text) {
-          log.info(`[model-dl] ${text}`)
-          this.state.statusText = text.slice(0, 100)
-          // 模型下载进度粗略估算（modelscope snapshot_download 不提供精确进度）
-          const prevProgress = this.state.progress
-          this.state.progress = Math.min(95, prevProgress + 3)
-          this.notifyState()
-        }
-      })
-
-      child.stderr.on('data', (data: Buffer) => {
-        broadcastToAllWindows(SERVICE_STREAM_CHANNEL, data)
-        this.addOperationLog(data)
-        const text = data.toString('utf-8').trim()
-        if (text) {
-          errorLines.push(text)
-          log.warn(`[model-dl stderr] ${text}`)
-        }
-      })
-
-      child.on('error', (error: Error) => {
-        if (settled) return
-        settled = true
-        const msg = `无法启动模型下载: ${error.message}`
-        this.state.error = msg
-        this.setOperation('error', msg)
-        resolve({ success: false, error: msg })
-      })
-
-      child.on('close', (code: number | null) => {
-        if (settled) return
-        settled = true
-
-        if (code === 0) {
-          log.info('[KernelManager] 模型下载完成')
-          this.state.progress = 100
-          this.setOperation('done', '模型下载完成')
-          resolve({ success: true })
-        } else {
-          const errorMsg = errorLines.join('\n') || `download.py 退出码: ${code}`
-          log.error(`[KernelManager] 模型下载失败: ${errorMsg}`)
-          this.state.error = errorMsg
-          this.setOperation('error', `模型下载失败 (退出码 ${code})`)
-          resolve({ success: false, error: errorMsg })
-        }
-      })
-    })
   }
 
-  /** 检查远端是否有新内核版本 */
+  /**
+   * 导入资源包（完整内核安装）
+   * 用户从网盘下载 moechat-assets-*.zip 后，在 App 内点"导入"调用此方法。
+   * 资源包包含完整的 kernel 源码、wheel 缓存和模型文件，解压即用。
+   */
+  async importAssetBundle(zipPath: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      // 校验资源包合法性
+      const validation = await this.validateAssetZip(zipPath)
+      if (!validation.valid) {
+        return { success: false, error: validation.error }
+      }
+
+      this.setOperation('installing', '正在导入资源包...')
+      this.state.progress = 0
+      this.notifyState()
+      log.info(`[KernelManager] 开始导入资源包: ${zipPath}`)
+
+      await this.extractZipToKernelDir(zipPath)
+
+      // 读取版本号
+      const versionPath = path.join(this.kernelDir, 'version.txt')
+      if (fs.existsSync(versionPath)) {
+        const version = fs.readFileSync(versionPath, 'utf8').trim()
+        this.state.currentVersion = version
+        log.info(`[KernelManager] 资源包版本: ${version}`)
+      }
+
+      // 统计导入结果
+      const wheelCount = (() => {
+        const dir = path.join(this.kernelDir, 'wheels')
+        if (!fs.existsSync(dir)) return 0
+        try {
+          return fs.readdirSync(dir).filter((f) => f.endsWith('.whl')).length
+        } catch {
+          return 0
+        }
+      })()
+
+      this.state.progress = 100
+      this.setOperation('done', `资源包导入完成（${wheelCount} 个 wheel）`)
+      this.notifyState()
+      log.info(`[KernelManager] 资源包导入完成: ${wheelCount} 个 wheel`)
+      return { success: true }
+    } catch (error) {
+      const msg = (error as Error).message
+      log.error(`[KernelManager] 资源包导入失败: ${msg}`)
+      this.state.error = msg
+      this.setOperation('error', `资源包导入失败: ${msg}`)
+      return { success: false, error: msg }
+    }
+  }
+
+  /** 将 zip 解压到内核目录（移除外层目录），保留现有数据目录 */
+  private async extractZipToKernelDir(zipPath: string, subDir?: string): Promise<void> {
+    const nameEncoding = await detectZipNameEncoding(zipPath)
+
+    const zip = new StreamZip.async({
+      file: zipPath,
+      skipEntryNameValidation: true,
+      nameEncoding
+    })
+    try {
+      const entries = await zip.entries()
+
+      // 检测外层包装目录（如 moechat-assets-v1.7.0/），有则剥离
+      const topDir = this.detectSingleTopLevelDir(entries)
+
+      for (const entry of Object.values(entries)) {
+        let relativePath = entry.name.replace(/\\/g, '/')
+
+        if (topDir) {
+          if (!relativePath.startsWith(`${topDir}/`)) continue
+          if (relativePath === `${topDir}/`) continue
+          relativePath = relativePath.slice(topDir.length + 1)
+        }
+        if (!relativePath) continue
+
+        // 若指定子目录（如 'data'），所有条目装到子目录下
+        const targetRelPath = subDir ? `${subDir}/${relativePath}` : relativePath
+        const targetPath = path.join(this.kernelDir, targetRelPath)
+
+        if (entry.isDirectory) {
+          await fs.promises.mkdir(targetPath, { recursive: true })
+        } else {
+          await fs.promises.mkdir(path.dirname(targetPath), { recursive: true })
+          const readStream = await zip.stream(entry)
+          const writeStream = fs.createWriteStream(targetPath)
+          await new Promise<void>((resolve, reject) => {
+            readStream.pipe(writeStream)
+            readStream.on('error', reject)
+            writeStream.on('error', reject)
+            writeStream.on('finish', resolve)
+          })
+        }
+
+        this.state.progress = Math.min(99, this.state.progress + 1)
+        this.notifyState()
+      }
+    } finally {
+      await zip.close().catch(() => {})
+    }
+  }
+
+  /**
+   * 检查资源完整性（内核源码、wheels、模型文件）
+   * 不依赖后端运行，直接在文件系统上检查。
+   * 这是判断是否需要导入资源包的主要依据。
+   */
+  async checkResources(): Promise<{
+    kernelInstalled: boolean
+    wheels: { ready: boolean; count: number }
+    models: { ready: boolean; details: { name: string; exists: boolean }[] }
+  }> {
+    const kernelDir = this.kernelDir
+
+    // 1. 检查内核源码是否已安装（核心标识）
+    const kernelInstalled = fs.existsSync(path.join(kernelDir, 'pyproject.toml'))
+
+    // 2. 检查 wheel
+    const wheelsDir = path.join(kernelDir, 'wheels')
+    let wheelCount = 0
+    if (fs.existsSync(wheelsDir)) {
+      try {
+        const files = await fs.promises.readdir(wheelsDir)
+        wheelCount = files.filter((f) => f.endsWith('.whl')).length
+      } catch {
+        wheelCount = 0
+      }
+    }
+
+    // 3. 检查模型目录（data/models/ 存在即可）
+    const modelsDir = path.join(kernelDir, 'data', 'models')
+    const modelsReady = fs.existsSync(modelsDir)
+
+    return {
+      kernelInstalled,
+      wheels: { ready: wheelCount >= 3, count: wheelCount },
+      models: { ready: modelsReady, details: [{ name: '模型目录 (models)', exists: modelsReady }] }
+    }
+  }
+
+  /**
+   * 检查数据资源完整性（data/models + data/agents）
+   * 数据资源包独立于后端内核资源包，可单独导入
+   */
+  async checkDataResources(): Promise<DataResourceCheckResult> {
+    const kernelDir = this.kernelDir
+
+    const modelsDir = path.join(kernelDir, 'data', 'models')
+    const modelsExists = fs.existsSync(modelsDir)
+
+    const agentsDir = path.join(kernelDir, 'data', 'agents')
+    const agentsExists = fs.existsSync(agentsDir)
+
+    const items = [
+      { name: '模型文件 (models)', key: 'models', exists: modelsExists },
+      { name: '角色数据 (agents)', key: 'agents', exists: agentsExists }
+    ]
+
+    return {
+      ready: items.every((i) => i.exists),
+      items
+    }
+  }
+
+  /**
+   * 导入数据资源包（仅 models + agents，不覆盖后端内核文件）
+   * 用户选择的数据 zip 应包含 data/ 目录结构
+   */
+  async importDataBundle(zipPath: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      // 校验资源包合法性
+      const validation = await this.validateAssetZip(zipPath)
+      if (!validation.valid) {
+        return { success: false, error: validation.error }
+      }
+
+      this.setOperation('installing', '正在导入数据资源包...')
+      this.state.progress = 0
+      this.notifyState()
+      log.info(`[KernelManager] 开始导入数据资源包: ${zipPath}`)
+
+      await this.extractZipToKernelDir(zipPath, 'data')
+
+      this.state.progress = 100
+      this.setOperation('done', '数据资源包导入完成')
+      this.notifyState()
+      log.info('[KernelManager] 数据资源包导入完成')
+      return { success: true }
+    } catch (error) {
+      const msg = (error as Error).message
+      log.error(`[KernelManager] 数据资源包导入失败: ${msg}`)
+      this.state.error = msg
+      this.setOperation('error', `数据资源包导入失败: ${msg}`)
+      return { success: false, error: msg }
+    }
+  }
+
+  /** 检查远端是否有新内核版本（从 GitHub Releases） */
   async checkForUpdates(): Promise<KernelUpdateState> {
     this.setOperation('checking', '正在检查内核更新...')
 
@@ -446,11 +605,10 @@ class KernelManager {
   }
 
   /**
-   * 下载并安装最新版本内核
+   * 从 GitHub Releases 下载并安装最新版本内核
    * 会保留用户数据目录，只替换代码文件
    */
   async downloadAndInstall(version?: string): Promise<boolean> {
-    // 如果未指定版本，使用已获取的最新版本
     let targetVersion: string
 
     if (version) {
@@ -458,7 +616,6 @@ class KernelManager {
     } else if (this.state.latestVersion?.version) {
       targetVersion = this.state.latestVersion.version
     } else {
-      // 重新获取最新版本
       try {
         this.state.latestVersion = await this.fetchLatestRelease()
         if (!this.state.latestVersion?.version) {
@@ -474,26 +631,23 @@ class KernelManager {
       }
     }
 
-    // 如果已经是最新版本，检查是否需要重新确认
     if (
       this.state.currentVersion &&
       this.compareVersions(this.state.currentVersion, targetVersion) >= 0
     ) {
       const pyprojectPath = path.join(this.kernelDir, 'pyproject.toml')
       if (fs.existsSync(pyprojectPath)) {
-        // 已安装且是最新，但允许强制重装（用于修复损坏的安装）
         this.setOperation('done', `内核已是最新版本 v${this.state.currentVersion}`)
         this.notifyState()
         return true
       }
     }
 
-    // 获取下载 URL
     if (!this.state.latestVersion || this.state.latestVersion.version !== targetVersion) {
       try {
         this.state.latestVersion = await this.fetchLatestRelease()
       } catch {
-        // 继续使用已有的 latestVersion
+        // 继续使用已有的
       }
     }
 
@@ -508,19 +662,16 @@ class KernelManager {
     const tempZip = path.join(tempDir, `moechat-kernel-${targetVersion}.zip`)
 
     try {
-      // 准备临时目录
       if (!fs.existsSync(tempDir)) {
         fs.mkdirSync(tempDir, { recursive: true })
       }
 
-      // 步骤 1: 下载 (0-40%)
       this.setOperation('downloading', '正在下载内核...')
       await this.downloadFile(downloadUrl, tempZip, (progress) => {
         this.state.progress = Math.round(progress * 40)
         this.notifyState()
       })
 
-      // 步骤 2: 解压安装 (40-55%)
       this.setOperation('installing', '正在解压内核...')
       this.state.progress = 40
       this.notifyState()
@@ -530,7 +681,6 @@ class KernelManager {
       this.state.progress = 55
       this.notifyState()
 
-      // 步骤 3: 设置 Python 环境 & 安装依赖 (55-95%)
       this.setOperation('settingUpEnv', '正在安装Python依赖...')
       await this.setupEnvironment((progress) => {
         this.state.progress = 55 + Math.round(progress * 0.4)
@@ -549,10 +699,7 @@ class KernelManager {
       this.setOperation('error', `安装失败: ${msg}`)
       return false
     } finally {
-      // 清理临时文件
-      await fs.promises.unlink(tempZip).catch(() => {
-        /* ignore */
-      })
+      await fs.promises.unlink(tempZip).catch(() => {})
     }
   }
 
@@ -573,7 +720,6 @@ class KernelManager {
       const version = tagName.replace(/^v/, '')
       const body: string = release.body || ''
 
-      // 查找包含 "moechat" 或 "kernel" 或 "backend" 的 zip 资源
       const asset = release.assets?.find(
         (a: { name: string; browser_download_url: string; size: number }) => {
           const name = a.name.toLowerCase()
@@ -588,13 +734,11 @@ class KernelManager {
       )
 
       if (!asset) {
-        // 如果没有找到 zip，使用 source code zip
         const sourceAsset = release.assets?.find((a: { name: string }) => a.name.endsWith('.zip'))
         if (!sourceAsset) {
           log.warn('未找到内核下载资源')
           return null
         }
-
         return {
           version,
           publishedAt: release.published_at || '',
@@ -623,49 +767,38 @@ class KernelManager {
     return notes.length > 2000 ? notes.slice(0, 2000) + '\n\n...(内容过长已截断)' : notes
   }
 
-  /** 下载文件并回调进度 */
+  /** 下载文件并回调进度（带超时和流式写入） */
   private async downloadFile(
     url: string,
     destPath: string,
     onProgress: (progress: number) => void
   ): Promise<void> {
     const writer = fs.createWriteStream(destPath)
-
     const response = await axios({
       url,
       method: 'GET',
       responseType: 'stream',
-      headers: {
-        'User-Agent': 'MoeChat-APP',
-        Accept: 'application/octet-stream'
-      },
-      timeout: 600000 // 10 分钟超时
+      headers: { 'User-Agent': 'MoeChat-APP', Accept: 'application/octet-stream' },
+      timeout: 600000
     })
 
     const totalLength = parseInt(String(response.headers['content-length'] || '0'), 10)
 
     return new Promise((resolve, reject) => {
       let downloaded = 0
-
       response.data.on('data', (chunk: Buffer) => {
         downloaded += chunk.length
-        if (totalLength > 0) {
-          onProgress(downloaded / totalLength)
-        }
+        if (totalLength > 0) onProgress(downloaded / totalLength)
       })
-
       response.data.pipe(writer)
-
       writer.on('finish', () => {
         writer.close()
         resolve()
       })
-
       writer.on('error', (err) => {
         writer.close()
         reject(err)
       })
-
       response.data.on('error', (err: Error) => {
         writer.close()
         reject(err)
@@ -675,13 +808,10 @@ class KernelManager {
 
   /**
    * 解压并安装内核到固定目录 kernel/current/
-   * 会保留用户数据目录，仅替换代码文件，避免数据丢失
+   * 保留用户数据目录，仅替换代码文件
    */
   private async installKernelFromZip(zipPath: string, version: string): Promise<void> {
-    // 目标目录
     const targetDir = this.kernelDir
-
-    // 清理内核目录中的代码文件（保留用户数据目录）
     try {
       await fs.promises.access(targetDir)
       await this.cleanCodeFiles(targetDir)
@@ -689,51 +819,67 @@ class KernelManager {
       // 目录不存在，跳过清理
     }
 
-    // nameEncoding 设为 'gbk'：兼容旧版中文压缩工具的 GBK 编码
-    // 若 zip 头部 bit 11 置位（现代工具），node-stream-zip 会自动用 UTF-8，忽略此选项
-    const zip = new StreamZip.async({ file: zipPath, nameEncoding: 'gbk' })
     try {
-      const entries = await zip.entries()
-      const topLevelDir = this.detectSingleTopLevelDir(entries)
-
-      if (topLevelDir) {
-        log.info(`检测到内核压缩包外层目录: ${topLevelDir}，将移除外层目录后解压`)
-        const writeTasks: Promise<void>[] = []
-        for (const entry of Object.values(entries)) {
-          const entryName = entry.name.replace(/\\/g, '/')
-          if (!entryName || entryName === `${topLevelDir}/`) continue
-          if (!entryName.startsWith(`${topLevelDir}/`)) continue
-
-          const relativePath = entryName.slice(topLevelDir.length + 1)
-          if (!relativePath) continue
-
-          const targetPath = path.join(targetDir, relativePath)
-          if (entry.isDirectory) {
-            writeTasks.push(fs.promises.mkdir(targetPath, { recursive: true }).then())
-          } else {
-            writeTasks.push(
-              fs.promises
-                .mkdir(path.dirname(targetPath), { recursive: true })
-                .then(() => zip.entryData(entry))
-                .then((data) => fs.promises.writeFile(targetPath, data))
-            )
-          }
-        }
-        await Promise.all(writeTasks)
-      } else {
-        await zip.extract(null, targetDir)
-      }
+      await this.extractZipToKernelDir(zipPath)
     } finally {
-      await zip.close()
+      // extractZipToKernelDir 已自行管理 zip 关闭
     }
 
-    // 写入版本文件 ──
     await fs.promises.writeFile(this.versionFilePath, version, 'utf8')
-
-    // 更新状态
     this.state.currentVersion = version
-
     log.info(`内核 v${version} 升级完成: ${targetDir}`)
+  }
+
+  /**
+   * 清理内核目录中的文件（保留用户数据目录）
+   */
+  private async cleanCodeFiles(dir: string): Promise<void> {
+    try {
+      await fs.promises.access(dir)
+    } catch {
+      return
+    }
+
+    try {
+      const entries = await fs.promises.readdir(dir, { withFileTypes: true })
+      for (const entry of entries) {
+        const fullPath = path.join(dir, entry.name)
+        if (PRESERVED_DATA_DIRS.includes(entry.name)) {
+          log.info(`保留目录: ${entry.name}`)
+          continue
+        }
+        if (PRESERVED_DATA_FILES.includes(entry.name)) {
+          log.info(`保留文件: ${entry.name}`)
+          continue
+        }
+        try {
+          if (entry.isDirectory()) {
+            await fs.promises.rm(fullPath, { recursive: true, force: true })
+          } else {
+            await fs.promises.unlink(fullPath)
+          }
+        } catch (error) {
+          log.error(`清理失败: ${fullPath}, ${(error as Error).message}`)
+        }
+      }
+      log.info(`内核目录清理完成: ${dir}`)
+    } catch (error) {
+      log.error(`清理内核目录失败: ${(error as Error).message}`)
+    }
+  }
+
+  /** 比较版本号，返回 >0 如果 a > b */
+  private compareVersions(a: string, b: string): number {
+    const partsA = a.split('.').map(Number)
+    const partsB = b.split('.').map(Number)
+    const len = Math.max(partsA.length, partsB.length)
+    for (let i = 0; i < len; i++) {
+      const na = partsA[i] || 0
+      const nb = partsB[i] || 0
+      if (na > nb) return 1
+      if (na < nb) return -1
+    }
+    return 0
   }
 
   /**
@@ -766,61 +912,141 @@ class KernelManager {
     return topLevelDir
   }
 
+  // ─── wheel 兼容性检测 ─────────────────────────────
+
   /**
-   * 清理内核目录中的文件（保留用户数据目录）
+   * 从 wheel 文件名中提取 ABI 标签（如 cp311、cp313、py3、none）
+   * PEP 427: {distribution}-{version}(-{build tag})?-{python tag}-{abi tag}-{platform tag}.whl
    */
-  private async cleanCodeFiles(dir: string): Promise<void> {
-    try {
-      await fs.promises.access(dir)
-    } catch {
-      return
+  private getWheelAbiTag(filename: string): string | null {
+    const match = filename.match(
+      /^[a-zA-Z0-9_.-]+?-\d+[^-]*?(?:-[a-zA-Z0-9_.]+)?-([^-]+)-([^-]+)-[\w.]+\.whl$/
+    )
+    return match ? match[2] : null
+  }
+
+  /**
+   * 检查 wheel ABI 标签是否与给定的 Python 版本（主.次）兼容
+   * - none/py3 等通用标签兼容任何版本
+   * - cp311 ↔ cp311 精确匹配
+   * - cp311 → cp313 不匹配
+   */
+  private isWheelAbiCompatible(abiTag: string, target: string): boolean {
+    const targetTag = `cp${target.replace('.', '')}`
+    if (abiTag === targetTag) return true
+    if (abiTag.startsWith('py') || abiTag === 'none') return true
+    return false
+  }
+
+  /**
+   * 检测 uv 将为当前项目使用的 Python 版本（主.次）
+   * 优先检查 .venv 中已安装的 Python，否则通过 uv python list 查询。
+   */
+  private async resolvePythonVersion(): Promise<string | null> {
+    // 1. 优先从已存在的 .venv 中读取
+    const venvPython =
+      process.platform === 'win32'
+        ? path.join(this.kernelDir, '.venv', 'Scripts', 'python.exe')
+        : path.join(this.kernelDir, '.venv', 'bin', 'python')
+    if (fs.existsSync(venvPython)) {
+      try {
+        const { stdout } = await execAsync(
+          `"${venvPython}" -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')"`
+        )
+        const ver = stdout.trim()
+        if (/^\d+\.\d+$/.test(ver)) return ver
+      } catch {
+        /* fall through */
+      }
     }
 
+    // 2. 通过 uv 查询可用 Python 的最新安装版本
     try {
-      const entries = await fs.promises.readdir(dir, { withFileTypes: true })
-
-      for (const entry of entries) {
-        const fullPath = path.join(dir, entry.name)
-
-        // 跳过白名单中的目录
-        if (PRESERVED_DATA_DIRS.includes(entry.name)) {
-          log.info(`保留目录: ${entry.name}`)
-          continue
-        }
-
-        // 跳过白名单中的文件
-        if (PRESERVED_DATA_FILES.includes(entry.name)) {
-          log.info(`保留文件: ${entry.name}`)
-          continue
-        }
-
-        // 删除不在白名单中的项
-        try {
-          if (entry.isDirectory()) {
-            await fs.promises.rm(fullPath, { recursive: true, force: true })
-            log.info(`删除目录: ${entry.name}`)
-          } else {
-            await fs.promises.unlink(fullPath)
-            log.info(`删除文件: ${entry.name}`)
-          }
-        } catch (error) {
-          log.error(`清理文件/目录失败: ${fullPath}, ${(error as Error).message}`)
-        }
+      const { stdout } = await execAsync(`"${this.portableUvExe}" python list --only-installed`, {
+        cwd: this.kernelDir
+      })
+      // 取第一行非 freethreaded 的 CPython 版本
+      const lines = stdout
+        .split('\n')
+        .map((l) => l.trim())
+        .filter((l) => l.startsWith('cpython-') && !l.includes('freethreaded'))
+      if (lines.length > 0) {
+        const match = lines[0].match(/cpython-(\d+\.\d+)/)
+        if (match) return match[1]
       }
+    } catch {
+      /* fall through */
+    }
 
-      log.info(`内核目录清理完成: ${dir}`)
-    } catch (error) {
-      log.error(`清理内核目录失败: ${(error as Error).message}`)
+    return null
+  }
+
+  /**
+   * 解析 pyproject.toml 中的 requires-python 约束
+   */
+  private getRequiredPythonFromPyproject(): string | null {
+    const pyprojectPath = path.join(this.kernelDir, 'pyproject.toml')
+    if (!fs.existsSync(pyprojectPath)) return null
+    try {
+      const content = fs.readFileSync(pyprojectPath, 'utf8')
+      // 匹配 project.requires-python 字段
+      const match = content.match(/requires-python\s*=\s*"([^"]+)"/)
+      return match ? match[1] : null
+    } catch {
+      return null
     }
   }
 
-  /** 使用内嵌 uv 在内核目录中运行 uv sync，从 PyPI 镜像下载所有预编译 wheel */
+  /**
+   * 通过 wheel ABI 标签检测所需的 Python 版本，写入 .python-version 锁定 uv 使用的版本
+   * 仅在 .python-version 和 .venv 均不存在时写入，避免覆盖已有配置
+   */
+  private async ensurePythonVersionPinned(): Promise<void> {
+    const versionFile = path.join(this.kernelDir, '.python-version')
+    const venvPython =
+      process.platform === 'win32'
+        ? path.join(this.kernelDir, '.venv', 'Scripts', 'python.exe')
+        : path.join(this.kernelDir, '.venv', 'bin', 'python')
+
+    // 已有锁定或 venv，无需干预
+    if (fs.existsSync(versionFile) || fs.existsSync(venvPython)) return
+
+    const wheelsDir = path.join(this.kernelDir, 'wheels')
+    if (!fs.existsSync(wheelsDir)) return
+
+    try {
+      const files = fs.readdirSync(wheelsDir)
+      for (const f of files) {
+        if (!f.endsWith('.whl')) continue
+        const abi = this.getWheelAbiTag(f)
+        if (abi && /^cp\d+$/.test(abi)) {
+          // cp311 → 3.11, cp39 → 3.9
+          const num = abi.slice(2)
+          const major = num[0]
+          const minor = num.slice(1)
+          const version = `${major}.${minor}`
+          fs.writeFileSync(versionFile, version, 'utf8')
+          log.info(`[setup] 根据 wheel ABI 标签锁定 Python 版本: ${version} (${f})`)
+          return
+        }
+      }
+    } catch (error) {
+      log.warn(`[setup] 检测 wheel Python 版本失败: ${(error as Error).message}`)
+    }
+  }
+
+  /**
+   * 两步安装环境依赖：
+   *   1. uv sync        → 下载全部依赖，实时转发 stderr 进度到终端
+   *   2. install.py --cuda-only → 检测 GPU 并替换为 CUDA 版 torch
+   *
+   * 不依赖 `uv run`，避免 uv run 隐式 sync 吞掉进度条输出。
+   */
   private setupEnvironment(onProgress: (progress: number) => void): Promise<void> {
     const kernelDir = this.kernelDir
     const uvExe = this.portableUvExe
 
     return new Promise((resolve, reject) => {
-      // 检查 pyproject.toml 是否存在
       const pyprojectPath = path.join(kernelDir, 'pyproject.toml')
       if (!fs.existsSync(pyprojectPath)) {
         log.warn('内核没有 pyproject.toml，跳过依赖安装')
@@ -828,102 +1054,219 @@ class KernelManager {
         resolve()
         return
       }
-
-      // 断言内嵌运行时存在
       if (!fs.existsSync(uvExe)) {
-        reject(new Error('内嵌 Python 运行时未找到，请重新安装应用。\n' + `期望路径: ${uvExe}`))
+        reject(new Error('内嵌 uv 未找到，请重新安装应用。\n' + `期望路径: ${uvExe}`))
         return
       }
 
-      this.state.statusText = '正在从镜像安装依赖（首次约需 5GB 下载）...'
+      this.state.statusText = '正在安装 Python 依赖（首次约需 5GB 下载）...'
       this.notifyState()
 
-      log.info(`运行内嵌 uv sync: ${kernelDir}`)
-      log.info(`  uv: ${uvExe}`)
-
-      const child = spawn(uvExe, ['sync'], {
-        cwd: kernelDir,
-        stdio: 'pipe',
-        env: {
-          ...process.env
-        }
-      })
-
-      let settled = false
-      const errorLines: string[] = []
-      let lastProgress = 0
-
-      child.stdout.on('data', (data: Buffer) => {
-        broadcastToAllWindows(SERVICE_STREAM_CHANNEL, data)
-        this.addOperationLog(data)
-        const text = decodeBuffer(data).trim()
-        if (text) {
-          log.info(`[uv] ${text}`)
-          // 解析 uv 输出估算进度
-          if (
-            text.includes('Resolved') ||
-            text.includes('Downloaded') ||
-            text.includes('Installed')
-          ) {
-            lastProgress = Math.min(0.95, lastProgress + 0.05)
-            onProgress(lastProgress)
-          }
-        }
-      })
-
-      child.stderr.on('data', (data: Buffer) => {
-        broadcastToAllWindows(SERVICE_STREAM_CHANNEL, data)
-        this.addOperationLog(data)
-        const text = decodeBuffer(data).trim()
-        if (text) {
-          errorLines.push(text)
-          log.warn(`[uv stderr] ${text}`)
-        }
-      })
-
-      child.on('error', (error: Error) => {
-        if (settled) return
-        settled = true
-        reject(new Error(`无法启动内嵌 uv: ${error.message}`))
-      })
-
-      child.on('close', (code: number | null) => {
-        if (settled) return
-        settled = true
-
-        if (code === 0) {
+      // ── 步骤 1: uv sync ────────────────────────────
+      log.info(`[setup] 步骤 1/2: uv sync (cwd: ${kernelDir})`)
+      this.runSyncWithProgress(kernelDir, uvExe, onProgress)
+        .then(() => this.runCudaUpgrade(kernelDir, onProgress))
+        .then(() => {
           log.info('依赖安装完成')
           onProgress(1)
           resolve()
+        })
+        .catch((err) => {
+          const msg = (err as Error).message
+          log.error(`依赖安装失败: ${msg}`)
+          reject(new Error(`依赖安装失败: ${msg}`))
+        })
+    })
+  }
+
+  /**
+   * 通过伪终端 (PTY) 执行 uv sync，使 uv 认为连接的是真实终端，
+   * 进而输出 ANSI 进度条动画（含百分比和下载速度）。
+   *
+   * 通过 node-pty 在 Windows 上使用 ConPTY，在 macOS/Linux 上使用
+   * 标准 PTY。原始 ANSI 数据直接转发给前端的 xterm 组件渲染，
+   * 同时解析其中的百分比用于更新 UI 进度条。
+   */
+  /**
+   * 解析与当前 Python 版本兼容的本地 wheels 目录路径
+   * 若所有 wheel 均不兼容则返回 null（后续将从 PyPI 下载）
+   */
+  private async resolveCompatibleWheelsDir(): Promise<string | null> {
+    const rawDir = path.join(this.kernelDir, 'wheels')
+    if (!fs.existsSync(rawDir)) return null
+
+    const pyVersion = await this.resolvePythonVersion()
+    if (!pyVersion) {
+      log.warn('[setup] 无法检测 uv Python 版本，使用原始 wheels 目录（可能因版本不匹配失败）')
+      return rawDir
+    }
+
+    let hasWhl = false
+    let anyCompatible = false
+    const files = fs.readdirSync(rawDir)
+    for (const f of files) {
+      if (!f.endsWith('.whl')) continue
+      hasWhl = true
+      const abi = this.getWheelAbiTag(f)
+      if (!abi || this.isWheelAbiCompatible(abi, pyVersion)) {
+        anyCompatible = true
+      } else {
+        log.warn(
+          `[setup] 跳过不兼容的 wheel: ${f} (abi=${abi}, target=cp${pyVersion.replace('.', '')})`
+        )
+      }
+    }
+
+    if (!hasWhl) return rawDir
+    if (!anyCompatible) {
+      log.warn(`[setup] 本地 wheels 均与 Python ${pyVersion} 不兼容，将从 PyPI 下载依赖`)
+      return null
+    }
+    return rawDir
+  }
+
+  private async runSyncWithProgress(
+    kernelDir: string,
+    uvExe: string,
+    onProgress: (p: number) => void
+  ): Promise<void> {
+    const uvArgs = ['sync']
+    const findLinksDir = await this.resolveCompatibleWheelsDir()
+    if (findLinksDir) {
+      uvArgs.push('--find-links', findLinksDir)
+      log.info(`[setup] 使用本地 wheel 缓存: ${findLinksDir}`)
+    } else {
+      log.info('[setup] 无兼容的本地 wheel，将从 PyPI 下载依赖')
+    }
+    return new Promise((resolve, reject) => {
+      const term = pty.spawn(uvExe, uvArgs, {
+        cwd: kernelDir,
+        name: 'xterm-256color',
+        cols: 120,
+        rows: 30,
+        env: { ...process.env } as Record<string, string>
+      })
+
+      let settled = false
+      const allOutput: string[] = []
+
+      // 匹配 ANSI 进度条中的百分比，如 "[45%]" 或 "45%"
+      const pctRe = /\[?(\b\d{1,3})%\]?/
+
+      term.onData((data: string) => {
+        broadcastToAllWindows(SERVICE_STREAM_CHANNEL, Buffer.from(data, 'utf-8'))
+        this.addOperationLog(Buffer.from(data, 'utf-8'))
+        allOutput.push(data)
+
+        const match = data.match(pctRe)
+        if (match) {
+          const pct = parseInt(match[1], 10) / 100
+          this.state.statusText = `正在下载依赖... ${match[1]}%`
+          onProgress(Math.min(pct, 0.95) * 0.85)
+          this.notifyState()
+        }
+      })
+
+      term.onExit((event: { exitCode: number; signal?: number }) => {
+        if (settled) return
+        settled = true
+        if (event.exitCode === 0) {
+          log.info('uv sync 完成')
+          this.state.statusText = '依赖下载完成'
+          onProgress(0.85)
+          this.notifyState()
+          resolve()
         } else {
-          const errorMsg = errorLines.join('\n') || `uv sync 退出码: ${code}`
-          log.error(`依赖安装失败: ${errorMsg}`)
-          reject(new Error(`依赖安装失败 (退出码 ${code}): ${errorMsg}`))
+          const full = allOutput.join('')
+          const errs = full.split('\n').filter((l) => /error|Error|fail/i.test(l))
+          const msg = errs.slice(0, 5).join('\n') || `退出码: ${event.exitCode}`
+          reject(new Error(`uv sync 失败 (${msg})`))
         }
       })
     })
   }
 
-  /** 比较版本号，返回 >0 如果 a > b */
-  private compareVersions(a: string, b: string): number {
-    const partsA = a.split('.').map(Number)
-    const partsB = b.split('.').map(Number)
-    const len = Math.max(partsA.length, partsB.length)
+  /**
+   * 执行 CUDA 检测与 torch 升级（install.py --cuda-only）
+   * 同步完成后 venv Python 已存在，直接用 venv Python 运行
+   */
+  private runCudaUpgrade(kernelDir: string, onProgress: (p: number) => void): Promise<void> {
+    const venvPython =
+      process.platform === 'win32'
+        ? path.join(kernelDir, '.venv', 'Scripts', 'python.exe')
+        : path.join(kernelDir, '.venv', 'bin', 'python')
 
-    for (let i = 0; i < len; i++) {
-      const na = partsA[i] || 0
-      const nb = partsB[i] || 0
-      if (na > nb) return 1
-      if (na < nb) return -1
+    const installPy = path.join(kernelDir, 'install.py')
+
+    if (!fs.existsSync(venvPython)) {
+      log.warn('venv Python 不存在，跳过 CUDA 升级')
+      return Promise.resolve()
     }
-    return 0
+    if (!fs.existsSync(installPy)) {
+      log.warn('install.py 不存在，跳过 CUDA 升级')
+      return Promise.resolve()
+    }
+
+    return new Promise<void>((resolve) => {
+      this.state.statusText = '检测 GPU 并配置加速...'
+      this.notifyState()
+
+      // 也使用 PTY，让 uv pip install 的 ANSI 进度条能正常渲染
+      const term = pty.spawn(venvPython, [installPy, '--cuda-only', '--json'], {
+        cwd: kernelDir,
+        name: 'xterm-256color',
+        cols: 120,
+        rows: 30,
+        env: { ...process.env } as Record<string, string>
+      })
+
+      let settled = false
+      let buffer = ''
+
+      term.onData((data: string) => {
+        broadcastToAllWindows(SERVICE_STREAM_CHANNEL, Buffer.from(data, 'utf-8'))
+        this.addOperationLog(Buffer.from(data, 'utf-8'))
+
+        // 尝试从 ANSI 流中提取 JSON 进度事件
+        buffer += data
+        const lines = buffer.split('\n')
+        buffer = lines.pop() ?? ''
+
+        for (const line of lines) {
+          const trimmed = line.trim()
+          if (!trimmed) continue
+          try {
+            const event = JSON.parse(trimmed)
+            this.state.statusText = (event.message || '').slice(0, 200)
+            if (event.progress != null) {
+              // CUDA 阶段占总体进度的 15% (85% → 100%)
+              onProgress(0.85 + event.progress * 0.15)
+            }
+          } catch {
+            // 非 JSON 行（ANSI 进度条或普通日志），由 xterm 直接渲染
+          }
+        }
+        this.notifyState()
+      })
+
+      term.onExit((event: { exitCode: number; signal?: number }) => {
+        if (settled) return
+        settled = true
+        if (event.exitCode === 0) {
+          log.info('CUDA 升级完成')
+        } else {
+          log.warn(`CUDA 升级退出码 ${event.exitCode}，保留 CPU 版本`)
+        }
+        resolve()
+      })
+    })
   }
 }
 
 class KernelServiceManager {
   private static instance: KernelServiceManager
   /** 后端 Python 进程 */
-  private backendProcess: ChildProcessWithoutNullStreams | null = null
+  private backendProcess: { pid: number; kill: (signal?: string) => void } | null = null
 
   /** 后端服务运行状态 */
   private backendRunning = false
@@ -1123,47 +1466,65 @@ class KernelServiceManager {
         return { success: false, error: `内嵌 uv 未找到: ${uvExe}` }
       }
 
-      this.backendProcess = spawn(uvExe, ['run', scriptPath], {
+      // 启动前执行 uv sync 确保依赖最新（使用 pty 支持终端渲染）
+      this.addSystemLog(`[系统] 正在同步依赖...\r\n`)
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const syncTerm = pty.spawn(uvExe, ['sync'], {
+            cwd: kernelPath,
+            name: 'xterm-256color',
+            cols: 120,
+            rows: 30,
+            env: { ...process.env } as Record<string, string>
+          })
+          syncTerm.onData((data: string) => {
+            broadcastToAllWindows(SERVICE_STREAM_CHANNEL, Buffer.from(data, 'utf-8'))
+            this.addSystemLog(data)
+          })
+          syncTerm.onExit(({ exitCode, signal }) => {
+            if (exitCode === 0) resolve()
+            else reject(new Error(`uv sync 退出码: ${exitCode}, 信号: ${signal}`))
+          })
+        })
+        this.addSystemLog(`[系统] 依赖同步完成\r\n`)
+      } catch (syncErr) {
+        const syncMsg = (syncErr as Error).message
+        log.warn(`[KernelManager] uv sync 失败，尝试继续启动: ${syncMsg}`)
+        this.addSystemLog(`[系统] 依赖同步失败: ${syncMsg}，继续启动...\r\n`)
+      }
+
+      // 使用 pty 启动后端（支持终端渲染与 ANSI 转义序列）
+      const backendTerm = pty.spawn(uvExe, ['run', scriptPath], {
         cwd: kernelPath,
-        stdio: 'pipe',
+        name: 'xterm-256color',
+        cols: 120,
+        rows: 30,
         env: {
           ...process.env,
           PYTHONIOENCODING: 'utf-8',
           PYTHONUTF8: '1'
-        }
+        } as Record<string, string>
       })
 
+      this.backendProcess = backendTerm
       this.backendRunning = true
-      this.backendPid = this.backendProcess.pid ?? -1
+      this.backendPid = backendTerm.pid
       this.backendExitCode = null
 
-      this.backendProcess.stdout.on('data', (data: Buffer) => {
-        this.broadcastStream(data)
-        this.addBackendLog(data)
+      backendTerm.onData((data: string) => {
+        const buf = Buffer.from(data, 'utf-8')
+        this.broadcastStream(buf)
+        this.addBackendLog(buf)
       })
 
-      this.backendProcess.stderr.on('data', (data: Buffer) => {
-        this.broadcastStream(data)
-        this.addBackendLog(data)
-      })
-
-      this.backendProcess.on('error', (err: Error) => {
-        this.backendRunning = false
-        this.backendProcess = null
-        this.backendExitCode = this.backendExitCode ?? -1
-        this.addSystemLog(`[系统] 后端服务进程错误: ${err.message}`)
-        this.notifyServiceState()
-        log.error('[KernelManager] 后端服务进程错误:', err.message)
-      })
-
-      this.backendProcess.on('close', (code: number | null, signal: string | null) => {
+      backendTerm.onExit(({ exitCode, signal }) => {
         this.backendRunning = false
         this.backendProcess = null
         this.backendPid = -1
-        this.backendExitCode = code
-        this.addSystemLog(`[系统] 后端服务已退出 (退出码: ${code}, 信号: ${signal})`)
+        this.backendExitCode = exitCode
+        this.addSystemLog(`[系统] 后端服务已退出 (退出码: ${exitCode}, 信号: ${signal})`)
         this.notifyServiceState()
-        log.info(`[KernelManager] 后端服务已退出 (code=${code}, signal=${signal})`)
+        log.info(`[KernelManager] 后端服务已退出 (code=${exitCode}, signal=${signal})`)
       })
 
       this.addSystemLog(`[系统] 后端服务已启动 (PID: ${this.backendPid})`)
