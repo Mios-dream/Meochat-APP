@@ -1,18 +1,98 @@
-import { execFile } from 'child_process'
-import { promisify } from 'util'
-import { BrowserWindow } from 'electron'
-import log from './logger'
+/**
+ * 窗口可见性检测
+ *
+ * 通过 koffi FFI 直接调用 Win32 API，检测桌宠窗口是否被其他窗口完全遮挡。
+ * 核心原理：沿 Z-order 从上到下遍历桌宠上方的所有可见窗口，
+ * 通过网格采样点判断桌宠窗口区域是否被完全覆盖。
+ */
 
-const execFileAsync = promisify(execFile)
+import { BrowserWindow } from 'electron'
+import koffi from 'koffi'
+import log from './logger'
 
 interface VisibilityResult {
   visible: boolean
-  reason?: 'cloaked' | 'fullscreen_foreground' | 'hidden' | 'minimized' | 'no_window'
+  reason?: 'cloaked' | 'occluded' | 'hidden' | 'minimized' | 'no_window'
+}
+
+/** DWM 常量：DWMWA_CLOAKED */
+const DWMWA_CLOAKED = 14
+/** GetWindow 命令常量：获取 Z-order 中的下一个窗口 */
+const GW_HWNDNEXT = 2
+/** 遮挡检测的网格采样密度（每边的点数），5×5 = 25 个采样点 */
+const SAMPLE_GRID = 5
+
+// koffi 绑定的 DLL 和函数引用（模块级延迟初始化）
+let ffiInitialized = false
+let user32: ReturnType<typeof koffi.load>
+let dwmapi: ReturnType<typeof koffi.load>
+let getWindowRectFn: (...args: unknown[]) => unknown
+let getWindowFn: (...args: unknown[]) => bigint | null
+let isWindowVisibleFn: (...args: unknown[]) => boolean
+let dwmGetWindowAttribute: (...args: unknown[]) => unknown
+
+/** RECT 结构体（Win32） */
+const RECT = koffi.struct('RECT', {
+  Left: 'long',
+  Top: 'long',
+  Right: 'long',
+  Bottom: 'long'
+})
+
+/** 初始化 koffi FFI 绑定 */
+function ensureFFI(): boolean {
+  if (ffiInitialized) {
+    return true
+  }
+
+  try {
+    user32 = koffi.load('user32.dll')
+    dwmapi = koffi.load('dwmapi.dll')
+
+    // BOOL GetWindowRect(HWND hWnd, LPRECT lpRect)
+    getWindowRectFn = user32.func('GetWindowRect', 'bool', ['void*', koffi.pointer(RECT)])
+
+    // HWND GetWindow(HWND hWnd, UINT uCmd)
+    getWindowFn = user32.func('GetWindow', 'void*', ['void*', 'uint'])
+
+    // BOOL IsWindowVisible(HWND hWnd)
+    isWindowVisibleFn = user32.func('IsWindowVisible', 'bool', ['void*'])
+
+    // HRESULT DwmGetWindowAttribute(HWND hwnd, DWORD dwAttribute, PVOID pvAttribute, DWORD cbAttribute)
+    dwmGetWindowAttribute = dwmapi.func('DwmGetWindowAttribute', 'int', [
+      'void*',
+      'int',
+      koffi.pointer('int'),
+      'int'
+    ])
+
+    ffiInitialized = true
+    return true
+  } catch (err) {
+    log.warn('窗口可见性 FFI 初始化失败:', err)
+    return false
+  }
+}
+
+/** 判断点 (px, py) 是否在矩形内 */
+function pointInRect(
+  px: number,
+  py: number,
+  rect: { Left: number; Top: number; Right: number; Bottom: number }
+): boolean {
+  return px >= rect.Left && px < rect.Right && py >= rect.Top && py < rect.Bottom
 }
 
 /**
- * 检测助手窗口是否真正可见。
- * 在 Electron 的 isVisible() 基础上，额外通过 Windows DWM 判断是否被全屏应用遮挡。
+ * 检测桌宠窗口是否被其他窗口完全遮挡。
+ *
+ * 算法步骤：
+ * 1. 使用 DwmGetWindowAttribute 检测 DWM cloaked 状态
+ * 2. 获取窗口的屏幕坐标矩形
+ * 3. 在窗口范围内生成 SAMPLE_GRID × SAMPLE_GRID 个均匀分布的采样点
+ * 4. 沿 Z-order 从上到下遍历所有窗口，对每个在桌宠上方的可见窗口，
+ *    检查其矩形区域覆盖了哪些采样点
+ * 5. 若所有采样点均被覆盖，则判定为被完全遮挡
  */
 async function checkAssistantWindowVisibility(
   assistantWin: BrowserWindow | null
@@ -33,95 +113,80 @@ async function checkAssistantWindowVisibility(
     return { visible: true }
   }
 
-  try {
-    const hwnd = assistantWin.getNativeWindowHandle()
-    const hwndValue =
-      process.platform === 'win32'
-        ? hwnd.readUInt32LE
-          ? hwnd.readUInt32LE(0)
-          : hwnd.readInt32LE(0)
-        : 0
-
-    if (!hwndValue) {
-      return { visible: true }
-    }
-
-    const psScript = `
-[System.Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-
-Add-Type @"
-using System;
-using System.Runtime.InteropServices;
-public static class DwmAPI {
-  [DllImport("dwmapi.dll")]
-  public static extern int DwmGetWindowAttribute(IntPtr hwnd, int dwAttribute, out int pvAttribute, int cbAttribute);
-
-  [DllImport("user32.dll")]
-  public static extern IntPtr GetForegroundWindow();
-
-  [DllImport("user32.dll")]
-  public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
-
-  [DllImport("user32.dll")]
-  public static extern int GetSystemMetrics(int nIndex);
-}
-
-[StructLayout(LayoutKind.Sequential)]
-public struct RECT {
-  public int Left, Top, Right, Bottom;
-}
-"@
-
-$hwnd = [IntPtr]::new(${hwndValue})
-
-# DWMWA_CLOAKED = 14
-$cloaked = 0
-[DwmAPI]::DwmGetWindowAttribute($hwnd, 14, [ref]$cloaked, 4) | Out-Null
-
-# 检查前台窗口是否全屏
-$fgHwnd = [DwmAPI]::GetForegroundWindow()
-$fgRect = New-Object RECT
-$fgFullscreen = $false
-if ($fgHwnd -ne [IntPtr]::Zero -and [DwmAPI]::GetWindowRect($fgHwnd, [ref]$fgRect)) {
-  $screenW = [DwmAPI]::GetSystemMetrics(0)   # SM_CXSCREEN
-  $screenH = [DwmAPI]::GetSystemMetrics(1)   # SM_CYSCREEN
-  $fgW = $fgRect.Right - $fgRect.Left
-  $fgH = $fgRect.Bottom - $fgRect.Top
-  if ($fgW -ge $screenW -and $fgH -ge $screenH) {
-    $fgFullscreen = $true
+  if (!ensureFFI()) {
+    return { visible: true }
   }
-}
 
-@{ cloaked = $cloaked; fgFullscreen = $fgFullscreen } | ConvertTo-Json -Compress
-`
+  try {
+    const buf = assistantWin.getNativeWindowHandle()
+    const hwnd = buf.readBigUInt64LE
+      ? (buf.readBigUInt64LE(0) as bigint)
+      : BigInt(buf.readUInt32LE(0))
 
-    const { stdout } = await execFileAsync(
-      'powershell',
-      ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Encoding', 'UTF8', '-Command', psScript],
-      {
-        windowsHide: true,
-        timeout: 2000,
-        maxBuffer: 16 * 1024,
-        encoding: 'utf8'
-      }
-    )
-
-    const raw = stdout.trim()
-    if (!raw) {
+    if (!hwnd) {
       return { visible: true }
     }
 
-    console.log(`助手窗口可见性检查结果: ${raw}`)
-
-    const result = JSON.parse(raw) as { cloaked: number; fgFullscreen: boolean }
-
-    // 0 = not cloaked, 1 = cloaked by app (DWM), 2 = cloaked by shell, 3/4 = inherited
-    if (result.cloaked !== 0) {
+    // 通过 DWM 检测窗口是否被操作系统隐藏（cloaked）
+    const cloaked = new Int32Array(1)
+    dwmGetWindowAttribute(hwnd, DWMWA_CLOAKED, cloaked, 4)
+    if (cloaked[0] !== 0) {
       return { visible: false, reason: 'cloaked' }
     }
 
-    if (result.fgFullscreen) {
-      return { visible: false, reason: 'fullscreen_foreground' }
+    // 获取窗口在屏幕上的坐标矩形
+    const ourRect = { Left: 0, Top: 0, Right: 0, Bottom: 0 }
+    if (!getWindowRectFn(hwnd, ourRect)) {
+      return { visible: true }
+    }
+
+    const width = ourRect.Right - ourRect.Left
+    const height = ourRect.Bottom - ourRect.Top
+    if (width <= 0 || height <= 0) {
+      return { visible: false, reason: 'occluded' }
+    }
+
+    // 在窗口区域内生成网格采样点
+    const points: Array<{ x: number; y: number }> = []
+    for (let row = 0; row < SAMPLE_GRID; row++) {
+      for (let col = 0; col < SAMPLE_GRID; col++) {
+        points.push({
+          x: ourRect.Left + Math.floor(((col + 0.5) * width) / SAMPLE_GRID),
+          y: ourRect.Top + Math.floor(((row + 0.5) * height) / SAMPLE_GRID)
+        })
+      }
+    }
+
+    // 标记每个采样点是否被覆盖
+    const covered = new Array<boolean>(points.length).fill(false)
+
+    // 沿 Z-order 从上到下遍历窗口（GW_HWNDFIRST = 0 表示获取顶层窗口）
+    let currentHwnd: bigint | null = getWindowFn(null, 0)
+
+    while (currentHwnd && currentHwnd !== hwnd) {
+      // 只检查可见的顶层窗口
+      if (isWindowVisibleFn(currentHwnd)) {
+        const otherRect = { Left: 0, Top: 0, Right: 0, Bottom: 0 }
+        if (getWindowRectFn(currentHwnd, otherRect)) {
+          for (let i = 0; i < points.length; i++) {
+            if (!covered[i] && pointInRect(points[i].x, points[i].y, otherRect)) {
+              covered[i] = true
+            }
+          }
+
+          // 所有采样点已覆盖，提前终止遍历
+          if (covered.every((c) => c)) {
+            break
+          }
+        }
+      }
+
+      currentHwnd = getWindowFn(currentHwnd, GW_HWNDNEXT)
+    }
+
+    // 所有采样点均被覆盖 → 窗口被完全遮挡
+    if (covered.every((c) => c === true)) {
+      return { visible: false, reason: 'occluded' }
     }
 
     return { visible: true }

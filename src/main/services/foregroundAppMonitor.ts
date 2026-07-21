@@ -1,7 +1,11 @@
-import { execFile } from 'child_process'
-import { promisify } from 'util'
+/**
+ * 前台应用监控
+ *
+ * 通过 koffi FFI 直接调用 Win32 API 获取当前前台窗口信息，
+ * 替代原有的 PowerShell 子进程方案，提升性能和可靠性。
+ */
 
-const execFileAsync = promisify(execFile)
+import koffi from 'koffi'
 
 export interface ForegroundAppUsagePayload {
   // 进程名称，通常不带扩展名，例如 "chrome"、"notepad"
@@ -23,6 +27,9 @@ interface ForegroundWindowInfo {
   pid: number
 }
 
+/** 权限常量：PROCESS_QUERY_LIMITED_INFORMATION */
+const PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+
 export class ForegroundAppMonitor {
   private static instance: ForegroundAppMonitor
   // 当前前台应用的唯一标识，格式为 "processName:pid"
@@ -31,6 +38,16 @@ export class ForegroundAppMonitor {
   private currentAppStartAt = 0
   // 上一次广播的前台应用使用事件数据，用于在渲染进程中获取最近一次的前台应用状态
   private lastPayload: ForegroundAppUsagePayload | null = null
+
+  // koffi 绑定的 DLL 和函数引用（延迟初始化，仅在 win32 平台使用）
+  private user32: ReturnType<typeof koffi.load> | null = null
+  private kernel32: ReturnType<typeof koffi.load> | null = null
+  private getForegroundWindow!: (...args: unknown[]) => unknown
+  private getWindowThreadProcessId!: (...args: unknown[]) => unknown
+  private getWindowTextW!: (...args: unknown[]) => unknown
+  private openProcess!: (...args: unknown[]) => unknown
+  private queryFullProcessImageNameW!: (...args: unknown[]) => unknown
+  private closeHandle!: (...args: unknown[]) => unknown
 
   static getInstance(): ForegroundAppMonitor {
     if (!ForegroundAppMonitor.instance) {
@@ -50,7 +67,7 @@ export class ForegroundAppMonitor {
   }
 
   async queryCurrentUsage(): Promise<ForegroundAppUsagePayload | null> {
-    const info = await this.queryForegroundWindow()
+    const info = this.queryForegroundWindow()
     if (!info) {
       return null
     }
@@ -102,76 +119,122 @@ export class ForegroundAppMonitor {
 
     return 'other'
   }
-  // 查询当前前台窗口的进程名称、窗口标题和PID，使用PowerShell脚本在Windows平台上获取信息，其他平台暂不支持
-  private async queryForegroundWindow(): Promise<ForegroundWindowInfo | null> {
+
+  /**
+   * 延迟初始化 koffi FFI 绑定。
+   * 仅在 win32 平台首次调用时加载 DLL 并声明函数签名。
+   */
+  private ensureFFI(): boolean {
     if (process.platform !== 'win32') {
+      return false
+    }
+
+    if (this.user32) {
+      return true
+    }
+
+    try {
+      this.user32 = koffi.load('user32.dll')
+      this.kernel32 = koffi.load('kernel32.dll')
+
+      // HWND GetForegroundWindow()
+      this.getForegroundWindow = this.user32.func('GetForegroundWindow', 'void*', [])
+
+      // DWORD GetWindowThreadProcessId(HWND hWnd, LPDWORD lpdwProcessId)
+      this.getWindowThreadProcessId = this.user32.func('GetWindowThreadProcessId', 'uint', [
+        'void*',
+        koffi.pointer('uint')
+      ])
+
+      // int GetWindowTextW(HWND hWnd, LPWSTR lpString, int nMaxCount)
+      this.getWindowTextW = this.user32.func('GetWindowTextW', 'int', [
+        'void*',
+        koffi.pointer('ushort'),
+        'int'
+      ])
+
+      // HANDLE OpenProcess(DWORD dwDesiredAccess, BOOL bInheritHandle, DWORD dwProcessId)
+      this.openProcess = this.kernel32.func('OpenProcess', 'void*', ['uint', 'int', 'uint'])
+
+      // BOOL QueryFullProcessImageNameW(HANDLE hProcess, DWORD dwFlags, LPWSTR lpExeName, PDWORD lpdwSize)
+      this.queryFullProcessImageNameW = this.kernel32.func('QueryFullProcessImageNameW', 'int', [
+        'void*',
+        'uint',
+        koffi.pointer('ushort'),
+        koffi.pointer('uint')
+      ])
+
+      // BOOL CloseHandle(HANDLE hObject)
+      this.closeHandle = this.kernel32.func('CloseHandle', 'int', ['void*'])
+
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  /**
+   * 通过 Win32 API 查询当前前台窗口的进程名称、窗口标题和 PID
+   * 使用 koffi FFI 直接调用 user32.dll / kernel32.dll，无需启动子进程
+   */
+  private queryForegroundWindow(): ForegroundWindowInfo | null {
+    if (!this.ensureFFI()) {
       return null
     }
 
-    const psScript = `
-[System.Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-
-Add-Type @"
-using System;
-using System.Text;
-using System.Runtime.InteropServices;
-public static class Win32 {
-  [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
-  public static extern IntPtr GetForegroundWindow();
-  [DllImport("user32.dll")] 
-  public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
-  [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
-  public static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
-}
-"@
-
-$hwnd = [Win32]::GetForegroundWindow()
-if ($hwnd -eq [IntPtr]::Zero) { return }
-
-$targetPid = 0
-[Win32]::GetWindowThreadProcessId($hwnd, [ref]$targetPid) | Out-Null
-if ($targetPid -eq 0) { return }
-
-$proc = Get-Process -Id $targetPid -ErrorAction SilentlyContinue
-if ($null -eq $proc) { return }
-
-$sb = New-Object System.Text.StringBuilder(256)
-[Win32]::GetWindowText($hwnd, $sb, 256) | Out-Null
-$windowTitle = $sb.ToString()
-
-@{
-  processName = $proc.ProcessName
-  windowTitle = $windowTitle
-  pid = $proc.Id
-} | ConvertTo-Json -Compress
-`
+    // 解构到局部变量以通过类型窄化（消除 nullable 警告）
+    const getForegroundWindow = this.getForegroundWindow!
+    const getWindowThreadProcessId = this.getWindowThreadProcessId!
+    const getWindowTextW = this.getWindowTextW!
+    const openProcess = this.openProcess!
+    const queryFullProcessImageNameW = this.queryFullProcessImageNameW!
+    const closeHandle = this.closeHandle!
 
     try {
-      const { stdout } = await execFileAsync(
-        'powershell',
-        ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Encoding', 'UTF8', '-Command', psScript],
-        {
-          windowsHide: true,
-          timeout: 3000,
-          maxBuffer: 128 * 1024,
-          encoding: 'utf8'
+      // 获取前台窗口句柄
+      const hwnd = getForegroundWindow()
+
+      // 获取窗口所属进程 PID
+      const pidOut = new Uint32Array(1)
+      getWindowThreadProcessId(hwnd, pidOut)
+      const pid = pidOut[0]
+      if (pid === 0) {
+        return null
+      }
+
+      // 获取窗口标题
+      const titleBuf = new Uint16Array(1024)
+      const titleLen = getWindowTextW(hwnd, titleBuf, 1024) as number
+      const windowTitle =
+        titleLen > 0
+          ? String.fromCharCode(...titleBuf.slice(0, titleLen))
+          : ''
+
+      // 通过 PID 获取进程完整路径，提取进程名称
+      let processName = ''
+
+      const hProcess = openProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid)
+      if (hProcess) {
+        const pathBuf = new Uint16Array(4096)
+        const pathSize = new Uint32Array([4096])
+        const result = queryFullProcessImageNameW(hProcess, 0, pathBuf, pathSize)
+        if (result) {
+          const fullPath = String.fromCharCode(...pathBuf.slice(0, pathSize[0]))
+          // 从路径中提取文件名，去掉 .exe 扩展名
+          processName = fullPath
+            .replace(/\\/g, '/')
+            .split('/')
+            .pop()
+            ?.replace(/\.exe$/i, '') || ''
         }
-      )
-      const raw = stdout.trim()
-      if (!raw) {
+        closeHandle(hProcess)
+      }
+
+      if (!processName) {
         return null
       }
 
-      const parsed = JSON.parse(raw) as ForegroundWindowInfo
-      if (!parsed.processName || typeof parsed.pid !== 'number') {
-        return null
-      }
-
-      return {
-        processName: parsed.processName,
-        windowTitle: parsed.windowTitle || '',
-        pid: parsed.pid
-      }
+      return { processName, windowTitle, pid }
     } catch {
       return null
     }

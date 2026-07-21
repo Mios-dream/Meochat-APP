@@ -1,11 +1,8 @@
 import { BrowserWindow, powerMonitor, app } from 'electron'
 import { CHANNELS } from '@shared/ipc/channels'
 import { registerHandle } from '../utils/registerIpcHandler'
-import { execFile } from 'child_process'
-import { promisify } from 'util'
 import { ForegroundAppMonitor, ForegroundAppUsagePayload } from '../services/foregroundAppMonitor'
-
-const execFileAsync = promisify(execFile)
+import koffi from 'koffi'
 // 是否已经完成事件监听的设置，确保只设置一次
 let setupCompleted = false
 // 电池状态轮询定时器
@@ -25,53 +22,43 @@ function broadcast(channel: string, payload?: unknown): void {
   })
 }
 
-// 根据BatteryStatus的状态码判断是否正在充电
-function isChargingStatus(status: number): boolean {
-  // 2 = Charging, 6 = Charging and High, 7 = Charging and Low, 8 = Charging and Critical, 9 = Undefined
-  return [2, 6, 7, 8, 9].includes(status)
-}
-
 // 查询电池状态，返回剩余电量百分比和是否正在充电
-async function queryBatteryStatus(): Promise<BatteryStatus | null> {
+function queryBatteryStatus(): BatteryStatus | null {
   if (process.platform !== 'win32') {
     return null
   }
 
-  const psScript =
-    'Get-CimInstance Win32_Battery | Select-Object -First 1 EstimatedChargeRemaining,BatteryStatus | ConvertTo-Json -Compress'
-
   try {
-    const { stdout } = await execFileAsync(
-      'powershell',
-      ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', psScript],
-      {
-        windowsHide: true,
-        timeout: 3000,
-        maxBuffer: 128 * 1024,
-        encoding: 'utf8'
-      }
-    )
+    const kernel32 = koffi.load('kernel32.dll')
 
-    const raw = stdout.trim()
-    if (!raw) {
-      return null
-    }
+    // SYSTEM_POWER_STATUS 结构体
+    const SystemPowerStatus = koffi.struct('SystemPowerStatus', {
+      ACLineStatus: 'uchar',
+      BatteryFlag: 'uchar',
+      BatteryLifePercent: 'uchar',
+      Reserved1: 'uchar',
+      BatteryLifeTime: 'uint',
+      BatteryFullLifeTime: 'uint'
+    })
 
-    const parsed = JSON.parse(raw) as {
-      EstimatedChargeRemaining?: number
-      BatteryStatus?: number
-    }
+    // BOOL GetSystemPowerStatus(LPSYSTEM_POWER_STATUS lpSystemPowerStatus)
+    const getSystemPowerStatus = kernel32.func('GetSystemPowerStatus', 'int', [
+      koffi.pointer(SystemPowerStatus)
+    ])
 
-    const percent = Number(parsed.EstimatedChargeRemaining)
-    const status = Number(parsed.BatteryStatus)
+    const status = { ACLineStatus: 0, BatteryFlag: 0, BatteryLifePercent: 0, Reserved1: 0, BatteryLifeTime: 0, BatteryFullLifeTime: 0 }
+    const result = getSystemPowerStatus(status)
 
-    if (!Number.isFinite(percent) || !Number.isFinite(status)) {
+    kernel32.unload()
+
+    if (!result || status.BatteryLifePercent > 100) {
       return null
     }
 
     return {
-      percent: Math.max(0, Math.min(100, Math.round(percent))),
-      isCharging: isChargingStatus(status)
+      percent: Math.round(status.BatteryLifePercent),
+      // ACLineStatus: 1 = 在线（充电中），0 = 离线（电池供电）
+      isCharging: status.ACLineStatus === 1
     }
   } catch {
     return null
@@ -79,8 +66,8 @@ async function queryBatteryStatus(): Promise<BatteryStatus | null> {
 }
 
 // 广播当前电池状态给所有渲染进程
-async function broadcastBatteryStatus(): Promise<void> {
-  const battery = await queryBatteryStatus()
+function broadcastBatteryStatus(): void {
+  const battery = queryBatteryStatus()
   if (!battery) {
     return
   }
