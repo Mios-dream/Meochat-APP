@@ -362,6 +362,12 @@ function setupAssistantIPC(): void {
 
   // Tips窗口相关IPC
   registerOn(CHANNELS.TIPS_SHOW, async (_event, data: { message: string; avatarUrl?: string }) => {
+    // 有新消息，取消延迟销毁
+    if (tipsDestroyTimer) {
+      clearTimeout(tipsDestroyTimer)
+      tipsDestroyTimer = null
+    }
+
     const tipsWin = windowRegistry.getWindowByType('tips')
     if (tipsWin && !tipsWin.isDestroyed()) {
       tipsWin.show()
@@ -390,15 +396,22 @@ function setupAssistantIPC(): void {
     }
   })
 
+  // 延迟销毁定时器：tips 窗口隐藏一段时间后才销毁，避免频繁创建销毁
+  let tipsDestroyTimer: ReturnType<typeof setTimeout> | null = null
+
   registerOn(CHANNELS.TIPS_HIDE, () => {
     const tipsWin = windowRegistry.getWindowByType('tips')
     if (tipsWin && !tipsWin.isDestroyed()) {
       tipsWin.webContents.send(CHANNELS.TIPS_HIDE_EVENT)
-      setTimeout(() => {
+      // 先隐藏，5 分钟无新消息再彻底销毁
+      tipsWin.hide()
+      if (tipsDestroyTimer) clearTimeout(tipsDestroyTimer)
+      tipsDestroyTimer = setTimeout(() => {
         if (tipsWin && !tipsWin.isDestroyed()) {
-          tipsWin.hide()
+          tipsWin.close()
         }
-      }, 400)
+        tipsDestroyTimer = null
+      }, 5 * 60 * 1000)
     }
   })
 

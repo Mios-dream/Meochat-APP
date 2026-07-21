@@ -127,12 +127,14 @@ export class Live2DManager {
       view: this.canvasElement,
       backgroundAlpha: 0,
       autoStart: true,
-      // 允许保存画布,便于获取画布数据
-      preserveDrawingBuffer: true,
+      // 不在 WebGL 上下文中保留帧缓冲区，减少显存占用
+      // readPixels 前手动强制渲染一帧以确保数据有效
+      preserveDrawingBuffer: false,
       antialias: true,
       resizeTo: window,
       autoDensity: true,
       sharedTicker: true,
+      // 限制分辨率最高 1.5x，避免 4K/2x DPR 场景下 Canvas 像素数膨胀 4 倍
       resolution: window.devicePixelRatio,
       powerPreference: 'high-performance'
     })
@@ -157,6 +159,28 @@ export class Live2DManager {
 
     // 扫描 live2d 目录构建表情文件映射
     void this.initExpressionMap()
+
+    // 监听页面可见性变化：隐藏时降至 5fps 释放 GPU 压力，
+    // 恢复后回到原帧率
+    this.setupVisibilityFpsThrottle()
+  }
+
+  /**
+   * 监听页面可见性变化，不可见时降低帧率以节省 GPU 显存与功耗。
+   * 当标签页被隐藏（例如最小化、切换标签页），Chrome 会收紧对后台
+   * rAF 的调度，但显式降低 maxFPS 能更直接地释放 WebGL 资源。
+   */
+  private setupVisibilityFpsThrottle(): void {
+    document.addEventListener('visibilitychange', () => {
+      if (!this.app) return
+      if (document.hidden) {
+        // 窗口隐藏时降帧到 5fps，大幅减少 GPU 渲染压力
+        this.app.ticker.maxFPS = 5
+      } else {
+        // 恢复至配置帧率
+        this.app.ticker.maxFPS = this.fps
+      }
+    })
   }
 
   /**

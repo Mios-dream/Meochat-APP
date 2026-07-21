@@ -26,6 +26,7 @@ onMounted(() => {
     convertEol: true,
     cursorBlink: false,
     cursorStyle: 'bar',
+    scrollback: 100,
     fontSize: 13,
     fontFamily: "'Cascadia Code', 'Fira Code', 'JetBrains Mono', Consolas, monospace",
     theme: {

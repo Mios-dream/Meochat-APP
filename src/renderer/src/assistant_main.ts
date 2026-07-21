@@ -10,15 +10,12 @@ import './assets/fonts/font.css'
 import App from './App.vue'
 import { createRouter, createWebHashHistory } from 'vue-router'
 import AssistantView from './views/AssistantView.vue'
-import { library } from '@fortawesome/fontawesome-svg-core'
-import { fas } from '@fortawesome/free-solid-svg-icons'
-import { far } from '@fortawesome/free-regular-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome'
+import { registerIcons } from './utils/icons'
 import { useConfigStore } from './stores/useConfigStore'
 
-// 添加图标
-library.add(fas)
-library.add(far)
+// 仅注册实际使用的 82 个图标，替换全量加载的 library.add(fas + far)
+registerIcons()
 
 // 创建助手专用路由（只包含 AssistantView）
 const router = createRouter({

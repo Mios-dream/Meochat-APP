@@ -2,9 +2,14 @@ import type { Application, WebGLRenderer } from 'pixi.js'
 
 /**
  * 从点击的位置判断像素是否透明。
+ * 由于 WebGL 上下文未开启 preserveDrawingBuffer，每次读取前先强制渲染一帧，
+ * 确保帧缓冲区内容为最新渲染结果。
  */
 export function isPixelTransparentFromEvent(app: Application | null, event: MouseEvent): boolean {
   if (!app || !app.renderer) return false
+
+  // 强制同步渲染一次，确保帧缓冲区有效
+  app.render()
 
   const gl = (app.renderer as WebGLRenderer).gl
   const canvas = app.canvas as HTMLCanvasElement

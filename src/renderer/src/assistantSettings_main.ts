@@ -9,14 +9,11 @@ import './assets/fonts/font.css'
 import App from './App.vue'
 import { createRouter, createWebHashHistory } from 'vue-router'
 import AssistantSettingsView from './views/AssistantSettingsView.vue'
-import { library } from '@fortawesome/fontawesome-svg-core'
-import { fas } from '@fortawesome/free-solid-svg-icons'
-import { far } from '@fortawesome/free-regular-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome'
+import { registerIcons } from './utils/icons'
 import { useConfigStore } from './stores/useConfigStore'
 
-library.add(fas)
-library.add(far)
+registerIcons()
 
 const router = createRouter({
   history: createWebHashHistory('/'),

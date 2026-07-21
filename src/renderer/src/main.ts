@@ -4,15 +4,12 @@ import './assets/base.css'
 import './assets/fonts/font.css' // 字体CSS文件路径
 import App from './App.vue'
 import router from './router'
-import { library } from '@fortawesome/fontawesome-svg-core'
-import { fas } from '@fortawesome/free-solid-svg-icons'
-import { far } from '@fortawesome/free-regular-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome'
+import { registerIcons } from './utils/icons'
 import { useConfigStore } from './stores/useConfigStore'
 
-// 添加所有solid图标到库中
-library.add(fas)
-library.add(far)
+// 仅注册实际使用的 82 个图标
+registerIcons()
 
 const app = createApp(App)
 // 添加Pinia
