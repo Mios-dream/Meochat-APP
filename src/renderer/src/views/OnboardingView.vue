@@ -203,6 +203,28 @@
               </div>
             </div>
           </div>
+
+          <!-- API 地址输入弹窗 -->
+          <div v-if="showApiInput" class="log-overlay" @click.self="cancelApiMode">
+            <div class="api-input-panel">
+              <h3 class="panel-title">连接远程核心</h3>
+              <p class="panel-hint">请输入 API 服务地址</p>
+              <label class="field field-full">
+                <span>API 地址</span>
+                <input
+                  v-model="apiAddress"
+                  type="text"
+                  placeholder="例如：http://127.0.0.1:8001"
+                  @keyup.enter="confirmApiMode"
+                />
+              </label>
+              <p v-if="backendError" class="error-text">{{ backendError }}</p>
+              <div class="actions" style="justify-content: space-between">
+                <button class="btn-cold" @click="cancelApiMode">取消</button>
+                <button class="btn-submit" @click="confirmApiMode">连接</button>
+              </div>
+            </div>
+          </div>
         </div>
 
         <!-- PERSONALITY_ONLINE -->
@@ -518,6 +540,7 @@ const profile = reactive<OnboardingProfile>({
 
 const apiAddress = ref('')
 const showLogDrawer = ref(false)
+const showApiInput = ref(false)
 
 const logSourceText = computed(() => {
   if (currentMode.value === 'api') return 'API 模式'
@@ -933,20 +956,11 @@ async function retryBackend(): Promise<void> {
 
 async function switchMode(): Promise<void> {
   if (currentMode.value === 'local') {
+    // 显示 API 地址输入弹窗，让用户填写/确认地址后再连接
     currentMode.value = 'api'
-    currentState.value = 'LOG_STREAM'
-    backendError.value = ''
-    isKernelMissing.value = false
-    backendStillStarting.value = false
     apiAddress.value = configStore.config.baseUrl || 'http://127.0.0.1:8001'
-    logStatusTitle.value = 'API 模式'
-    logStatusSub.value = `等待连接 ${apiAddress.value}...`
-    await wait(600)
-    const ok = await connectApiMode()
-    if (ok) {
-      await loadAssistant()
-      await advanceAfterAssistantLoaded()
-    }
+    backendError.value = ''
+    showApiInput.value = true
   } else {
     currentMode.value = 'local'
     currentState.value = 'LOG_STREAM'
@@ -971,6 +985,27 @@ async function switchMode(): Promise<void> {
       await advanceAfterAssistantLoaded()
     }
   }
+}
+
+async function confirmApiMode(): Promise<void> {
+  showApiInput.value = false
+  currentState.value = 'LOG_STREAM'
+  backendError.value = ''
+  isKernelMissing.value = false
+  backendStillStarting.value = false
+  logStatusTitle.value = 'API 模式'
+  logStatusSub.value = `等待连接 ${apiAddress.value}...`
+  await wait(600)
+  const ok = await connectApiMode()
+  if (ok) {
+    await loadAssistant()
+    await advanceAfterAssistantLoaded()
+  }
+}
+
+function cancelApiMode(): void {
+  showApiInput.value = false
+  currentMode.value = 'local'
 }
 
 // ─── backend: API mode ──────────────────────────────────────────────────────
@@ -3125,5 +3160,21 @@ onUnmounted(() => {
   100% {
     opacity: 1;
   }
+}
+
+/* ─── API 地址输入弹窗 ──────────────────────────────────────────────────── */
+
+.api-input-panel {
+  position: relative;
+  width: 400px;
+  max-width: 90vw;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid rgba(251, 114, 153, 0.2);
+  border-radius: 24px;
+  padding: 32px 30px;
+  backdrop-filter: blur(14px);
+  box-shadow:
+    0 20px 56px rgba(180, 60, 90, 0.16),
+    0 0 0 1px rgba(255, 255, 255, 0.4) inset;
 }
 </style>
