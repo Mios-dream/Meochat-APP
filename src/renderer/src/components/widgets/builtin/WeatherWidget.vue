@@ -35,6 +35,18 @@
 import { reactive, computed, ref, onMounted, onUnmounted } from 'vue'
 
 /**
+ * 预览模式属性
+ * 为 true 时跳过所有 IPC 调用（用于组件预览面板）
+ */
+interface Props {
+  previewMode?: boolean
+}
+
+const props = withDefaults(defineProps<Props>(), {
+  previewMode: false
+})
+
+/**
  * 天气数据接口
  */
 interface WeatherData {
@@ -101,6 +113,8 @@ const conditionIcon = computed<string>(() => {
  * 通过IPC调用主进程天气API
  */
 async function fetchRealWeather(): Promise<void> {
+  // 预览模式下不发起真实请求
+  if (props.previewMode) return
   if (isLoading.value) return
 
   isLoading.value = true
@@ -126,6 +140,7 @@ async function fetchRealWeather(): Promise<void> {
 
 /** 更新天气数据（外部调用接口，保持向后兼容） */
 function updateWeather(data: Partial<WeatherData>): void {
+  // 预览模式下仅更新本地数据，不发起真实请求
   if (data.location !== undefined) {
     weatherData.location = data.location
     weatherQuery.value = data.location
@@ -135,6 +150,9 @@ function updateWeather(data: Partial<WeatherData>): void {
   }
   if (data.temperature !== undefined) {
     weatherData.temperature = data.temperature
+  }
+  if (props.previewMode) {
+    return
   }
   // 城市变更后重新获取真实天气
   fetchRealWeather()
@@ -160,6 +178,11 @@ function stopAutoRefresh(): void {
 }
 
 onMounted(async () => {
+  // 预览模式下跳过所有 IPC 调用，仅显示占位数据
+  if (props.previewMode) {
+    return
+  }
+
   // 组件挂载时尝试获取位置信息，优先使用系统坐标直接请求天气
   try {
     const locResult = await window.api.widgetApi.getLocation()

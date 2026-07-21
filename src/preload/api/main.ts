@@ -65,6 +65,25 @@ export function buildMainWindowApi(): MainWindowApi {
           timeout_ms: timeoutMs
         })
     },
+
+    widgetManager: {
+      getAllConfigs: () => ipcRenderer.invoke(CHANNELS.WIDGET_CONFIG_GET_ALL),
+      saveConfig: (config) => ipcRenderer.invoke(CHANNELS.WIDGET_CONFIG_SAVE, config),
+      addInstance: (instance) => ipcRenderer.invoke(CHANNELS.WIDGET_INSTANCE_ADD, instance),
+      updateInstance: (instanceId, updates) =>
+        ipcRenderer.invoke(CHANNELS.WIDGET_INSTANCE_UPDATE, { instanceId, updates }),
+      deleteInstance: (instanceId) =>
+        ipcRenderer.invoke(CHANNELS.WIDGET_INSTANCE_DELETE, instanceId),
+      togglePin: (instanceId, pinned) =>
+        ipcRenderer.invoke(CHANNELS.WIDGET_WINDOW_TOGGLE_PIN, { instanceId, pinned }),
+      createWindow: (instanceId) => ipcRenderer.invoke(CHANNELS.WIDGET_WINDOW_CREATE, instanceId),
+      closeWindow: (instanceId) => ipcRenderer.invoke(CHANNELS.WIDGET_WINDOW_CLOSE, instanceId),
+      updateGlobalSettings: (settings) =>
+        ipcRenderer.invoke(CHANNELS.WIDGET_SETTINGS_UPDATE, settings),
+      onConfigChanged: (callback) => ipc.on(CHANNELS.WIDGET_CONFIG_CHANGED_EVENT, callback),
+      sendData: (data) => ipcRenderer.invoke(CHANNELS.WIDGET_DATA_SEND, data),
+      broadcastData: (data) => ipcRenderer.invoke(CHANNELS.WIDGET_DATA_BROADCAST, data)
+    },
     kernel: kernelApi,
     assistant: assistantApi,
     chat: chatApi,

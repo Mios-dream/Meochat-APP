@@ -11,6 +11,13 @@ import type { ChatApi } from '../base/chat'
 import type { SystemApi } from '../base/system'
 
 import type { OnboardingMode, OnboardingProfile, OnboardingState } from '@shared/types/onboarding'
+import type {
+  WidgetConfigFile,
+  WidgetInstance,
+  WidgetGlobalSettings,
+  WidgetDataMessage,
+  IpcResponse
+} from '@shared/types/widget'
 
 /** 主窗口暴露的 API 接口 */
 export interface MainWindowApi extends CommonApi {
@@ -37,6 +44,23 @@ export interface MainWindowApi extends CommonApi {
       timeoutMs?: number
     ) => Promise<{ success: boolean; data?: Record<string, unknown>; error?: string }>
   }
+
+  /** 小组件管理 API（仅供主窗口管理面板使用） */
+  widgetManager: {
+    getAllConfigs: () => Promise<IpcResponse<WidgetConfigFile>>
+    saveConfig: (config: WidgetConfigFile) => Promise<IpcResponse>
+    addInstance: (instance: WidgetInstance) => Promise<IpcResponse>
+    updateInstance: (instanceId: string, updates: Partial<WidgetInstance>) => Promise<IpcResponse>
+    deleteInstance: (instanceId: string) => Promise<IpcResponse>
+    togglePin: (instanceId: string, pinned: boolean) => Promise<IpcResponse>
+    createWindow: (instanceId: string) => Promise<IpcResponse>
+    closeWindow: (instanceId: string) => Promise<IpcResponse>
+    updateGlobalSettings: (settings: Partial<WidgetGlobalSettings>) => Promise<IpcResponse>
+    onConfigChanged: (callback: (config: WidgetConfigFile) => void) => () => void
+    sendData: (data: WidgetDataMessage) => Promise<IpcResponse>
+    broadcastData: (data: Omit<WidgetDataMessage, 'toId'>) => Promise<IpcResponse>
+  }
+
   chatBox: {
     openChatBox: () => void
     closeChatBox: () => void

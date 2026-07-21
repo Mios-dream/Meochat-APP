@@ -32,6 +32,18 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 
+/**
+ * 预览模式属性
+ * 为 true 时跳过动作协议监听注册（用于组件预览面板）
+ */
+interface Props {
+  previewMode?: boolean
+}
+
+const props = withDefaults(defineProps<Props>(), {
+  previewMode: false
+})
+
 /** 引言接口 */
 interface Quote {
   text: string
@@ -128,6 +140,11 @@ async function refreshQuote(): Promise<void> {
 /** 组件挂载 */
 onMounted(() => {
   currentQuote.value = getRandomQuote()
+
+  // 预览模式下不注册动作协议监听
+  if (props.previewMode) {
+    return
+  }
 
   // ── 小组件动作协议监听 ──
   window.api.widgetApi?.onAction((request) => {

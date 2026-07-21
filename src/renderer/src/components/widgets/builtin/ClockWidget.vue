@@ -69,6 +69,18 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 
+/**
+ * 预览模式属性
+ * 为 true 时跳过动作协议监听注册（用于组件预览面板）
+ */
+interface Props {
+  previewMode?: boolean
+}
+
+const props = withDefaults(defineProps<Props>(), {
+  previewMode: false
+})
+
 /** 星期映射 */
 const WEEKDAYS = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六']
 
@@ -201,6 +213,11 @@ function updateTime(): void {
 onMounted(() => {
   updateTime()
   timer = setInterval(updateTime, 1000)
+
+  // 预览模式下不注册动作协议监听
+  if (props.previewMode) {
+    return
+  }
 
   // ── 小组件动作协议监听 ──
   window.api.widgetApi?.onAction((request) => {
