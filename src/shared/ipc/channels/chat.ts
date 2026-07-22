@@ -17,7 +17,7 @@ export const chatChannels = {
   POP_HISTORY: 'chat:pop-history',
   /** 替换全部历史（远端同步后覆盖） */
   REPLACE_HISTORY: 'chat:replace-history',
-  /** 清空聊天历史 */
+  /** 清空聊天历史（本地 + 云端） */
   CLEAR_HISTORY: 'chat:clear-history',
   /** 调用聊天（invoke，ChatBox → Main → Assistant → 结果返回） */
   CHAT_INVOKE: 'chat:invoke',

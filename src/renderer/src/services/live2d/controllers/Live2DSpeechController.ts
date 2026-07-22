@@ -12,14 +12,18 @@ export class Live2DSpeechController {
 
   /**
    * 设置音量，并同步到正在播放的增益节点。
-   * @param volume 目标音量，取值范围会被限制在 0 到 1。
+   *
+   * 增益映射为 `volume * 2`，使得 50% 音量对应原始电平（gain=1.0），
+   * 100% 音量对应 2 倍增益（gain=2.0），为原始音频偏小的 TTS 提供放大空间。
+   *
+   * @param volume 目标音量，范围 0~1，超过 0.5 的部分进入增益放大区。
    * @param audioContext 当前音频上下文，用于在播放中同步增益值。
    */
   setVolume(volume: number, audioContext: AudioContext | null): void {
     this.volume = Math.max(0, Math.min(1, volume))
 
     if (this.activeGainNode && audioContext) {
-      this.activeGainNode.gain.setValueAtTime(this.volume, audioContext.currentTime)
+      this.activeGainNode.gain.setValueAtTime(this.volume * 2, audioContext.currentTime)
     }
   }
 
@@ -73,7 +77,7 @@ export class Live2DSpeechController {
    * @param audioContext 当前音频上下文，用于解码和播放音频。
    * @param coreModel Live2D/Cubism 核心模型对象，用于写入口型参数。
    * @param disabled 当前模型是否禁用；禁用时直接跳过播放。
-   * @param volume 本次播放音量，不传时使用控制器当前音量。
+   * @param volume 本次播放音量（0~1），内部映射为 `volume * 2` 作为增益值，不传时使用控制器当前音量。
    * @returns 音频播放结束后 resolve 的 Promise。
    */
   async speak(
@@ -104,7 +108,7 @@ export class Live2DSpeechController {
             const analyser = audioContext.createAnalyser()
             const gainNode = audioContext.createGain()
 
-            gainNode.gain.value = Math.max(0, Math.min(1, volume))
+            gainNode.gain.value = Math.max(0, volume * 2)
             this.activeGainNode = gainNode
 
             source.buffer = audioBuffer

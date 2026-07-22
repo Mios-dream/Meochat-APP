@@ -160,7 +160,7 @@ class ChatManager {
     return messages
   }
 
-  /** 清空聊天历史。 */
+  /** 清空聊天历史（本地 + 云端）。 */
   public async clearChatHistory(): Promise<void> {
     await window.api.chat.clearHistory()
   }

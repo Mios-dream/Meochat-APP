@@ -5,7 +5,7 @@ import type { AppConfig } from '@shared/types/appConfig'
 export const useConfigStore = defineStore('config', () => {
   const config = ref<AppConfig>({
     baseUrl: 'http://127.0.0.1:8001',
-    volume: 0.8,
+    volume: 0.5,
     generateMotion: false,
     autoStartOnBoot: false,
     autoUpdate: true,

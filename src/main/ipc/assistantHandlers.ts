@@ -10,6 +10,7 @@ import {
   tipsWindowConfig
 } from '../windows'
 import { chatHistoryStore } from '../services/chatHistoryStore'
+import { WsService } from '../services/wsService'
 import type { ChatMessage } from '@shared/types/chat'
 import type { ChatInvokeResult } from '@shared/ipc/api/base/chat'
 
@@ -211,8 +212,11 @@ function setupChatBoxIPC(): void {
     return result.data
   })
 
-  // 清空聊天历史：同步清空主进程存储并广播到所有窗口
+  // 清空聊天历史：同步清空本地存储 + 云端记录（通过 WS 通知服务端）
   registerHandle(CHANNELS.CLEAR_HISTORY, async () => {
+    // 发送 WS chat:clear 请求服务端清空云端记录
+    WsService.getInstance().send({ type: 'chat:clear' })
+    // 同步清空本地存储
     const result = chatHistoryStore.clear()
     if (!result.success) throw new Error(result.error)
     broadcastHistoryChanged()

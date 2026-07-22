@@ -243,6 +243,7 @@ export type ServerMessage =
   | ChatAudioMessage
   | ChatMotionMessage
   | ChatDoneMessage
+  | ChatClearedMessage
   | ErrorMessage
   | ToolCallEvent
   | ToolResultEvent
@@ -369,12 +370,23 @@ export interface ToolDefinitionsMessage {
   components: ComponentToolDefinition[]
 }
 
+/** 客户端请求清空聊天记录。 */
+export interface ChatClearMessage {
+  type: 'chat:clear'
+}
+
+/** 服务端确认聊天记录已清空。 */
+export interface ChatClearedMessage {
+  type: 'chat:cleared'
+}
+
 /** 客户端发送的所有消息联合类型。 */
 export type ClientMessage =
   | PingMessage
   | ChatSendMessage
   | InteractionSendMessage
   | ChatCancelMessage
+  | ChatClearMessage
   | ToolResultMessage
   | ToolProgressMessage
   | ToolConfirmMessage

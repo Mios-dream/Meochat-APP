@@ -211,7 +211,7 @@ function getAttachIcon(att: ContentPart): string {
 
 function getAttachName(att: ContentPart): string {
   if (att.type === 'image_url') return '图片附件'
-  return (att as any).fileName ?? '附件'
+  return (att as ContentPart & { fileName: string }).fileName ?? '附件'
 }
 </script>
 

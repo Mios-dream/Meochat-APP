@@ -18,7 +18,7 @@ const schema: Schema<AppConfig> = {
   debugMode: { type: 'boolean', default: false },
   silentMode: { type: 'boolean', default: false },
   // 助手配置
-  volume: { type: 'number', default: 0.8 },
+  volume: { type: 'number', default: 0.5 },
   // 是否启用动作生成
   generateMotion: { type: 'boolean', default: false },
   // 是否启用助手语音唤醒服务

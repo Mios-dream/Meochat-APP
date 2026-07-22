@@ -334,7 +334,7 @@ async function handleNewConversation(): Promise<void> {
   try {
     await window.api.chat.clearHistory()
   } catch (err) {
-    console.warn('清空历史失败:', err)
+    console.warn('清空聊天记录失败:', err)
   }
   nextTick(() => {
     if (inputRef.value) {

@@ -118,7 +118,7 @@ export class ChatPlaybackController {
 
   /** 设置音量，并同步到 Live2DManager。 */
   public setVolume(volume: number): void {
-    this.volume = Math.max(0, Math.min(1, volume))
+    this.volume = Math.max(0, volume)
     this.live2DManager?.setVolume(volume)
   }
 
@@ -228,7 +228,7 @@ export class ChatPlaybackController {
     }
 
     const audioUrl = URL.createObjectURL(segment.audioBlob)
-    await playAudioSimple(audioUrl)
+    await playAudioSimple(audioUrl, this.volume)
     URL.revokeObjectURL(audioUrl)
   }
 
@@ -397,9 +397,11 @@ export function sumMotionDurationMs(sequence: Live2DMotionStep[]): number {
 }
 
 /** Live2DManager 不可用时的普通 Audio 播放降级方案。 */
-function playAudioSimple(audioUrl: string): Promise<void> {
+function playAudioSimple(audioUrl: string, volume: number = 1.0): Promise<void> {
   return new Promise<void>((resolve, reject) => {
     const audio = new Audio(audioUrl)
+
+    audio.volume = Math.max(0, volume * 2)
 
     audio.addEventListener('ended', () => resolve())
     audio.addEventListener('error', (e) => reject(e))

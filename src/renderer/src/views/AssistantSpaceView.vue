@@ -59,7 +59,17 @@
         <div v-if="showHistoryModal" class="modal-overlay" @click="closeHistoryModal">
           <div class="chat-history-modal" @click.stop>
             <div class="modal-header">
+              <div class="modal-header-left">
+                <button
+                  class="modal-header-btn clear-btn"
+                  title="清空聊天记录"
+                  @click="handleClearHistory"
+                >
+                  <font-awesome-icon icon="trash" />
+                </button>
+              </div>
               <h2>聊天历史</h2>
+              <div class="modal-header-right" />
             </div>
             <div class="modal-body">
               <div v-if="historyLoading" class="no-history">正在加载聊天历史...</div>
@@ -76,6 +86,7 @@
                     :avatar-url="avatarUrl"
                     :assistant-name="assistantName"
                     :timestamp="disp.item.timestamp"
+                    :avatar-size="45"
                   />
                   <ChatMessageItem
                     v-else
@@ -765,6 +776,19 @@ function closeDiaryModal(): void {
 }
 
 /**
+ * 清空聊天记录：通过 ChatManager 清空本地 + 云端聊天记录。
+ */
+async function handleClearHistory(): Promise<void> {
+  try {
+    await chatService.clearChatHistory()
+    // 清空本地历史显示
+    chatHistory.value = []
+  } catch (err) {
+    console.warn('清空聊天记录失败:', err)
+  }
+}
+
+/**
  * 加载聊天历史
  *
  * 优先展示 ChatManager 的本地缓存（保证与当前对话实时一致），
@@ -1251,18 +1275,161 @@ async function saveShortcut(shortcut: string): Promise<void> {
 }
 
 .modal-header {
+  position: relative;
   padding: 10px;
   background-color: #f982a6;
   color: white;
   display: flex;
-  justify-content: center;
   align-items: center;
   font-family: 'LoliFont';
+  overflow: hidden;
+}
+
+/* 左右两侧多排淡白色圆点装饰，铺满高度 */
+.modal-header::before,
+.modal-header::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 100px;
+  pointer-events: none;
+}
+
+.modal-header::before {
+  left: 0;
+  background:
+    radial-gradient(circle at 5px 50%, rgba(255, 255, 255, 0.3) 4px, transparent 4px) 0 0 / 100px
+      8px repeat-y,
+    radial-gradient(circle at 13px 50%, rgba(255, 255, 255, 0.3) 3.6px, transparent 3.6px) 0 0 /
+      100px 8px repeat-y,
+    radial-gradient(circle at 21px 50%, rgba(255, 255, 255, 0.3) 3.2px, transparent 3.2px) 0 0 /
+      100px 8px repeat-y,
+    radial-gradient(circle at 29px 50%, rgba(255, 255, 255, 0.3) 2.9px, transparent 2.9px) 0 0 /
+      100px 8px repeat-y,
+    radial-gradient(circle at 37px 50%, rgba(255, 255, 255, 0.3) 2.6px, transparent 2.6px) 0 0 /
+      100px 8px repeat-y,
+    radial-gradient(circle at 45px 50%, rgba(255, 255, 255, 0.3) 2.3px, transparent 2.3px) 0 0 /
+      100px 8px repeat-y,
+    radial-gradient(circle at 53px 50%, rgba(255, 255, 255, 0.3) 2px, transparent 2px) 0 0 / 100px
+      8px repeat-y,
+    radial-gradient(circle at 61px 50%, rgba(255, 255, 255, 0.3) 1.8px, transparent 1.8px) 0 0 /
+      100px 8px repeat-y,
+    radial-gradient(circle at 69px 50%, rgba(255, 255, 255, 0.3) 1.6px, transparent 1.6px) 0 0 /
+      100px 8px repeat-y,
+    radial-gradient(circle at 77px 50%, rgba(255, 255, 255, 0.3) 1.4px, transparent 1.4px) 0 0 /
+      100px 8px repeat-y,
+    radial-gradient(circle at 85px 50%, rgba(255, 255, 255, 0.3) 1.2px, transparent 1.2px) 0 0 /
+      100px 8px repeat-y,
+    radial-gradient(circle at 93px 50%, rgba(255, 255, 255, 0.3) 1px, transparent 1px) 0 0 / 100px
+      8px repeat-y;
+}
+
+.modal-header::after {
+  right: 0;
+  background:
+    radial-gradient(circle at calc(100% - 5px) 50%, rgba(255, 255, 255, 0.3) 4px, transparent 4px) 0
+      0 / 100px 8px repeat-y,
+    radial-gradient(
+        circle at calc(100% - 13px) 50%,
+        rgba(255, 255, 255, 0.3) 3.6px,
+        transparent 3.6px
+      )
+      0 0 / 100px 8px repeat-y,
+    radial-gradient(
+        circle at calc(100% - 21px) 50%,
+        rgba(255, 255, 255, 0.3) 3.2px,
+        transparent 3.2px
+      )
+      0 0 / 100px 8px repeat-y,
+    radial-gradient(
+        circle at calc(100% - 29px) 50%,
+        rgba(255, 255, 255, 0.3) 2.9px,
+        transparent 2.9px
+      )
+      0 0 / 100px 8px repeat-y,
+    radial-gradient(
+        circle at calc(100% - 37px) 50%,
+        rgba(255, 255, 255, 0.3) 2.6px,
+        transparent 2.6px
+      )
+      0 0 / 100px 8px repeat-y,
+    radial-gradient(
+        circle at calc(100% - 45px) 50%,
+        rgba(255, 255, 255, 0.3) 2.3px,
+        transparent 2.3px
+      )
+      0 0 / 100px 8px repeat-y,
+    radial-gradient(circle at calc(100% - 53px) 50%, rgba(255, 255, 255, 0.3) 2px, transparent 2px)
+      0 0 / 100px 8px repeat-y,
+    radial-gradient(
+        circle at calc(100% - 61px) 50%,
+        rgba(255, 255, 255, 0.3) 1.8px,
+        transparent 1.8px
+      )
+      0 0 / 100px 8px repeat-y,
+    radial-gradient(
+        circle at calc(100% - 69px) 50%,
+        rgba(255, 255, 255, 0.3) 1.6px,
+        transparent 1.6px
+      )
+      0 0 / 100px 8px repeat-y,
+    radial-gradient(
+        circle at calc(100% - 77px) 50%,
+        rgba(255, 255, 255, 0.3) 1.4px,
+        transparent 1.4px
+      )
+      0 0 / 100px 8px repeat-y,
+    radial-gradient(
+        circle at calc(100% - 85px) 50%,
+        rgba(255, 255, 255, 0.3) 1.2px,
+        transparent 1.2px
+      )
+      0 0 / 100px 8px repeat-y,
+    radial-gradient(circle at calc(100% - 93px) 50%, rgba(255, 255, 255, 0.3) 1px, transparent 1px)
+      0 0 / 100px 8px repeat-y;
+}
+
+.modal-header-left,
+.modal-header-right {
+  width: 50px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  z-index: 1;
 }
 
 .modal-header h2 {
+  flex: 1;
+  text-align: center;
   margin: 0;
   font-size: 1.5rem;
+  position: relative;
+  z-index: 1;
+}
+
+.modal-header-btn {
+  width: 30px;
+  height: 30px;
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.8);
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 17px;
+  transition: all 0.2s ease;
+  position: relative;
+  z-index: 1;
+}
+
+.modal-header-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
 }
 
 .modal-body {

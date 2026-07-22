@@ -64,7 +64,7 @@ export interface ChatApi {
   popHistory: () => Promise<void>
   /** 替换全部历史（远端同步后覆盖） */
   replaceHistory: (messages: ChatMessage[]) => Promise<void>
-  /** 清空聊天历史 */
+  /** 清空聊天历史（本地 + 云端） */
   clearHistory: () => Promise<void>
 
   // ─── 事件监听（main → renderer，返回清理函数） ───
