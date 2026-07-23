@@ -274,10 +274,23 @@
               </form>
             </div>
           </div>
+
           <div class="settings-section">
             <h4>语音设置</h4>
-            <p class="settings-tips">未填写或文件无效时，将自动使用默认助手的语音配置。</p>
             <div class="setting-item">
+              <form class="setting-from">
+                <div class="title">
+                  <label for="voicePreset">语音预设</label>
+                  <div class="description">从预设中选择一套语音配置</div>
+                </div>
+                <select id="voicePreset" v-model="selectedPresetName" @change="applySelectedPreset">
+                  <option value="">无预设（手动配置）</option>
+                  <option v-for="preset in presets" :key="preset.name" :value="preset.name">
+                    {{ preset.name }}
+                  </option>
+                </select>
+              </form>
+              <div class="divider"></div>
               <form class="setting-from">
                 <div class="title">
                   <label for="gptModelPath">GPT模型</label>
@@ -538,6 +551,7 @@
 
 <script setup lang="ts">
 import { ref, watch } from 'vue'
+import { request } from '@shared/api/request'
 import BlurModal from '../BlurModal.vue'
 import ToggleSwitch from '../ToggleSwitch.vue'
 import type { AssistantAssets, AssistantInfo } from '@renderer/services/assistantManager'
@@ -626,6 +640,27 @@ const live2dModelInfo = ref({
   size: 0,
   progress: 0
 })
+
+// 预设资源列表接口
+interface PresetResource {
+  name: string
+  type: string
+  description: string
+  files: {
+    gptModel: string
+    sovitsModel: string
+    refAudio: string
+  }
+  config: {
+    textLang: string
+    promptText: string
+    promptLang: string
+  }
+}
+
+// 预设资源列表
+const presets = ref<PresetResource[]>([])
+const selectedPresetName = ref('')
 
 /**
  * 创建一个空的助手信息对象
@@ -736,6 +771,7 @@ function resetForm(): void {
   if (refAudioInput.value) {
     refAudioInput.value.value = ''
   }
+  selectedPresetName.value = ''
 }
 
 // 监听编辑助手数据变化
@@ -1428,7 +1464,9 @@ async function handleCharacterCardFileSelected(event: Event): Promise<void> {
     const file = input.files[0]
 
     // 调用API从图片中提取信息
-    const importResult = await window.api.assistant.importAssistantFromCard(await file.arrayBuffer())
+    const importResult = await window.api.assistant.importAssistantFromCard(
+      await file.arrayBuffer()
+    )
 
     if (importResult.success) {
       const importData = importResult.data
@@ -1721,6 +1759,53 @@ const handleCancel = (): void => {
     emit('update:modelValue', false)
   }
 }
+
+// 获取预设资源列表
+const fetchPresets = async (): Promise<void> => {
+  try {
+    const response = await request.get('/api/resources/presets')
+    const data = response.data as { data: PresetResource[] }
+    // 当前只支持 gsv 类型
+    presets.value = (data.data || []).filter((p) => p.type === 'gsv')
+  } catch (error) {
+    console.error('获取预设资源列表失败:', error)
+    presets.value = []
+  }
+}
+
+// 应用选中的预设到语音配置
+const applySelectedPreset = (): void => {
+  if (!selectedPresetName.value) return
+
+  const preset = presets.value.find((p) => p.name === selectedPresetName.value)
+  if (!preset) return
+
+  formData.value.gsvSetting.gptModelPath = preset.files.gptModel
+  formData.value.gsvSetting.sovitsModelPath = preset.files.sovitsModel
+  formData.value.gsvSetting.refAudioPath = preset.files.refAudio
+  formData.value.gsvSetting.promptText = preset.config.promptText
+  formData.value.gsvSetting.textLang = preset.config.textLang
+  formData.value.gsvSetting.promptLang = preset.config.promptLang
+}
+
+// 监听对话框打开状态，打开时获取预设
+watch(
+  () => props.modelValue,
+  (isOpen) => {
+    if (isOpen) {
+      fetchPresets()
+      selectedPresetName.value = ''
+    }
+  }
+)
+
+// 编辑助手切换时清空预设选择
+watch(
+  () => props.editingAssistant,
+  () => {
+    selectedPresetName.value = ''
+  }
+)
 </script>
 
 <style scoped>
