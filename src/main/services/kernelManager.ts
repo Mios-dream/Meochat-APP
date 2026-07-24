@@ -982,22 +982,6 @@ class KernelManager {
   }
 
   /**
-   * 解析 pyproject.toml 中的 requires-python 约束
-   */
-  private getRequiredPythonFromPyproject(): string | null {
-    const pyprojectPath = path.join(this.kernelDir, 'pyproject.toml')
-    if (!fs.existsSync(pyprojectPath)) return null
-    try {
-      const content = fs.readFileSync(pyprojectPath, 'utf8')
-      // 匹配 project.requires-python 字段
-      const match = content.match(/requires-python\s*=\s*"([^"]+)"/)
-      return match ? match[1] : null
-    } catch {
-      return null
-    }
-  }
-
-  /**
    * 通过 wheel ABI 标签检测所需的 Python 版本，写入 .python-version 锁定 uv 使用的版本
    * 仅在 .python-version 和 .venv 均不存在时写入，避免覆盖已有配置
    */

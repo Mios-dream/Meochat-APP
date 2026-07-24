@@ -1,5 +1,5 @@
 <template>
-  <div id="chatBox" :class="{ 'slide-up': isVisible }">
+  <div id="chatBox" :class="{ 'slide-up': props.isVisible }">
     <input
       id="chatBoxInput"
       ref="inputRef"
@@ -27,7 +27,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { MicrophoneManager } from '../services/MicrophoneManager'
 import { useConfigStore } from '../stores/useConfigStore'
 import { storeToRefs } from 'pinia'
@@ -36,21 +36,28 @@ const configStore = useConfigStore()
 const { config } = storeToRefs(configStore)
 
 // 定义组件的props
-defineProps<{
+const props = defineProps<{
   isVisible: boolean
+  loading: boolean
 }>()
 
 /** 向父组件（AssistantSpaceView）发送消息和取消事件，避免经过 IPC 广播 */
 const emit = defineEmits<{
   send: [text: string]
   cancel: []
-  'update:loading': [value: boolean]
 }>()
 
 // 输入框的值
 const inputValue = ref('')
-// 加载状态，优先使用 prop
+// 内部的加载状态，控制按钮显示与输入禁用
 const loading = ref(false)
+
+/** 当父组件通过 prop 同步 loading 为 false 时，重置内部加载状态 */
+watch(() => props.loading, (newVal) => {
+  if (newVal === false && loading.value) {
+    loading.value = false
+  }
+})
 // 录音状态
 const isRecording = ref(false)
 /** 计时器句柄，工具不再活跃时清理。 */
@@ -124,7 +131,7 @@ async function handleSubmit(): Promise<void> {
   // 2️⃣ 获取输入内容并清空输入框
   const message = inputValue.value.trim()
   inputValue.value = '' // 立即清空输入框
-  loading.value = true // 设置加载状态
+  loading.value = true // 设置内部加载状态
   emit('send', message)
 }
 
