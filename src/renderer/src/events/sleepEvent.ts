@@ -173,7 +173,13 @@ export class SleepEventHandler implements IEventHandler {
       const assistant = await AssistantManager.getInstance().getCurrentAssistant()
       return InteractionPayloadBuilder.buildEventPayload({
         event: 'sleep.talk',
-        scene: `${assistant?.name}正在睡觉，无意中说了一些梦话，语句可以不完整、逻辑跳跃`,
+        scene: `【当前状态：梦话】
+${assistant?.name}正在睡觉，无意中说了一些梦话。请注意：
+1. 梦话内容要符合${assistant?.name}的性格和近期经历
+2. 语句可以不完整、逻辑跳跃，像真实的梦话
+3. 语气要含糊、呢喃，像在说梦话
+4. 不超过20字
+5. 可以是片段式的独白，不需要完整的句子`,
         context: contextManager.get(),
         maxLength: 20,
         fallback: '（梦呓）嗯...不要...',

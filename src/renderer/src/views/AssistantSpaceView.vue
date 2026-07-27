@@ -1277,6 +1277,7 @@ async function saveShortcut(shortcut: string): Promise<void> {
 .modal-header {
   position: relative;
   padding: 10px;
+  height: 50px !important;
   background-color: #f982a6;
   color: white;
   display: flex;
