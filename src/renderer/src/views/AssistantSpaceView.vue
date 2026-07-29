@@ -135,17 +135,6 @@
           <div class="divider"></div>
           <form class="setting-from">
             <div class="title">
-              <label for="generateMotion">生成动作</label>
-              <div class="description">尝试使用模型生成定制化动作</div>
-            </div>
-            <ToggleSwitch
-              :model-value="config.generateMotion"
-              @update:model-value="(v) => change('generateMotion', v)"
-            />
-          </form>
-          <div class="divider"></div>
-          <form class="setting-from">
-            <div class="title">
               <label for="app-speech-board">应用内台词板</label>
               <div class="description">在应用内显示助手台词板</div>
             </div>
@@ -182,7 +171,7 @@
         <div class="setting-item">
           <form class="setting-from">
             <div class="title">
-              <label for="lock-assistant">随机行为</label>
+              <label for="idle-event">随机行为</label>
               <div class="description">助手偶尔会和阁下产生互动</div>
             </div>
             <ToggleSwitch
@@ -194,7 +183,7 @@
           <form class="setting-from">
             <div class="title">
               <label for="quiet-mode">安静模式</label>
-              <div class="description">开启后桌宠不会自动发起聊天</div>
+              <div class="description">开启后暂停所有自动交互</div>
             </div>
             <ToggleSwitch
               :model-value="config.quietMode"
@@ -224,6 +213,26 @@
               <div class="description">助手会对和阁下说早安，晚安</div>
             </div>
             <ToggleSwitch v-model="isLocked" />
+          </form>
+          <div class="divider"></div>
+          <form class="setting-from">
+            <div class="title">
+              <label for="initiative-level">主动等级</label>
+              <div class="description">控制助手主动发起交互的频率</div>
+            </div>
+            <div class="initiative-slider-wrapper">
+              <input
+                id="initiative-level"
+                class="initiative-slider"
+                type="range"
+                min="0"
+                max="2"
+                step="1"
+                :value="initiativeLevelIndex"
+                @input="handleInitiativeChange"
+              />
+              <span class="initiative-value">{{ currentLevelLabel }}</span>
+            </div>
           </form>
         </div>
         <div class="setting-title">其他设置</div>
@@ -269,6 +278,7 @@ import type { MergedTool } from '../components/ToolCallGroupBlock.vue'
 import DiaryNotebookModal from '../components/main/DiaryNotebookModal.vue'
 import { InteractionSystem } from '@renderer/core/interaction/InteractionSystem'
 import { DiarySystem } from '@renderer/services/DiarySystem'
+import { VoicePipelineService } from '../services/VoicePipelineService'
 import type { ChatMessage, ContentPart, ToolCall } from '@shared/types/chat'
 import { normalizeContent } from '../chat/contentNormalizer'
 
@@ -424,7 +434,8 @@ const diarySystem = new DiarySystem()
 const assistantManager = AssistantManager.getInstance()
 // 获取交互系统实例
 const interactionSystem = InteractionSystem.getInstance()
-
+// 统一音频管线实例
+const voicePipeline = VoicePipelineService.getInstance()
 const currentAssistant: Ref<AssistantInfo | null> = ref(null)
 
 const avatarUrl = computed(() => {
@@ -573,7 +584,11 @@ onMounted(async () => {
       live2DManager.enterSleepMode()
     }
 
-    interactionSystem.start()
+    if (!config.value.quietMode) {
+      interactionSystem.start()
+    }
+
+    await syncVoiceState()
   })
 
   // 监听从工具栏（ChatBoxView）转发的聊天调用请求
@@ -602,12 +617,16 @@ onMounted(async () => {
 onUnmounted(() => {
   const tabs = document.getElementById('tabs-container')
   tabs!.style.opacity = '1'
+  // 中断正在进行的语音播放
+  chatService.interruptCurrentPlayback()
   // 清理聊天框 IPC 事件监听
   removeChatBoxListeners()
   if (configStore.config.assistantEnabled) {
     window.api.assistant.openAssistant()
   }
   interactionSystem.stop()
+  voicePipeline.disconnectAll()
+  voicePipeline.stopCapture()
   live2DManager.destroy()
 })
 
@@ -686,6 +705,36 @@ function change<K extends keyof typeof config.value>(
   value: (typeof config.value)[K]
 ): void {
   configStore.updateConfig(key, value)
+}
+
+/** 主动等级映射：滑块索引 → 等级值 */
+const INITIATIVE_LEVELS = ['low', 'medium', 'high'] as const
+
+/** 主动等级中文标签 */
+const LEVEL_LABELS: Record<string, string> = {
+  low: '低',
+  medium: '中',
+  high: '高'
+}
+
+/** 当前配置中的主动等级对应的滑块索引 */
+const initiativeLevelIndex = computed(() => {
+  return INITIATIVE_LEVELS.indexOf(config.value.initiativeLevel)
+})
+
+/** 当前主动等级中文标签 */
+const currentLevelLabel = computed(() => {
+  return LEVEL_LABELS[config.value.initiativeLevel] || '中'
+})
+
+/** 处理主动等级滑块变更 */
+function handleInitiativeChange(event: Event): void {
+  const target = event.target as HTMLInputElement
+  const index = Number(target.value)
+  const level = INITIATIVE_LEVELS[index]
+  if (level) {
+    configStore.updateConfig('initiativeLevel', level)
+  }
 }
 
 /**
@@ -998,6 +1047,44 @@ async function saveShortcut(shortcut: string): Promise<void> {
     console.error('快捷键设置失败')
   }
 }
+
+/** 同步语音管线状态：根据配置启动/停止麦克风采集和 WebSocket 连接 */
+async function syncVoiceState(): Promise<void> {
+  if (!config.value.autoChat) {
+    voicePipeline.disconnectAll()
+    voicePipeline.stopCapture()
+    return
+  }
+
+  if (!voicePipeline.isCapturing) {
+    try {
+      await voicePipeline.startCapture()
+    } catch {
+      console.error('[AssistantSpace] 启动麦克风采集失败')
+    }
+  }
+
+  voicePipeline.connectVoiceWS(config.value.baseUrl)
+}
+
+watch(
+  () => config.value.quietMode,
+  () => {
+    if (config.value.quietMode) {
+      interactionSystem.stop()
+    } else {
+      interactionSystem.start()
+    }
+    syncVoiceState()
+  }
+)
+
+watch(
+  () => [config.value.autoChat, config.value.baseUrl],
+  () => {
+    syncVoiceState()
+  }
+)
 </script>
 
 <style scoped>
@@ -1573,5 +1660,67 @@ async function saveShortcut(shortcut: string): Promise<void> {
 .setting-input:focus {
   outline: none;
   border-color: var(--theme-color-light);
+}
+
+/* 主动等级滑块容器 */
+.initiative-slider-wrapper {
+  display: flex;
+  align-items: center;
+  width: 200px;
+  gap: 8px;
+}
+
+/* 主动等级滑块 */
+.initiative-slider {
+  flex: 1;
+  height: 6px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: #ffe6f0;
+  border-radius: 3px;
+  outline: none;
+}
+
+.initiative-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #fb7299;
+  cursor: pointer;
+  box-shadow: 0 0 5px rgba(251, 114, 153, 0.5);
+  border: 2px solid white;
+  transition: all 0.2s ease;
+}
+
+.initiative-slider::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #fb7299;
+  cursor: pointer;
+  box-shadow: 0 0 5px rgba(251, 114, 153, 0.5);
+  border: 2px solid white;
+  transition: all 0.2s ease;
+}
+
+.initiative-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.1);
+  background: #f982a6;
+}
+
+.initiative-slider::-moz-range-thumb:hover {
+  transform: scale(1.1);
+  background: #f982a6;
+}
+
+/* 主动等级数值 */
+.initiative-value {
+  min-width: 24px;
+  text-align: center;
+  font-size: 14px;
+  color: #fb7299;
+  font-weight: bold;
 }
 </style>

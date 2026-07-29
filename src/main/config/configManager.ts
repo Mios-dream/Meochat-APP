@@ -12,15 +12,17 @@ const schema: Schema<AppConfig> = {
   // 基础配置
   baseUrl: { type: 'string', default: 'http://127.0.0.1:8001' },
   // 核心运行模式：'local' = 本地模式，'api' = API模式
-  kernelMode: { type: 'string', default: 'local' },
+  kernelMode: { type: 'string', default: 'local', enum: ['local', 'api'] },
+  // 是否开机自启
   autoStartOnBoot: { type: 'boolean', default: false },
+  // 是否自动更新
   autoUpdate: { type: 'boolean', default: true },
+  // 是否开启调试模式
   debugMode: { type: 'boolean', default: false },
+  // 是否启用静默模式
   silentMode: { type: 'boolean', default: false },
   // 助手配置
   volume: { type: 'number', default: 0.5 },
-  // 是否启用动作生成
-  generateMotion: { type: 'boolean', default: false },
   // 是否启用助手语音唤醒服务
   autoChat: { type: 'boolean', default: false },
   // 待机事件
@@ -40,7 +42,9 @@ const schema: Schema<AppConfig> = {
   // 聊天快捷键
   chatShortcut: { type: 'string', default: 'Alt+A' },
   // 是否处于睡眠模式
-  sleepMode: { type: 'boolean', default: false }
+  sleepMode: { type: 'boolean', default: false },
+  // 主动等级
+  initiativeLevel: { type: 'string', default: 'low', enum: ['low', 'medium', 'high'] }
 }
 
 const appDataDir = resolveAppDataDir()

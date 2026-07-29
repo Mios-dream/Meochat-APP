@@ -279,8 +279,6 @@ export interface ChatSendMessage {
   text: string
   /** 文件附件列表，图片和文档统一通过此字段发送，由 type 区分。 */
   files: FileAttachment[]
-  /** 是否要求后端生成 Live2D 动作帧。 */
-  generation_motion: boolean
   /** 是否处于睡眠模式。 */
   is_sleep_mode: boolean
 }
@@ -294,14 +292,6 @@ export interface InteractionSendMessage {
   scene: string
   /** 事件附加上下文，字段由具体事件处理器决定。 */
   context: Record<string, unknown>
-  /** 是否要求后端生成 Live2D 动作帧。 */
-  generation_motion: boolean
-  /** 是否携带历史上下文。 */
-  include_history?: boolean
-  /** 后端读取历史上下文时的数量限制。 */
-  history_limit?: number
-  /** 是否处于睡眠模式。 */
-  is_sleep_mode: boolean
 }
 
 /** 用户取消当前聊天回复。 */

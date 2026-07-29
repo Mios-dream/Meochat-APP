@@ -6,7 +6,6 @@ export const useConfigStore = defineStore('config', () => {
   const config = ref<AppConfig>({
     baseUrl: 'http://127.0.0.1:8001',
     volume: 0.5,
-    generateMotion: false,
     autoStartOnBoot: false,
     autoUpdate: true,
     autoChat: false,
@@ -21,7 +20,8 @@ export const useConfigStore = defineStore('config', () => {
     themeColor: '#fb7299',
     chatShortcut: 'Alt+A',
     sleepMode: false,
-    kernelMode: 'local'
+    kernelMode: 'local',
+    initiativeLevel: 'medium'
   })
 
   async function loadConfig(): Promise<void> {

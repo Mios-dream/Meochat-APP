@@ -126,14 +126,9 @@
               <label for="server-config">服务器配置</label>
               <div class="description">从服务端读取并编辑运行配置</div>
             </div>
-            <button
-              class="update-button"
-              type="button"
-              :disabled="isLoadingServerConfig"
-              @click="openServerConfigDialog"
-            >
+            <RoundedButton :disabled="isLoadingServerConfig" @click="openServerConfigDialog">
               {{ isLoadingServerConfig ? '加载中...' : '编辑配置' }}
-            </button>
+            </RoundedButton>
           </form>
         </div>
         <div class="setting-title">关于项目</div>
@@ -156,13 +151,9 @@
             </div>
             <div class="version-info">
               <span class="version-text">v{{ currentVersion }}</span>
-              <button
-                class="update-button"
-                :disabled="isCheckingUpdate"
-                @click="checkForUpdatesAndConfirm"
-              >
+              <RoundedButton :disabled="isCheckingUpdate" @click="checkForUpdatesAndConfirm">
                 {{ isCheckingUpdate ? '检查中...' : '检查更新' }}
-              </button>
+              </RoundedButton>
             </div>
           </form>
         </div>
@@ -193,6 +184,7 @@
 import ToggleSwitch from '../components/ToggleSwitch.vue'
 import SimpleInput from '../components/SimpleInput.vue'
 import UpdateModal from '../components/UpdateDialog.vue'
+import RoundedButton from '../components/RoundedButton.vue'
 import ServerConfigDialog from '../components/main/ServerConfigDialog.vue'
 import { useConfigStore } from '../stores/useConfigStore'
 import { NotificationService } from '../services/NotificationService'
@@ -519,31 +511,6 @@ function change<K extends keyof typeof config.value>(
   font-size: 14px;
   color: #666;
   font-weight: 500;
-}
-
-/* 更新按钮样式 */
-.update-button {
-  padding: 8px 16px;
-  background-color: transparent;
-  color: var(--theme-color-light);
-  border: 2px solid var(--theme-color-light);
-  border-radius: 50px;
-  cursor: pointer;
-  font-size: 14px;
-  transition: background-color 0.2s;
-}
-
-.update-button:hover:not(:disabled) {
-  color: white;
-  background-color: var(--theme-color);
-  border: 2px solid var(--theme-color);
-}
-
-.update-button:disabled {
-  color: white;
-  background-color: var(--theme-color);
-  border: 2px solid var(--theme-color);
-  cursor: not-allowed;
 }
 
 .color-picker-container {

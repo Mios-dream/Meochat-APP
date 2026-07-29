@@ -268,8 +268,6 @@ class ChatManager {
         window.api.chat
           .appendMessage({ role: 'user', content: displayContent })
           .catch((err) => console.error('[Chat] 保存用户消息失败:', err))
-        // 是否启用动作生成
-        const useMotionGenerate = useConfigStore().config.generateMotion
 
         // 在 chat:done 时 resolve 当前 Promise，并清理回调引用
         this.chatDoneResolve = (value: boolean) => {
@@ -292,7 +290,6 @@ class ChatManager {
           type: 'chat:send',
           text: displayContent,
           files,
-          generation_motion: useMotionGenerate,
           is_sleep_mode: isSleepMode
         })
       } catch (error) {
@@ -338,7 +335,6 @@ class ChatManager {
 
     return new Promise<string | null>((resolve, reject) => {
       try {
-        const useMotionGenerate = useConfigStore().config.generateMotion
         this.playbackController.setKeepSleepEyesClosed(payload.keepSleepEyes === true)
 
         this.interactionDoneResolve = (value: string | null) => {
@@ -361,11 +357,7 @@ class ChatManager {
           type: 'interaction:send',
           event_type: payload.event_type,
           scene: payload.scene,
-          context: payload.context,
-          generation_motion: useMotionGenerate,
-          include_history: payload.include_history,
-          history_limit: payload.history_limit,
-          is_sleep_mode: payload.keepSleepEyes === true
+          context: payload.context
         })
       } catch (error) {
         this.isChatting = false

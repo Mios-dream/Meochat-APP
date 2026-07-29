@@ -41,8 +41,8 @@ import ContextMenu from '../components/Toolbar.vue'
 import { useConfigStore } from '../stores/useConfigStore'
 import { storeToRefs } from 'pinia'
 import { InteractionSystem } from '@renderer/core/interaction/InteractionSystem'
-import { WakewordService } from '../services/WakewordService'
 import { MessageTips } from '../services/MessageTips'
+import { VoicePipelineService } from '../services/VoicePipelineService'
 
 const configStore = useConfigStore()
 const { config } = storeToRefs(configStore)
@@ -65,8 +65,8 @@ const live2DManager = Live2DManager.getInstance()
 const chatService = ChatManager.getInstance()
 // 交互系统实例
 const interactionSystem = InteractionSystem.getInstance()
-// 唤醒词服务实例
-const wakewordService = WakewordService.getInstance()
+// 统一音频管线实例
+const voicePipeline = VoicePipelineService.getInstance()
 // Tips更新定时器,定时更新Tips内容以保持与语音输出同步
 let tipsUpdateInterval: ReturnType<typeof setTimeout> | null = null
 // 当前已激活的助手名称，用于过滤重复的助手切换事件，避免睡眠模式等状态被意外重置
@@ -150,7 +150,7 @@ function openSettings(): void {
 async function toggleQuietMode(): Promise<void> {
   const nextMode = !config.value.quietMode
   await configStore.updateConfig('quietMode', nextMode)
-  const message = nextMode ? '已开启安静模式，不再自动发起聊天' : '已关闭安静模式'
+  const message = nextMode ? '已开启安静模式' : '已关闭安静模式'
   messageTips.showMessage(message, 2000, 10)
   hideContextMenu()
 }
@@ -222,35 +222,42 @@ function syncInteractionSystemState(): void {
 }
 
 /**
- * 切换语音唤醒状态
+ * 同步语音管线状态。
+ * 启动或停止麦克风采集，并根据配置决定是否连接语音 WebSocket。
  */
-async function syncWakewordState(): Promise<void> {
-  if (!config.value.autoChat || config.value.quietMode) {
-    await wakewordService.stop()
+async function syncVoiceState(): Promise<void> {
+  if (!config.value.autoChat) {
+    voicePipeline.disconnectAll()
     return
   }
 
-  try {
-    await wakewordService.start(config.value.baseUrl)
-  } catch {
-    console.error('启动语音唤醒失败，请检查配置和麦克风权限')
+  // 尝试启动麦克风采集（失败不影响 WS 连接）
+  if (!voicePipeline.isCapturing) {
+    try {
+      await voicePipeline.startCapture()
+    } catch {
+      console.error('启动麦克风采集失败，语音聊天将不可用')
+    }
   }
+
+  // 无论 mic 是否可用，始终尝试连接 WS
+  voicePipeline.connectVoiceWS(config.value.baseUrl)
 }
 
 /**
- * 重连唤醒词状态
+ * 重连语音管线
  */
-async function reconnectWakewordState(): Promise<void> {
+async function reconnectVoiceState(): Promise<void> {
   try {
-    await wakewordService.stop()
-    await syncWakewordState()
+    voicePipeline.disconnectAll()
+    await syncVoiceState()
   } catch (error) {
-    console.error('助手切换后重连唤醒词失败:', error)
+    console.error('助手切换后重连语音管线失败:', error)
   }
 }
 
 // 初始化助手模型
-async function initAssistantModel(): Promise<boolean> {
+async function initAssistantModel(): Promise<void> {
   try {
     const response = await window.api.assistant.getCurrentAssistant()
     if (response.success && response.data) {
@@ -272,13 +279,12 @@ async function initAssistantModel(): Promise<boolean> {
       live2DManager.enableModel()
     }
     live2DManager.initListeners({ isPetMode: true })
-    return true
   } catch (error) {
     loadError.value = true
     await live2DManager.init('l2d-canvas', './turong/turong.model3.json')
     live2DManager.disabledModel()
     console.error('初始化Live2D模型失败:', error)
-    return false
+    throw new Error('初始化Live2D模型失败，请检查资源文件是否完整或尝试重新下载助手资源')
   }
 }
 
@@ -330,25 +336,6 @@ function restoreSleepState(): void {
   if (interactionSystem.isSleepMode()) {
     live2DManager.enterSleepMode()
   }
-}
-
-/**
- * 启动唤醒词服务并注册回调。
- * 只有在模型成功加载后才调用此函数，确保唤醒词事件触发时 Live2D 已准备就绪。
- */
-function registerWakewordService(): void {
-  wakewordService.setCallbacks({
-    onReady: () => {
-      console.log('唤醒服务启动成功')
-    },
-    onDetected: ({ keyword }) => {
-      window.api.openChatBox()
-      window.api.chat.wakewordDetected(keyword)
-    },
-    onError: (message) => {
-      console.error('唤醒服务错误:', message)
-    }
-  })
 }
 
 function installChatBoxListener(): void {
@@ -444,28 +431,23 @@ function handleWindowResize(): void {
 
 onMounted(async () => {
   // 初始化模型，只有成功加载模型后才启用服务
-  initAssistantModel().then(async (modelLoaded) => {
-    if (modelLoaded) {
-      registerLive2DEffects()
-      registerLive2DInteractionBridge()
+  initAssistantModel().then(async () => {
+    registerLive2DEffects()
+    registerLive2DInteractionBridge()
 
-      // 读取配置中的睡眠状态，自动应用睡眠模式
-      if (config.value.sleepMode) {
-        live2DManager.enterSleepMode()
-      }
-      syncInteractionSystemState()
-      try {
-        registerWakewordService()
-        installChatBoxListener()
-        installTipsListeners()
-        // 监听窗口 resize，在尺寸变化后重新居中模型
-        window.addEventListener('resize', handleWindowResize)
-        syncWakewordState()
-      } catch (error) {
-        console.error('同步唤醒词状态失败:', error)
-      }
-    } else {
-      console.warn('Live2D模型加载失败')
+    // 读取配置中的睡眠状态，自动应用睡眠模式
+    if (config.value.sleepMode) {
+      live2DManager.enterSleepMode()
+    }
+    syncInteractionSystemState()
+    try {
+      installChatBoxListener()
+      installTipsListeners()
+      // 监听窗口 resize，在尺寸变化后重新居中模型
+      window.addEventListener('resize', handleWindowResize)
+      syncVoiceState()
+    } catch (error) {
+      console.error('同步语音管线状态失败:', error)
     }
   })
 
@@ -475,9 +457,9 @@ onMounted(async () => {
     if (!assistant) {
       console.warn('当前助手已清空（可能正在下载资源）')
       currentAssistantName = ''
-      // 停止交互系统和唤醒词服务
+      // 停止交互系统和语音管线
       interactionSystem.stop()
-      wakewordService.stop()
+      voicePipeline.disconnectAll()
       window.api.tipsApi.hideTips()
       return
     }
@@ -488,18 +470,19 @@ onMounted(async () => {
     currentAssistantName = assistant.name
     // 当助手切换时，重新初始化模型
     const modelSwitched = await switchModel(assistant.name)
-    // 只有模型成功切换时才重连唤醒词状态
+    // 只有模型成功切换时才重连语音管线
     if (modelSwitched) {
-      await reconnectWakewordState()
+      await reconnectVoiceState()
     } else {
-      console.warn('助手模型切换失败，唤醒词服务未重连')
+      console.warn('助手模型切换失败，语音管线未重连')
     }
   })
 })
 
 onUnmounted(() => {
   interactionSystem.stop()
-  wakewordService.stop()
+  voicePipeline.disconnectAll()
+  voicePipeline.stopCapture()
   window.removeEventListener('resize', handleWindowResize)
   if (resizeDebounceTimer) {
     clearTimeout(resizeDebounceTimer)
@@ -520,9 +503,9 @@ watch(
   async () => {
     syncInteractionSystemState()
     try {
-      await syncWakewordState()
+      await syncVoiceState()
     } catch (error) {
-      console.error('安静模式切换后同步唤醒词状态失败:', error)
+      console.error('quietMode 切换后同步语音管线状态失败:', error)
     }
   }
 )
@@ -531,9 +514,9 @@ watch(
   () => [config.value.autoChat, config.value.baseUrl],
   async () => {
     try {
-      await syncWakewordState()
+      await syncVoiceState()
     } catch (error) {
-      console.error('配置变更后同步唤醒词状态失败:', error)
+      console.error('配置变更后同步语音管线状态失败:', error)
     }
   }
 )

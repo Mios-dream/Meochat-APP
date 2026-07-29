@@ -27,8 +27,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { MicrophoneManager } from '../services/MicrophoneManager'
+import { onUnmounted, ref, watch } from 'vue'
+import { VoicePipelineService } from '../services/VoicePipelineService'
 import { useConfigStore } from '../stores/useConfigStore'
 import { storeToRefs } from 'pinia'
 
@@ -50,88 +50,44 @@ const emit = defineEmits<{
 // 输入框的值
 const inputValue = ref('')
 // 内部的加载状态，控制按钮显示与输入禁用
-const loading = ref(false)
+const isLoading = ref(false)
 
-/** 当父组件通过 prop 同步 loading 为 false 时，重置内部加载状态 */
-watch(() => props.loading, (newVal) => {
-  if (newVal === false && loading.value) {
-    loading.value = false
-  }
-})
-// 录音状态
-const isRecording = ref(false)
-/** 计时器句柄，工具不再活跃时清理。 */
-let elapsedTimer: ReturnType<typeof setInterval> | null = null
+/** 语音发送后暂存文本，回复完成后才清除 */
+let pendingVoiceText = ''
 
-const voiceIdleTimeoutMs = 10000
-let voiceIdleTimer: ReturnType<typeof setTimeout> | null = null
-
-// 创建麦克风管理器实例
-const micManager = MicrophoneManager.getInstance()
-
-// 设置识别结果回调
-micManager.setRecognitionCallback((data: string) => {
-  const recognizedText = data.trim()
-  if (!recognizedText) {
-    return
-  }
-
-  clearVoiceIdleTimer()
-  inputValue.value = recognizedText
-  // 停止录音
-  micManager.stopRecording()
-  // 提交消息
-  handleSubmit()
-})
-
-const wsUrl = computed(() => {
-  const base = config.value.baseUrl.replace(/^http/, 'ws')
-  return `${base}/api/asr_ws`
-})
-
-/**
- * 停止录音
- */
-function stopRecording(): void {
-  clearVoiceIdleTimer()
-  // 停止录音并断开连接
-  micManager.stopRecording()
-  micManager.disconnect()
-  isRecording.value = false
-  console.log('停止录音')
-}
-
-function clearVoiceIdleTimer(): void {
-  if (voiceIdleTimer) {
-    clearTimeout(voiceIdleTimer)
-    voiceIdleTimer = null
-  }
-}
-
-function scheduleVoiceIdleTimeout(): void {
-  clearVoiceIdleTimer()
-  voiceIdleTimer = setTimeout(() => {
-    if (!isRecording.value || loading.value) {
-      return
+/** 当父组件通过 prop 同步 loading 为 false 时，重置内部加载状态并清除语音暂存文本 */
+watch(
+  () => props.loading,
+  (newVal) => {
+    if (newVal === false && isLoading.value) {
+      isLoading.value = false
+      if (pendingVoiceText) {
+        inputValue.value = ''
+        pendingVoiceText = ''
+      }
     }
+  }
+)
+// 语音转写状态
+const isRecording = ref(false)
 
-    stopRecording()
-  }, voiceIdleTimeoutMs)
-}
+const voicePipeline = VoicePipelineService.getInstance()
 
 /**
  * 处理提交消息
  */
 async function handleSubmit(): Promise<void> {
-  // 1️⃣ 验证：检查输入是否为空或正在加载
-  if (!inputValue.value.trim() || loading.value) {
+  if (!inputValue.value.trim() || isLoading.value) {
     return
   }
 
-  // 2️⃣ 获取输入内容并清空输入框
   const message = inputValue.value.trim()
-  inputValue.value = '' // 立即清空输入框
-  loading.value = true // 设置内部加载状态
+  // 语音发送：输入框保持显示，等回复完成后清除
+  // 手动输入：立即清除
+  if (!pendingVoiceText) {
+    inputValue.value = ''
+  }
+  isLoading.value = true
   emit('send', message)
 }
 
@@ -139,62 +95,40 @@ async function handleSubmit(): Promise<void> {
  * 处理取消当前对话
  */
 function handleCancel(): void {
-  loading.value = false
+  isLoading.value = false
+  pendingVoiceText = ''
   emit('cancel')
 }
 
 async function handleVoiceInput(): Promise<void> {
-  if (isRecording.value) {
-    stopRecording()
-  } else {
-    await startVoiceRecording()
-  }
-}
+  if (isRecording.value || isLoading.value) return
 
-async function startVoiceRecording(): Promise<void> {
-  if (loading.value || isRecording.value) {
-    return
-  }
-
-  micManager.connectToServer(wsUrl.value)
   isRecording.value = true
-
+  pendingVoiceText = ''
+  inputValue.value = ''
   try {
-    await micManager.startRecording()
-    scheduleVoiceIdleTimeout()
+    const text = await voicePipeline.transcribeOnce(config.value.baseUrl, 10000, (segment) => {
+      inputValue.value += segment
+    })
+    if (text) {
+      pendingVoiceText = text
+      handleSubmit()
+    }
   } catch (error) {
+    console.error('语音识别失败:', error)
+  } finally {
     isRecording.value = false
-    clearVoiceIdleTimer()
-    micManager.disconnect()
-    console.error('录音启动失败:', error)
   }
 }
 
-onMounted(() => {
-  // 组件挂载时，检查麦克风权限
-  micManager.getPermissionStatus().then((status) => {
-    if (!status) {
-      console.error('麦克风权限未授予')
-    }
-  })
-})
 // 监听语音唤醒事件
 const removeWakeword = window.api.chat.onWakewordDetected((wakeword) => {
-  loading.value = true
+  isLoading.value = true
   emit('send', wakeword as string)
 })
 
-// 在 onUnmounted 时统一清理
 onUnmounted(() => {
   removeWakeword()
-
-  if (elapsedTimer) {
-    clearInterval(elapsedTimer)
-    elapsedTimer = null
-  }
-  clearVoiceIdleTimer()
-  // 停止录音
-  micManager.stopRecording()
 })
 </script>
 

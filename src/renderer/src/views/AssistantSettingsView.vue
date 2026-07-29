@@ -68,8 +68,8 @@
       <div class="setting-item">
         <form class="setting-row">
           <div class="label-group">
-            <label>语音唤醒</label>
-            <div class="description">呼唤助手名字时将自动启动聊天</div>
+            <label>自动回复</label>
+            <div class="description">开启后助手会在适当时机主动发起聊天</div>
           </div>
           <ToggleSwitch
             :model-value="config.autoChat"
@@ -90,23 +90,23 @@
         <div class="divider"></div>
         <form class="setting-row">
           <div class="label-group">
+            <label>安静模式</label>
+            <div class="description">开启后暂停所有自动交互</div>
+          </div>
+          <ToggleSwitch
+            :model-value="config.quietMode"
+            @update:model-value="(v) => updateConfig('quietMode', v)"
+          />
+        </form>
+        <div class="divider"></div>
+        <form class="setting-row">
+          <div class="label-group">
             <label>桌面台词板</label>
             <div class="description">在桌面显示助手台词板</div>
           </div>
           <ToggleSwitch
             :model-value="config.desktopSpeechBoard"
             @update:model-value="(v) => updateConfig('desktopSpeechBoard', v)"
-          />
-        </form>
-        <div class="divider"></div>
-        <form class="setting-row">
-          <div class="label-group">
-            <label>安静模式</label>
-            <div class="description">开启后桌宠不会自动发起聊天</div>
-          </div>
-          <ToggleSwitch
-            :model-value="config.quietMode"
-            @update:model-value="(v) => updateConfig('quietMode', v)"
           />
         </form>
         <div class="divider"></div>
