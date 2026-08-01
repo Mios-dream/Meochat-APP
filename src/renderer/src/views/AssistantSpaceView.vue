@@ -447,8 +447,10 @@ const avatarUrl = computed(() => {
 
 const assistantName = computed(() => currentAssistant.value?.name ?? '助手')
 
-// 当前助手的好感度
-const currentLove = computed(() => currentAssistant.value?.userState.love || 0) // 当前好感度值
+// 当前助手的好感度（范围 -50~100，低于 0 按 0 显示，最大 100%）
+const currentLove = computed(() =>
+  Math.max(0, Math.min(100, currentAssistant.value?.userState.love ?? 0))
+)
 const canViewDiary = computed(() => currentLove.value > 100)
 
 // 将任意数值限制在0到1之间
@@ -1365,6 +1367,7 @@ watch(
   position: relative;
   padding: 10px;
   height: 50px !important;
+  flex-shrink: 0;
   background-color: #f982a6;
   color: white;
   display: flex;

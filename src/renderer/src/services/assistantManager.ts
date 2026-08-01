@@ -117,18 +117,6 @@ class AssistantManager {
   }
 
   /**
-   * 从云端刷新当前助手数据（好感度等）
-   * @returns 刷新后的助手信息，失败返回 null
-   */
-  public async refreshCurrentAssistant(): Promise<AssistantInfo | null> {
-    const result = await window.api.assistant.refreshCurrentAssistant()
-    if (result.success && result.data) {
-      return result.data
-    }
-    return null
-  }
-
-  /**
    * 下载助手资源（zip文件）并解压到应用目录的助手文件夹
    *
    * 支持按资源类型选择性下载：传入 assetTypes 数组时仅下载指定类型的资源，

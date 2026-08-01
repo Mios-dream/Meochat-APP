@@ -8,7 +8,7 @@ import {
   createWidgetOptions
 } from '../windows'
 import log from '../utils/logger'
-import { AssistantService } from '../services/assistantService'
+import { AssistantService } from '@/services/assistant/assistantService'
 import { KernelManager, KernelServiceManager } from '../services/kernelManager'
 import { OnboardingStoreService } from '../services/onboardingStore'
 import { WidgetService } from '../services/widgetService'

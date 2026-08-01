@@ -302,7 +302,7 @@ export class VoicePipelineService {
       this._isSessionActive = false
       this.voiceWS = null
       if (!this.manuallyStopped) {
-        this.voiceReconnectTimer = setTimeout(() => this.connectVoiceWSInternal(), 3_000)
+        this.voiceReconnectTimer = setTimeout(() => this.connectVoiceWSInternal(), 30_000)
       }
     }
     this.voiceWS.onerror = () => {

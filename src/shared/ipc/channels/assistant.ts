@@ -56,8 +56,6 @@ export const assistantChannels = {
   ASSISTANT_DOWNLOAD_ASSET: 'assistant:download-asset',
   /** 获取正下载的助手列表 */
   ASSISTANT_GET_DOWNLOADING: 'assistant:get-downloading',
-  /** 刷新当前助手数据 */
-  ASSISTANT_REFRESH_CURRENT: 'assistant:refresh-current',
   /** 从角色卡导入 */
   ASSISTANT_IMPORT_FROM_CARD: 'assistant:import-from-card',
   /** 从 ZIP 导入 */

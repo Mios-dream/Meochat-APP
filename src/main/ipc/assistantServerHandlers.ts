@@ -2,7 +2,7 @@ import { CHANNELS } from '@shared/ipc/channels'
 import { registerHandle } from '../utils/registerIpcHandler'
 import fs from 'fs'
 import path from 'path'
-import { AssistantService } from '../services/assistantService'
+import { AssistantService } from '../services/assistant/assistantService'
 import { AssistantAssets } from '@shared/types/assistantTypes'
 import { resolveAppDataDir } from '../utils/pathResolve'
 
@@ -210,17 +210,6 @@ export function setupAssistantServerIPC(): void {
     const assistant = assistantService.getCurrentAssistant()
     if (!assistant) {
       return { success: false, error: '当前没有选中助手' }
-    }
-    return { success: true, data: assistant }
-  })
-
-  /**
-   * 从云端刷新当前助手数据（好感度等）
-   */
-  registerHandle(CHANNELS.ASSISTANT_REFRESH_CURRENT, async () => {
-    const assistant = await assistantService.refreshCurrentAssistant()
-    if (!assistant) {
-      return { success: false, error: '刷新当前助手数据失败' }
     }
     return { success: true, data: assistant }
   })

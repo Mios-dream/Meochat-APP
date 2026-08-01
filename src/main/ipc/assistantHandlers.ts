@@ -23,8 +23,8 @@ import { checkAssistantWindowVisibility } from '../utils/windowVisibility'
 import dragAddon from 'electron-click-drag-plugin'
 import robot from '@jitsi/robotjs'
 import { uIOhook } from 'uiohook-napi'
-import log from '../utils/logger'
-import { AssistantService } from '../services/assistantService'
+import log from '@main/utils/logger'
+import { AssistantService } from '@main/services/assistant/assistantService'
 
 /** 广播聊天历史变更通知到所有窗口 */
 function broadcastHistoryChanged(): void {
@@ -178,7 +178,7 @@ function setupChatBoxIPC(): void {
 
   // 获取聊天历史：直接从主进程存储返回
   registerHandle(CHANNELS.GET_HISTORY, async () => {
-    const result = chatHistoryStore.get()
+    const result = await chatHistoryStore.get()
     if (!result.success) throw new Error(result.error)
     return result.data
   })
@@ -190,7 +190,7 @@ function setupChatBoxIPC(): void {
       console.error('当前没有选中助手，无法追加消息到历史')
       return { success: false, error: '当前没有选中助手' }
     }
-    const result = chatHistoryStore.push(currentAssistant.name, message)
+    const result = await chatHistoryStore.push(currentAssistant.name, message)
     if (!result.success) throw new Error(result.error)
     broadcastHistoryChanged()
     return result.data
@@ -198,7 +198,7 @@ function setupChatBoxIPC(): void {
 
   // 删除最后一条消息（发送失败回滚）
   registerHandle(CHANNELS.POP_HISTORY, async () => {
-    const result = chatHistoryStore.popLast()
+    const result = await chatHistoryStore.popLast()
     if (!result.success) throw new Error(result.error)
     broadcastHistoryChanged()
     return result.data
@@ -206,7 +206,7 @@ function setupChatBoxIPC(): void {
 
   // 替换全部历史（远端同步后覆盖）
   registerHandle(CHANNELS.REPLACE_HISTORY, async (_event, messages: ChatMessage[]) => {
-    const result = chatHistoryStore.replace(undefined, messages)
+    const result = await chatHistoryStore.replace(undefined, messages)
     if (!result.success) throw new Error(result.error)
     broadcastHistoryChanged()
     return result.data
@@ -217,7 +217,7 @@ function setupChatBoxIPC(): void {
     // 发送 WS chat:clear 请求服务端清空云端记录
     WsService.getInstance().send({ type: 'chat:clear' })
     // 同步清空本地存储
-    const result = chatHistoryStore.clear()
+    const result = await chatHistoryStore.clear()
     if (!result.success) throw new Error(result.error)
     broadcastHistoryChanged()
     BrowserWindow.getAllWindows().forEach((win) => {
@@ -410,12 +410,15 @@ function setupAssistantIPC(): void {
       // 先隐藏，5 分钟无新消息再彻底销毁
       tipsWin.hide()
       if (tipsDestroyTimer) clearTimeout(tipsDestroyTimer)
-      tipsDestroyTimer = setTimeout(() => {
-        if (tipsWin && !tipsWin.isDestroyed()) {
-          tipsWin.close()
-        }
-        tipsDestroyTimer = null
-      }, 5 * 60 * 1000)
+      tipsDestroyTimer = setTimeout(
+        () => {
+          if (tipsWin && !tipsWin.isDestroyed()) {
+            tipsWin.close()
+          }
+          tipsDestroyTimer = null
+        },
+        5 * 60 * 1000
+      )
     }
   })
 

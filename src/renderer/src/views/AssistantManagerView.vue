@@ -140,7 +140,7 @@
                     <div
                       class="progress-bar-fill"
                       :style="{
-                        width: `${(assistant.userState.love / 200) * 100}%`
+                        width: `${Math.max(0, Math.min(100, assistant.userState.love))}%`
                       }"
                     ></div>
                   </div>
@@ -283,8 +283,8 @@ const assistantManager = AssistantManager.getInstance()
 // 当前助手信息
 const assistantInfo = ref<AssistantInfo | null>(null)
 const nextAssistantInfo = ref<AssistantInfo | null>()
-// 当前助手的好感度
-const currentLove = computed(() => assistantInfo.value?.userState.love || 0) // 当前好感度值
+// 当前助手的好感度（范围 -50~100，低于 0 不显示）
+const currentLove = computed(() => assistantInfo.value?.userState.love ?? 0) // 当前好感度值
 // 助手列表
 const assistantList = ref<AssistantInfo[]>([])
 // 是否可见添加助手对话框
@@ -315,9 +315,9 @@ function getAssistantSyncProgress(assistantName: string): number {
   return assistantSyncProgress.value.get(assistantName) || 0
 }
 
-// 计算进度百分比
+// 计算进度百分比（好感度范围 -50~100，低于 0 按 0 显示，最大 100%）
 const lovePercentage = computed(() => {
-  return (currentLove.value / 200) * 100
+  return Math.max(0, Math.min(100, currentLove.value))
 })
 
 // 右键菜单状态

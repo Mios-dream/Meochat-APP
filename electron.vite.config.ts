@@ -7,6 +7,7 @@ export default defineConfig({
     resolve: {
       alias: {
         '@': resolve('src/main'),
+        '@main': resolve('src/main'),
         '@shared': resolve('src/shared')
       }
     },

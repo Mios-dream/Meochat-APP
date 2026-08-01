@@ -19,9 +19,6 @@ export interface AssistantApi {
   switchAssistant: (
     name: string
   ) => Promise<{ success: true; data: AssistantInfo } | { success: false; error: string }>
-  refreshCurrentAssistant: () => Promise<
-    { success: true; data: AssistantInfo } | { success: false; error: string }
-  >
   addAssistant: (
     assistant: AssistantInfo,
     options?: { assetTypes?: string[] }

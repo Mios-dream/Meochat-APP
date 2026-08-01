@@ -7,7 +7,7 @@
  */
 
 import type { ChatMessage, ChatHistoryApiResponse, StoreResult } from '@shared/types/chat'
-import { AssistantService } from './assistantService'
+import { AssistantService } from './assistant/assistantService'
 
 const MAX_HISTORY_LENGTH = 20
 
@@ -27,7 +27,7 @@ class ChatHistoryStore {
    * @returns 验证通过的助手名称
    * @throws 当助手不存在或未选中时抛出错误
    */
-  private resolveAssistant(assistantName?: string): string {
+  private async resolveAssistant(assistantName?: string): Promise<string> {
     const assistantService = AssistantService.getInstance()
     if (assistantName) {
       const assistants = assistantService.getAssistants()
@@ -44,9 +44,9 @@ class ChatHistoryStore {
   }
 
   /** 获取指定助手的聊天历史 */
-  public get(assistantName?: string): StoreResult {
+  public async get(assistantName?: string): Promise<StoreResult> {
     try {
-      const name = this.resolveAssistant(assistantName)
+      const name = await this.resolveAssistant(assistantName)
       return { success: true, data: this.getHistory(name) }
     } catch (e) {
       return { success: false, error: (e as Error).message }
@@ -54,9 +54,9 @@ class ChatHistoryStore {
   }
 
   /** 添加一条消息到指定助手的历史 */
-  public push(assistantName: string | undefined, message: ChatMessage): StoreResult {
+  public async push(assistantName: string | undefined, message: ChatMessage): Promise<StoreResult> {
     try {
-      const name = this.resolveAssistant(assistantName)
+      const name = await this.resolveAssistant(assistantName)
       const history = this.getHistory(name)
       history.push(message)
       const trimmed = trimChatHistory(history, MAX_HISTORY_LENGTH)
@@ -68,9 +68,9 @@ class ChatHistoryStore {
   }
 
   /** 删除指定助手最后一条消息（发送失败回滚） */
-  public popLast(assistantName?: string): StoreResult {
+  public async popLast(assistantName?: string): Promise<StoreResult> {
     try {
-      const name = this.resolveAssistant(assistantName)
+      const name = await this.resolveAssistant(assistantName)
       const history = this.getHistory(name)
       if (history.length > 0) history.pop()
       return { success: true, data: [...this.getHistory(name)] }
@@ -80,12 +80,12 @@ class ChatHistoryStore {
   }
 
   /** 使用后端 API 返回值同步 */
-  public syncFromApi(
+  public async syncFromApi(
     assistantName: string | undefined,
     result: ChatHistoryApiResponse
-  ): StoreResult {
+  ): Promise<StoreResult> {
     try {
-      const resolved = this.resolveAssistant(assistantName || result.assistant)
+      const resolved = await this.resolveAssistant(assistantName || result.assistant)
       const history = Array.isArray(result.data) ? result.data : []
       this.setHistory(resolved, trimChatHistory(history, MAX_HISTORY_LENGTH))
       return { success: true, data: history }
@@ -95,9 +95,12 @@ class ChatHistoryStore {
   }
 
   /** 替换指定助手的全部历史（用于远端同步后覆盖） */
-  public replace(assistantName: string | undefined, messages: ChatMessage[]): StoreResult {
+  public async replace(
+    assistantName: string | undefined,
+    messages: ChatMessage[]
+  ): Promise<StoreResult> {
     try {
-      const name = this.resolveAssistant(assistantName)
+      const name = await this.resolveAssistant(assistantName)
       this.setHistory(name, trimChatHistory(messages, MAX_HISTORY_LENGTH))
       return { success: true, data: messages }
     } catch (e) {
@@ -106,9 +109,9 @@ class ChatHistoryStore {
   }
 
   /** 清空指定助手的历史 */
-  public clear(assistantName?: string): StoreResult {
+  public async clear(assistantName?: string): Promise<StoreResult> {
     try {
-      const name = this.resolveAssistant(assistantName)
+      const name = await this.resolveAssistant(assistantName)
       this.historyMap.delete(name)
       return { success: true, data: [] }
     } catch (e) {

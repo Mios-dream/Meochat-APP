@@ -69,7 +69,6 @@ export const assistantApi: AssistantApi = {
   getDownloadingAssets: () => ipcRenderer.invoke(CHANNELS.ASSISTANT_GET_DOWNLOADING),
   getCurrentAssistant: () => ipcRenderer.invoke(CHANNELS.ASSISTANT_GET_CURRENT),
   switchAssistant: (name: string) => ipcRenderer.invoke(CHANNELS.ASSISTANT_SWITCH, name),
-  refreshCurrentAssistant: () => ipcRenderer.invoke(CHANNELS.ASSISTANT_REFRESH_CURRENT),
   importAssistantFromCard: (imageData: ArrayBuffer) =>
     ipcRenderer.invoke(CHANNELS.ASSISTANT_IMPORT_FROM_CARD, imageData),
   importAssistantFromZip: (zipPath: string) =>
