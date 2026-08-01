@@ -35,6 +35,14 @@ export class PetDragStrategy implements DragStrategy {
   private restoreTimer: ReturnType<typeof setTimeout> | null = null
   private readonly TRANSPARENT_RESTORE_MS = 1000
 
+  /* ========== 点击驱动的全局注视会话 ========== */
+  /** 注视会话是否激活：点击鼠标触发，超过 GAZE_TIMEOUT_MS 无后续点击自动结束 */
+  private gazeActive = false
+  /** 注视会话超时定时器，每次检测到点击都会重置 */
+  private gazeTimeout: ReturnType<typeof setTimeout> | null = null
+  /** 无后续点击时注视会话保持的最长时间（毫秒） */
+  private readonly GAZE_TIMEOUT_MS = 4000
+
   /* ========== DragStrategy 接口实现 ========== */
 
   hasActiveDrag(): boolean {
@@ -81,7 +89,6 @@ export class PetDragStrategy implements DragStrategy {
     model: Live2DModel | null,
     app: Application | null,
     callbacks: {
-      onEnableFocus: () => void
       onRequestAnim: () => void
       onPetMouseRelease: () => void
     }
@@ -96,10 +103,6 @@ export class PetDragStrategy implements DragStrategy {
         windowY: number
         windowWidth: number
         windowHeight: number
-      }
-
-      if (mouseData.isMouseDown) {
-        callbacks.onEnableFocus()
       }
 
       if (!ports.getLocked() && model) {
@@ -191,6 +194,7 @@ export class PetDragStrategy implements DragStrategy {
     this.stopPetPolling()
     this.resetPetLagState()
     this.clearRestoreTimer()
+    this.clearGazeSession()
   }
 
   /* ========== 窗口拖拽滞后偏移 ========== */
@@ -244,9 +248,23 @@ export class PetDragStrategy implements DragStrategy {
     ports: Live2DPointerPorts,
     model: Live2DModel | null,
     app: Application | null,
-    mouseData: { screenX: number; screenY: number; windowX: number; windowY: number }
+    mouseData: {
+      isMouseDown: boolean
+      screenX: number
+      screenY: number
+      windowX: number
+      windowY: number
+    }
   ): void {
     if (!model || !app) return
+
+    // 点击鼠标时激活注视会话并重置 2 秒超时，连续点击可保持注视
+    if (mouseData.isMouseDown) {
+      this.activateGazeSession(ports)
+    }
+
+    // 注视会话已结束（超过 2 秒无后续点击），不再跟踪鼠标
+    if (!this.gazeActive) return
 
     if (ports.isSleepModel()) {
       const centerX = app.screen.width / 2
@@ -266,6 +284,40 @@ export class PetDragStrategy implements DragStrategy {
     }
 
     model.focus(mouseData.screenX - mouseData.windowX, mouseData.screenY - mouseData.windowY, false)
+  }
+
+  /* ========== 点击驱动的注视会话 ========== */
+
+  /**
+   * 激活注视会话。
+   * 每次鼠标点击都会重置会话超时：点击后开始注视，GAZE_TIMEOUT_MS 内无后续点击自动回正。
+   * @param ports 指针交互端口。
+   */
+  private activateGazeSession(ports: Live2DPointerPorts): void {
+    this.gazeActive = true
+    ports.setFocusEnabled(true)
+
+    if (this.gazeTimeout) {
+      clearTimeout(this.gazeTimeout)
+    }
+    this.gazeTimeout = setTimeout(() => {
+      this.gazeTimeout = null
+      if (this.gazeActive) {
+        this.gazeActive = false
+        ports.smoothDisableFocus()
+      }
+    }, this.GAZE_TIMEOUT_MS)
+  }
+
+  /**
+   * 清理注视会话状态与定时器，策略销毁时调用。
+   */
+  private clearGazeSession(): void {
+    this.gazeActive = false
+    if (this.gazeTimeout) {
+      clearTimeout(this.gazeTimeout)
+      this.gazeTimeout = null
+    }
   }
 
   /* ========== 透明像素鼠标穿透 ========== */

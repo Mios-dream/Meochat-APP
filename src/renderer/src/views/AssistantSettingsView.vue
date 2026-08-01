@@ -77,16 +77,6 @@
           />
         </form>
         <div class="divider"></div>
-        <form class="setting-row">
-          <div class="label-group">
-            <label>生成动作</label>
-            <div class="description">尝试使用模型生成定制化动作</div>
-          </div>
-          <ToggleSwitch
-            :model-value="config.generateMotion"
-            @update:model-value="(v) => updateConfig('generateMotion', v)"
-          />
-        </form>
         <div class="divider"></div>
         <form class="setting-row">
           <div class="label-group">

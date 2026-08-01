@@ -34,7 +34,6 @@ export interface DragStrategy {
     model: Live2DModel | null,
     app: Application | null,
     callbacks: {
-      onEnableFocus: () => void
       onRequestAnim: () => void
       /** IPC 上报鼠标释放时重置控制器状态并触发回正 */
       onPetMouseRelease: () => void

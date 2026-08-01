@@ -191,7 +191,6 @@ export class Live2DPointerController {
 
     if (options.isPetMode) {
       this.dragStrategy.bindIpc!(ports, model, app, {
-        onEnableFocus: () => this.enableFocusTemporarily(ports),
         onRequestAnim: () => model && this.startAnim(model, ports),
         onPetMouseRelease: () => {
           this.isMousePressed = false
