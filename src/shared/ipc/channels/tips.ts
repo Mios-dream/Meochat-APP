@@ -11,8 +11,6 @@ export const tipsChannels = {
   TIPS_HIDE: 'tips:hide-message',
   /** 提示窗口就绪 */
   TIPS_READY: 'tips:ready',
-  /** 提示动画完成 */
-  TIPS_ANIMATION_COMPLETE: 'tips:animation-complete',
   /** 显示提示事件 */
   TIPS_SHOW_EVENT: 'tips:show',
   /** 隐藏提示事件 */

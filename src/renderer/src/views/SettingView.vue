@@ -435,9 +435,9 @@ function change<K extends keyof typeof config.value>(
 
 .setting-container {
   width: 100%;
-  height: 100%;
+  /* height: 100%; */
   scrollbar-width: none;
-  margin-bottom: 100px;
+  margin-bottom: 50px;
 }
 
 .setting-title {

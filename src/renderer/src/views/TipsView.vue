@@ -22,6 +22,12 @@ const isVisible = ref(false)
 const isLeaving = ref(false)
 const displayMessage = ref('')
 
+// 消失动画时长（ms），需大于 .leaving 的过渡时间，且小于主进程隐藏 OS 窗口的延迟，
+// 保证消失动画完整播放后渲染进程才复位隐藏，且动画不会被 OS 窗口隐藏截断
+const LEAVE_ANIMATION_MS = 400
+// 渲染进程自管理的隐藏定时器：动画播完后将组件复位到默认隐藏状态
+let leaveTimer: ReturnType<typeof setTimeout> | null = null
+
 // 存储清理函数
 const cleanups: (() => void)[] = []
 
@@ -30,6 +36,10 @@ onMounted(() => {
   if (window.api.tipsApi) {
     cleanups.push(
       window.api.tipsApi.onShow((data) => {
+        if (leaveTimer) {
+          clearTimeout(leaveTimer)
+          leaveTimer = null
+        }
         isLeaving.value = false
         isVisible.value = true
         if (data?.message) {
@@ -42,6 +52,14 @@ onMounted(() => {
       window.api.tipsApi.onHide(() => {
         isLeaving.value = true
         isVisible.value = false
+        // 动画播完后复位组件状态，确保彻底隐藏；
+        // 期间若收到新的 onShow 会清除该定时器，避免误复位重新显示的窗口
+        if (leaveTimer) clearTimeout(leaveTimer)
+        leaveTimer = setTimeout(() => {
+          leaveTimer = null
+          isLeaving.value = false
+          isVisible.value = false
+        }, LEAVE_ANIMATION_MS)
       })
     )
 
@@ -59,6 +77,11 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  // 清理隐藏定时器，防止组件销毁后定时器回调触发
+  if (leaveTimer) {
+    clearTimeout(leaveTimer)
+    leaveTimer = null
+  }
   // 清理所有事件监听器
   cleanups.forEach((cleanup) => cleanup())
 })

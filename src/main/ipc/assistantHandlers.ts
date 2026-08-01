@@ -6,9 +6,10 @@ import {
   windowRegistry,
   createWindow,
   assistantWindowConfig,
-  chatBoxWindowConfig,
-  tipsWindowConfig
+  chatBoxWindowConfig
 } from '../windows'
+import { TipsService } from '../services/tipsService'
+import type { TipsMessagePayload } from '../services/tipsService'
 import { chatHistoryStore } from '../services/chatHistoryStore'
 import { WsService } from '../services/wsService'
 import type { ChatMessage } from '@shared/types/chat'
@@ -364,62 +365,19 @@ function setupAssistantIPC(): void {
     assistantWin?.setIgnoreMouseEvents(ignore, { forward: true })
   })
 
-  // Tips窗口相关IPC
-  registerOn(CHANNELS.TIPS_SHOW, async (_event, data: { message: string; avatarUrl?: string }) => {
-    // 有新消息，取消延迟销毁
-    if (tipsDestroyTimer) {
-      clearTimeout(tipsDestroyTimer)
-      tipsDestroyTimer = null
-    }
+  // Tips窗口相关IPC：窗口生命周期逻辑统一由 TipsService 管理
+  const tipsService = TipsService.getInstance()
 
-    const tipsWin = windowRegistry.getWindowByType('tips')
-    if (tipsWin && !tipsWin.isDestroyed()) {
-      tipsWin.show()
-      tipsWin.webContents.send(CHANNELS.TIPS_SHOW_EVENT, data)
-    } else {
-      const primaryDisplay = screen.getPrimaryDisplay()
-      const { width: screenWidth } = primaryDisplay.workArea
-
-      const windowWidth = 380
-      const windowHeight = 130
-      const x = screenWidth - windowWidth - 20
-      const y = 20
-      createWindow(tipsWindowConfig, {
-        overrides: { x, y, width: windowWidth, height: windowHeight },
-        showImmediately: true
-      }).then((win) => {
-        win.webContents.send(CHANNELS.TIPS_SHOW_EVENT, data)
-      })
-    }
+  registerOn(CHANNELS.TIPS_SHOW, (_event, data: TipsMessagePayload) => {
+    tipsService.show(data)
   })
 
-  registerOn(CHANNELS.TIPS_UPDATE, (_event, data: { message: string; avatarUrl?: string }) => {
-    const tipsWin = windowRegistry.getWindowByType('tips')
-    if (tipsWin && !tipsWin.isDestroyed()) {
-      tipsWin.webContents.send(CHANNELS.TIPS_MESSAGE_EVENT, data)
-    }
+  registerOn(CHANNELS.TIPS_UPDATE, (_event, data: TipsMessagePayload) => {
+    tipsService.update(data)
   })
-
-  // 延迟销毁定时器：tips 窗口隐藏一段时间后才销毁，避免频繁创建销毁
-  let tipsDestroyTimer: ReturnType<typeof setTimeout> | null = null
 
   registerOn(CHANNELS.TIPS_HIDE, () => {
-    const tipsWin = windowRegistry.getWindowByType('tips')
-    if (tipsWin && !tipsWin.isDestroyed()) {
-      tipsWin.webContents.send(CHANNELS.TIPS_HIDE_EVENT)
-      // 先隐藏，5 分钟无新消息再彻底销毁
-      tipsWin.hide()
-      if (tipsDestroyTimer) clearTimeout(tipsDestroyTimer)
-      tipsDestroyTimer = setTimeout(
-        () => {
-          if (tipsWin && !tipsWin.isDestroyed()) {
-            tipsWin.close()
-          }
-          tipsDestroyTimer = null
-        },
-        5 * 60 * 1000
-      )
-    }
+    tipsService.hide()
   })
 
   registerHandle(CHANNELS.ASSISTANT_CHECK_VISIBLE, async () => {
