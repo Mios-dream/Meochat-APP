@@ -103,7 +103,7 @@ export class WsService {
         const raw = typeof data === 'string' ? data : data.toString()
         const msg = JSON.parse(raw) as ServerMessage
         if (msg && typeof msg.type === 'string') {
-          this.broadcastToAll('ws:message', msg)
+          this.broadcastToAll(CHANNELS.WS_MESSAGE_EVENT, msg)
         }
       } catch (error) {
         console.error('[WsService] 消息解析失败:', error)

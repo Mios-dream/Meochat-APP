@@ -230,15 +230,7 @@ class ChatManager {
     const files: FileAttachment[] = []
     if (attachments && attachments.length > 0) {
       const results = await Promise.allSettled(
-        attachments.map((att) =>
-          window.api.ipcRenderer.invoke<{
-            success: boolean
-            name?: string
-            content?: string
-            mimeType?: string
-            error?: string
-          }>('tool:read-file-base64', att.path)
-        )
+        attachments.map((att) => window.api.readFileBase64(att.path))
       )
       for (let i = 0; i < results.length; i++) {
         const result = results[i]

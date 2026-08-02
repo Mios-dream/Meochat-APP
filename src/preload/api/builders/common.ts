@@ -10,13 +10,8 @@ import { CommonApi } from '@shared/ipc/api/base/common'
 
 /** 基础 API（所有窗口通用） */
 export const commonApi: CommonApi = {
-  ipcRenderer: {
-    send: (channel: string, data?: unknown) => ipcRenderer.send(channel, data),
-    invoke: <T = unknown>(channel: string, data?: unknown) =>
-      ipcRenderer.invoke(channel, data) as Promise<T>,
-    on: (channel: string, listener: (...args: unknown[]) => void) => ipc.on(channel, listener),
-    removeAllListeners: (channel: string) => ipcRenderer.removeAllListeners(channel)
-  },
+  readFileBase64: (filePath: string) =>
+    ipcRenderer.invoke(CHANNELS.TOOL_READ_FILE_BASE64, filePath),
   log: {
     debug: (message: string, ...args: unknown[]) =>
       ipcRenderer.send(CHANNELS.LOGGER_LOG, { level: 'debug', message, args }),

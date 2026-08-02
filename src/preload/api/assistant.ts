@@ -11,6 +11,7 @@ import { ipc } from './builders/ipc'
 import { assistantApi } from './builders/assistantApi'
 import { systemApi } from './builders/systemApi'
 import { wsApi } from './builders/wsApi'
+import { petApi } from './builders/petApi'
 import { CHANNELS } from '@shared/ipc/channels'
 import type { AssistantWindowApi } from '@shared/ipc/api'
 import type { AssistantInfo } from '@shared/types/assistantTypes'
@@ -19,7 +20,7 @@ import type { AssistantInfo } from '@shared/types/assistantTypes'
 export function buildAssistantWindowApi(): AssistantWindowApi {
   return {
     ...commonApi,
-
+    ...petApi,
     setIgnoreMouse: (ignore: boolean) =>
       ipcRenderer.send(CHANNELS.ASSISTANT_SET_IGNORE_MOUSE, ignore),
     openAssistantSettings: () => ipcRenderer.send(CHANNELS.ASSISTANT_SETTINGS_OPEN),
@@ -28,8 +29,6 @@ export function buildAssistantWindowApi(): AssistantWindowApi {
 
     onAssistantSwitched: (callback: (data: AssistantInfo | null) => void) =>
       ipc.on(CHANNELS.ASSISTANT_SWITCHED_EVENT, callback),
-    onAssistantUpdate: (callback: (data: unknown) => void) =>
-      ipc.on(CHANNELS.ASSISTANT_UPDATE_EVENT, callback),
     onDownloadProgress: (
       callback: (data: { status: string; assistantName?: string; progress?: number }) => void
     ) => ipc.on(CHANNELS.ASSISTANT_DOWNLOAD_PROGRESS_EVENT, callback),

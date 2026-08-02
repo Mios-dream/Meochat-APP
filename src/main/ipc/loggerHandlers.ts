@@ -1,8 +1,6 @@
-import { shell } from 'electron'
 import { CHANNELS } from '@shared/ipc/channels'
 import { registerOn } from '../utils/registerIpcHandler'
 import log from '../utils/logger'
-import { resolveLogDir } from '../utils/pathResolve'
 
 /**
  * 设置日志相关IPC处理
@@ -41,12 +39,4 @@ export function setupLoggerIPC(): void {
       }
     }
   )
-
-  registerOn(CHANNELS.LOGGER_OPEN_LOG_DIR, () => {
-    try {
-      shell.openPath(resolveLogDir())
-    } catch (error) {
-      log.error('打开日志目录失败:', error)
-    }
-  })
 }

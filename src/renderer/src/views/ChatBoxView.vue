@@ -393,21 +393,13 @@ async function takeScreenshot(): Promise<void> {
   }
 }
 
-/** 文件选择结果类型 */
-interface SelectFileResult {
-  success: boolean
-  filePath?: string
-  filePaths?: string[]
-  error?: string
-}
-
 /** 上传文件：通过 IPC 打开系统文件选择对话框 */
 async function uploadFile(): Promise<void> {
   try {
-    const result = (await window.api.ipcRenderer.invoke('tool:select-file', {
+    const result = await window.api.system.selectFile({
       title: '选择文件',
       filters: [{ name: '所有文件', extensions: ['*'] }]
-    })) as SelectFileResult
+    })
     if (result?.success && result.filePath) {
       const name = result.filePath.split('\\').pop()?.split('/').pop() ?? result.filePath
       selectedFiles.value.push({ name, path: result.filePath })
@@ -420,10 +412,10 @@ async function uploadFile(): Promise<void> {
 /** 上传图片：通过 IPC 打开系统文件选择对话框（筛选图片格式） */
 async function uploadImage(): Promise<void> {
   try {
-    const result = (await window.api.ipcRenderer.invoke('tool:select-file', {
+    const result = await window.api.system.selectFile({
       title: '选择图片',
       filters: [{ name: '图片文件', extensions: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'] }]
-    })) as SelectFileResult
+    })
     if (result?.success && result.filePath) {
       const name = result.filePath.split('\\').pop()?.split('/').pop() ?? result.filePath
       selectedFiles.value.push({ name, path: result.filePath })

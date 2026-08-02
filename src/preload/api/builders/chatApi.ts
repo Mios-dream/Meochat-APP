@@ -20,9 +20,6 @@ export const chatApi: ChatApi = {
   wakewordDetected: (keyword) => {
     ipcRenderer.send(CHANNELS.WAKEWORD_DETECTED, keyword)
   },
-  updateToolStatus: (data) => {
-    ipcRenderer.send(CHANNELS.UPDATE_TOOL_STATUS, data)
-  },
   sendInvokeResult: (data) => {
     ipcRenderer.send(CHANNELS.CHAT_INVOKE_RESULT, data)
   },
@@ -37,7 +34,7 @@ export const chatApi: ChatApi = {
 
   // ─── 事件监听（main → renderer） ───
   onCancelMessage: (callback) => ipc.on(CHANNELS.CHATBOX_CANCEL_MESSAGE_EVENT, callback),
-  onClearHistory: (callback) => ipc.on(CHANNELS.CLEAR_HISTORY, callback),
+  onClearHistory: (callback) => ipc.on(CHANNELS.CHAT_HISTORY_CLEARED_EVENT, callback),
   onHistoryChanged: (callback) => ipc.on(CHANNELS.CHAT_HISTORY_CHANGED_EVENT, callback),
   onWakewordDetected: (callback) => ipc.on(CHANNELS.CHATBOX_WAKEWORD_DETECTED_EVENT, callback),
   onInvokeRequest: (callback) => ipc.on(CHANNELS.CHAT_INVOKE_REQUEST_EVENT, callback)

@@ -16,14 +16,13 @@ import type {
 } from '@shared/types/kernel'
 import { decodeBuffer } from '../utils/buffer'
 import { detectZipNameEncoding } from '../utils/zipUtils'
+import { CHANNELS } from '@shared/ipc/channels'
 
 const execAsync = promisify(exec)
 
 const KERNEL_DIR_NAME = 'kernel'
 const CURRENT_KERNEL_DIR = 'current'
 const VERSION_FILE_NAME = 'version.txt'
-const KERNEL_STATE_CHANNEL = 'kernel:state-update'
-const SERVICE_STREAM_CHANNEL = 'kernel:service-stream'
 
 /**
  * 比较两个点分版本号（如 1.7.0 / 1.10.1）。
@@ -141,7 +140,7 @@ class KernelManager {
   private notifyState(): void {
     BrowserWindow.getAllWindows().forEach((win) => {
       if (!win.isDestroyed()) {
-        win.webContents.send(KERNEL_STATE_CHANNEL, { ...this.state })
+        win.webContents.send(CHANNELS.KERNEL_STATE_UPDATE_EVENT, { ...this.state })
       }
     })
   }
@@ -723,7 +722,7 @@ class KernelManager {
       const pctRe = /\[?(\b\d{1,3})%\]?/
 
       term.onData((data: string) => {
-        broadcastToAllWindows(SERVICE_STREAM_CHANNEL, Buffer.from(data, 'utf-8'))
+        broadcastToAllWindows(CHANNELS.KERNEL_SERVICE_STREAM_EVENT, Buffer.from(data, 'utf-8'))
         this.addOperationLog(Buffer.from(data, 'utf-8'))
         allOutput.push(data)
 
@@ -782,12 +781,9 @@ class KernelServiceManager {
     return path.join(resolveLogDir(), 'core.log')
   }
 
-  /** 服务状态广播通道 */
-  private static readonly SERVICE_STATE_CHANNEL = 'kernel:service-state'
-
   /** 原始数据流广播，发送原始二进制数据给渲染进程 */
   private broadcastStream(data: Buffer): void {
-    broadcastToAllWindows(SERVICE_STREAM_CHANNEL, data)
+    broadcastToAllWindows(CHANNELS.KERNEL_SERVICE_STREAM_EVENT, data)
   }
 
   public kernelManager: KernelManager
@@ -883,7 +879,7 @@ class KernelServiceManager {
   private notifyServiceState(): void {
     BrowserWindow.getAllWindows().forEach((win) => {
       if (!win.isDestroyed()) {
-        win.webContents.send(KernelServiceManager.SERVICE_STATE_CHANNEL, {
+        win.webContents.send(CHANNELS.KERNEL_SERVICE_STATE_EVENT, {
           running: this.backendRunning,
           pid: this.backendPid,
           logs: [...this.backendLogs]
@@ -971,7 +967,7 @@ class KernelServiceManager {
             env: { ...process.env } as Record<string, string>
           })
           syncTerm.onData((data: string) => {
-            broadcastToAllWindows(SERVICE_STREAM_CHANNEL, Buffer.from(data, 'utf-8'))
+            broadcastToAllWindows(CHANNELS.KERNEL_SERVICE_STREAM_EVENT, Buffer.from(data, 'utf-8'))
             this.addSystemLog(data)
           })
           syncTerm.onExit(({ exitCode, signal }) => {

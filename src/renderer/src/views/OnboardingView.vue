@@ -429,6 +429,7 @@ const logStatusSub = ref('正在检查运行环境')
 const kernelProgress = ref(0)
 let kernelStateUnlisten: (() => void) | null = null
 let serviceStateUnlisten: (() => void) | null = null
+let downloadProgressUnlisten: (() => void) | null = null
 let assistantDownloadResolve: (() => void) | null = null
 
 const awakenSubtitle = computed(() => {
@@ -1072,7 +1073,7 @@ async function runFlow(): Promise<void> {
 
 onMounted(async () => {
   // 监听助手数据加载进度
-  window.api.ipcRenderer.on('assistant:download-progress', onAssistantDownloadProgress)
+  downloadProgressUnlisten = window.api.assistant.onDownloadProgress(onAssistantDownloadProgress)
 
   // 监听内核状态更新
   kernelStateUnlisten = window.api.kernel.onStateUpdate(onKernelStateUpdate)
@@ -1107,7 +1108,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
-  window.api.ipcRenderer.removeAllListeners('assistant:download-progress')
+  if (downloadProgressUnlisten) downloadProgressUnlisten()
   if (kernelStateUnlisten) kernelStateUnlisten()
   if (serviceStateUnlisten) serviceStateUnlisten()
   stopHealthCheckElapsedTimer()

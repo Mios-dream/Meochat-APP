@@ -7,6 +7,7 @@
 
 import { AssistantApi } from '../base/assistant'
 import { ChatApi } from '../base/chat'
+import { SystemApi } from '../base/system'
 import type { CommonApi } from '../base/common'
 
 /** 聊天框窗口暴露的 API 接口 */
@@ -19,4 +20,5 @@ export interface ChatBoxWindowApi extends CommonApi {
   closeChatBox: () => void
   assistant: AssistantApi
   chat: ChatApi
+  system: SystemApi
 }

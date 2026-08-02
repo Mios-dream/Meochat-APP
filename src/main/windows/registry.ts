@@ -238,6 +238,18 @@ class WindowRegistry {
   }
 
   /**
+   * 根据 webContents.id 获取多实例窗口的实例 ID（用于 IPC handler 定位实例）
+   * @param webContentsId webContents.id
+   * @returns 实例 ID，单例窗口或未找到返回 null
+   */
+  getInstanceIdByWebContentsId(webContentsId: number): string | null {
+    const key = this.webContentsIndex.get(webContentsId)
+    if (!key) return null
+    const meta = this.metas.get(key)
+    return meta?.instanceId ?? null
+  }
+
+  /**
    * 关闭所有窗口
    */
   closeAll(): void {

@@ -1402,11 +1402,6 @@ const uploadLive2dModel = async (): Promise<boolean> => {
     const file = selectedLive2dModel.value
     const arrayBuffer = await readFileAsBuffer(file)
 
-    // 设置进度监听
-    window.api.ipcRenderer.on('assistant:live2d-extract-progress', (progress) => {
-      live2dModelInfo.value.progress = (progress as number) ?? 0
-    })
-
     try {
       // 上传并解压模型
       const result = await window.api.assistant.saveAndExtractLive2DModel(
@@ -1430,8 +1425,8 @@ const uploadLive2dModel = async (): Promise<boolean> => {
         return false
       }
     } finally {
-      // 移除进度监听
-      window.api.ipcRenderer.removeAllListeners('assistant:live2d-extract-progress')
+      // 解压完成后重置进度状态（供下一次上传使用）
+      live2dModelInfo.value.progress = 0
     }
   } catch (error) {
     // 获取详细的错误信息

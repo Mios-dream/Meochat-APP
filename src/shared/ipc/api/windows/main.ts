@@ -9,6 +9,7 @@ import type { KernelApi } from '../base/kernel'
 import type { AssistantApi } from '../base/assistant'
 import type { ChatApi } from '../base/chat'
 import type { SystemApi } from '../base/system'
+import type { PetInteractionApi } from '../base/pet'
 
 import type { OnboardingProfile, OnboardingState } from '@shared/types/onboarding'
 import type {
@@ -20,7 +21,7 @@ import type {
 } from '@shared/types/widget'
 
 /** 主窗口暴露的 API 接口 */
-export interface MainWindowApi extends CommonApi {
+export interface MainWindowApi extends CommonApi, PetInteractionApi {
   minimizeApp: () => void
   maximizeApp: () => void
   hideApp: () => void

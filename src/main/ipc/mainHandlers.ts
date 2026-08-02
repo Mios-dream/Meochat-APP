@@ -7,11 +7,6 @@ import { windowRegistry } from '../windows'
  * 设置主窗口IPC
  */
 export function setupMainIPC(): void {
-  registerOn(CHANNELS.APP_SHOW, () => {
-    const win = windowRegistry.getWindowByType('main')
-    if (win) win.show()
-  })
-
   registerOn(CHANNELS.APP_HIDE, () => {
     const win = windowRegistry.getWindowByType('main')
     if (win) win.hide()

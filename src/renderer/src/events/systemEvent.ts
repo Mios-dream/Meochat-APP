@@ -8,59 +8,45 @@ import { InteractionEffect } from '@renderer/core/interaction/types/InteractionE
 export class SystemEventModule extends EventModule {
   private isListening = false
   private lowBatteryNotified = false
+  /** 已注册的 IPC 监听清理函数 */
+  private cleanups: Array<() => void> = []
 
   start(): void {
     if (this.isListening) {
       return
     }
 
-    window.api.ipcRenderer.on('assistantEvent:on-ac', (payload) => {
-      const data = payload as { timestamp: number } | undefined
-      this.eventCenter.emit('system.charging', {
-        systemPowerStatus: {
-          state: 'charging',
-          timestamp: data?.timestamp || Date.now()
-        }
+    this.cleanups.push(
+      window.api.onPowerAc((data) => {
+        this.eventCenter.emit('system.charging', {
+          systemPowerStatus: {
+            state: 'charging',
+            timestamp: data?.timestamp || Date.now()
+          }
+        })
       })
-    })
+    )
 
-    window.api.ipcRenderer.on('assistantEvent:on-battery', (payload) => {
-      const data = payload as { timestamp: number } | undefined
-      this.eventCenter.emit('system.discharging', {
-        systemPowerStatus: {
-          state: 'battery',
-          timestamp: data?.timestamp || Date.now()
-        }
+    this.cleanups.push(
+      window.api.onPowerBattery((data) => {
+        this.eventCenter.emit('system.discharging', {
+          systemPowerStatus: {
+            state: 'battery',
+            timestamp: data?.timestamp || Date.now()
+          }
+        })
       })
-    })
+    )
 
-    window.api.ipcRenderer.on('assistantEvent:battery-level', (payload) => {
-      const batteryData = payload as {
-        percent: number
-        isCharging: boolean
-        isLow: boolean
-        threshold: number
-        timestamp: number
-      }
-      const percent = Number(batteryData?.percent || 0)
-      const isCharging = Boolean(batteryData?.isCharging)
-      const isLow = Boolean(batteryData?.isLow)
-      const threshold = Number(batteryData?.threshold || 20)
-      const timestamp = batteryData?.timestamp || Date.now()
+    this.cleanups.push(
+      window.api.onBatteryLevel((batteryData) => {
+        const percent = Number(batteryData?.percent || 0)
+        const isCharging = Boolean(batteryData?.isCharging)
+        const isLow = Boolean(batteryData?.isLow)
+        const threshold = Number(batteryData?.threshold || 20)
+        const timestamp = batteryData?.timestamp || Date.now()
 
-      this.eventCenter.emit('system.battery-level', {
-        batteryStatus: {
-          percent,
-          isCharging,
-          isLow,
-          threshold,
-          timestamp
-        }
-      })
-
-      if (isLow && !this.lowBatteryNotified) {
-        this.lowBatteryNotified = true
-        this.eventCenter.emit('system.lowBattery', {
+        this.eventCenter.emit('system.battery-level', {
           batteryStatus: {
             percent,
             isCharging,
@@ -69,12 +55,25 @@ export class SystemEventModule extends EventModule {
             timestamp
           }
         })
-      }
 
-      if (!isLow) {
-        this.lowBatteryNotified = false
-      }
-    })
+        if (isLow && !this.lowBatteryNotified) {
+          this.lowBatteryNotified = true
+          this.eventCenter.emit('system.lowBattery', {
+            batteryStatus: {
+              percent,
+              isCharging,
+              isLow,
+              threshold,
+              timestamp
+            }
+          })
+        }
+
+        if (!isLow) {
+          this.lowBatteryNotified = false
+        }
+      })
+    )
 
     this.isListening = true
   }
@@ -84,9 +83,8 @@ export class SystemEventModule extends EventModule {
       return
     }
 
-    window.api.ipcRenderer.removeAllListeners('assistantEvent:on-ac')
-    window.api.ipcRenderer.removeAllListeners('assistantEvent:on-battery')
-    window.api.ipcRenderer.removeAllListeners('assistantEvent:battery-level')
+    this.cleanups.forEach((cleanup) => cleanup())
+    this.cleanups = []
     this.lowBatteryNotified = false
     this.isListening = false
   }

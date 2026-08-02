@@ -43,6 +43,10 @@ export class PetDragStrategy implements DragStrategy {
   /** 无后续点击时注视会话保持的最长时间（毫秒） */
   private readonly GAZE_TIMEOUT_MS = 4000
 
+  /* ========== 全局鼠标追踪监听 ========== */
+  /** 鼠标位置事件监听清理函数（重复绑定前先清理旧监听） */
+  private mouseCleanup: (() => void) | null = null
+
   /* ========== DragStrategy 接口实现 ========== */
 
   hasActiveDrag(): boolean {
@@ -93,18 +97,9 @@ export class PetDragStrategy implements DragStrategy {
       onPetMouseRelease: () => void
     }
   ): void {
-    window.api.ipcRenderer.removeAllListeners('assistant:mouse-position')
-    window.api.ipcRenderer.on('assistant:mouse-position', (data) => {
-      const mouseData = data as {
-        isMouseDown: boolean
-        screenX: number
-        screenY: number
-        windowX: number
-        windowY: number
-        windowWidth: number
-        windowHeight: number
-      }
-
+    // 重复绑定时先清理旧监听，避免累积多个监听器
+    this.mouseCleanup?.()
+    this.mouseCleanup = window.api.onMousePosition((mouseData) => {
       if (!ports.getLocked() && model) {
         this.updatePetLag(ports, model, mouseData, callbacks.onPetMouseRelease)
       }

@@ -455,7 +455,7 @@ export class Live2DManager {
    */
   public startMouseTracking(): void {
     if (!this.isMouseTracking) {
-      window.api.ipcRenderer.send('assistant:start-mouse-tracking', null)
+      window.api.startMouseTracking()
       this.isMouseTracking = true
     }
   }
@@ -465,7 +465,7 @@ export class Live2DManager {
    */
   public stopMouseTracking(): void {
     if (this.isMouseTracking) {
-      window.api.ipcRenderer.send('assistant:stop-mouse-tracking', null)
+      window.api.stopMouseTracking()
       this.isMouseTracking = false
     }
 

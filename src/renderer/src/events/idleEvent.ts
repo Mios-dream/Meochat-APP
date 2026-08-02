@@ -37,12 +37,9 @@ export class IdleEventModule extends EventModule {
       return
     }
     this.scheduleIdleEvents()
-    this.initEventListeners()
   }
 
   stop(): void {
-    window.api.ipcRenderer.removeAllListeners('assistantEvent:idle.taskComplete')
-    window.api.ipcRenderer.removeAllListeners('assistantEvent:idle.systemEvent')
     if (this.idleEventsTimer) {
       clearTimeout(this.idleEventsTimer)
       this.idleEventsTimer = null
@@ -59,17 +56,6 @@ export class IdleEventModule extends EventModule {
       }, delay)
     }
     loop()
-  }
-
-  private initEventListeners(): void {
-    window.api.ipcRenderer.on('assistantEvent:idle.taskComplete', (context) => {
-      const taskData = context as { taskName: string; success: boolean }
-      this.triggerTaskCompleteEvent(taskData.taskName, taskData.success)
-    })
-    window.api.ipcRenderer.on('assistantEvent:idle.systemEvent', (context) => {
-      const sysData = context as { eventName: string; description: string }
-      this.triggerSystemEvent(sysData.eventName, sysData.description)
-    })
   }
 
   private calculateEventDelay(minInterval: number, maxInterval?: number): number {

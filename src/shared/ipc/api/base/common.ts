@@ -4,14 +4,22 @@
 
 import type { AppConfig } from '@shared/types/appConfig'
 
+/** 读取文件为 Base64 的返回结构 */
+export interface ReadFileBase64Result {
+  success: boolean
+  /** 文件名 */
+  name?: string
+  /** Base64 编码的文件内容 */
+  content?: string
+  /** MIME 类型 */
+  mimeType?: string
+  error?: string
+}
+
 /** 所有窗口通用的基础 API 接口 */
 export interface CommonApi {
-  ipcRenderer: {
-    send: (channel: string, data?: unknown) => void
-    invoke: <T = unknown>(channel: string, data?: unknown) => Promise<T>
-    on: (channel: string, listener: (...args: unknown[]) => void) => () => void
-    removeAllListeners: (channel: string) => void
-  }
+  /** 读取文件并返回 Base64 编码内容 */
+  readFileBase64: (filePath: string) => Promise<ReadFileBase64Result>
   log: {
     debug: (message: string, args?: unknown) => void
     info: (message: string, args?: unknown) => void

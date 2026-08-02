@@ -6,30 +6,19 @@ import randomSelect from '@renderer/utils/RandomSelect'
 import { InteractionEventPayload } from '@renderer/chat/ChatManager'
 import { InteractionEffect } from '@renderer/core/interaction/types/InteractionEffect'
 
-interface MouseResumePayload {
-  idleDurationMs: number
-  timestamp: number
-}
-
-interface MouseActivityPayload {
-  idleDurationMs: number
-  isIdle: boolean
-  timestamp: number
-}
-
 export class MouseEventModule extends EventModule {
   private isListening = false
   private lastIdleState: boolean | null = null
+  /** 已注册的 IPC 监听清理函数 */
+  private cleanups: Array<() => void> = []
 
   start(): void {
     if (this.isListening) {
       return
     }
 
-    window.api.ipcRenderer.on(
-      'assistantEvent:mouse-resumed',
-      (payload) => {
-        const resumeData = payload as MouseResumePayload
+    this.cleanups.push(
+      window.api.onMouseResumed((resumeData) => {
         this.eventCenter.emit('mouse.resume', {
           isBusy: false,
           lastInteraction: Date.now(),
@@ -39,13 +28,11 @@ export class MouseEventModule extends EventModule {
             timestamp: resumeData?.timestamp || Date.now()
           }
         })
-      }
+      })
     )
 
-    window.api.ipcRenderer.on(
-      'assistantEvent:mouse-activity',
-      (payload) => {
-        const activityData = payload as MouseActivityPayload
+    this.cleanups.push(
+      window.api.onMouseActivity((activityData) => {
         const nextIdle = Boolean(activityData?.isIdle)
 
         if (this.lastIdleState === null || this.lastIdleState !== nextIdle) {
@@ -60,7 +47,7 @@ export class MouseEventModule extends EventModule {
             }
           })
         }
-      }
+      })
     )
 
     this.isListening = true
@@ -71,8 +58,8 @@ export class MouseEventModule extends EventModule {
       return
     }
 
-    window.api.ipcRenderer.removeAllListeners('assistantEvent:mouse-resumed')
-    window.api.ipcRenderer.removeAllListeners('assistantEvent:mouse-activity')
+    this.cleanups.forEach((cleanup) => cleanup())
+    this.cleanups = []
     this.lastIdleState = null
     this.isListening = false
   }

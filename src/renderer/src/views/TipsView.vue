@@ -70,9 +70,6 @@ onMounted(() => {
         }
       })
     )
-
-    // 通知主进程提示窗口已准备好
-    window.api.ipcRenderer.send('tips:ready')
   }
 })
 

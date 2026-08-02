@@ -9,6 +9,7 @@ import path from 'path'
 import { resolveAppDataDir } from '../utils/pathResolve'
 import log from '../utils/logger'
 import { CHANNELS } from '@shared/ipc/channels'
+import { windowRegistry } from '../windows'
 import type { WidgetInstance, WidgetConfigFile, WidgetGlobalSettings } from '@shared/types/widget'
 
 /** 默认配置 */
@@ -96,6 +97,21 @@ export class WidgetService {
   }
 
   /**
+   * 广播实例数据更新到对应 widget 窗口
+   * @param instance 更新后的小组件实例
+   */
+  private broadcastInstanceData(instance: WidgetInstance): void {
+    const win = windowRegistry.getWindow(`widget:${instance.id}`)
+    if (win && !win.isDestroyed()) {
+      win.webContents.send(CHANNELS.WIDGET_INSTANCE_DATA_EVENT, {
+        instanceId: instance.id,
+        config: instance.config,
+        pinned: instance.pinned
+      })
+    }
+  }
+
+  /**
    * 获取所有配置
    */
   getAllConfigs(): WidgetConfigFile {
@@ -153,6 +169,7 @@ export class WidgetService {
         }
         this.saveConfig()
         this.broadcastConfigChange()
+        this.broadcastInstanceData(this.config.instances[index])
         return true
       }
       return false

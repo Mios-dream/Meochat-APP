@@ -4,12 +4,6 @@
  */
 
 import type { ChatMessage } from '@shared/types/chat'
-/** 工具调用状态数据类型 */
-export interface ToolStatusData {
-  active: boolean
-  tools: Array<{ name: string; status: string }>
-}
-
 /** 聊天调用请求（IPC invoke，携带原始附件路径，非 base64） */
 export interface ChatInvokeRequest {
   text: string
@@ -47,8 +41,6 @@ export interface ChatApi {
   cancelMessage: (data?: { text: string }) => void
   /** 唤醒词检测 */
   wakewordDetected: (keyword: string) => void
-  /** 更新工具状态 */
-  updateToolStatus: (data: ToolStatusData) => void
   /** 助理窗口返回聊天调用结果给主进程 */
   sendInvokeResult: (data: InvokeResultData) => void
 

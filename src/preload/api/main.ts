@@ -9,6 +9,7 @@ import { assistantApi } from './builders/assistantApi'
 import { chatApi } from './builders/chatApi'
 import { systemApi } from './builders/systemApi'
 import { wsApi } from './builders/wsApi'
+import { petApi } from './builders/petApi'
 import { CHANNELS } from '@shared/ipc/channels'
 import type { MainWindowApi } from '@shared/ipc/api'
 import { kernelApi } from './builders/kernelApi'
@@ -17,6 +18,7 @@ import { kernelApi } from './builders/kernelApi'
 export function buildMainWindowApi(): MainWindowApi {
   return {
     ...commonApi,
+    ...petApi,
     minimizeApp: () => ipcRenderer.send(CHANNELS.APP_MINIMIZE),
     hideApp: () => ipcRenderer.send(CHANNELS.APP_HIDE),
     quitApp: () => ipcRenderer.send(CHANNELS.APP_QUIT),

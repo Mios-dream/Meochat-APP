@@ -16,7 +16,6 @@ import { loadWindowContent, getPreloadPath } from './urlResolver'
 import { windowRegistry } from './registry'
 import { getConfig } from '../config/configManager'
 import { boundsStore } from '../services/boundsStore'
-import { CHANNELS } from '@shared/ipc/channels'
 import log from '../utils/logger'
 
 /** 检查是否是开机自启 */
@@ -136,14 +135,6 @@ export async function createWindow(
       // debug模式下自动打开开发者工具
       if (getConfig('debugMode')) {
         window.webContents.openDevTools({ mode: 'detach' })
-      }
-
-      // 发送实例数据（如果有）
-      if (instanceId || query) {
-        window.webContents.send(CHANNELS.WINDOW_INSTANCE_DATA_EVENT, {
-          instanceId,
-          ...query
-        })
       }
 
       callbacks?.onReady?.(window)

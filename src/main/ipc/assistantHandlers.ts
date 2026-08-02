@@ -223,7 +223,7 @@ function setupChatBoxIPC(): void {
     broadcastHistoryChanged()
     BrowserWindow.getAllWindows().forEach((win) => {
       if (!win.isDestroyed()) {
-        win.webContents.send(CHANNELS.CLEAR_HISTORY)
+        win.webContents.send(CHANNELS.CHAT_HISTORY_CLEARED_EVENT)
       }
     })
     return []

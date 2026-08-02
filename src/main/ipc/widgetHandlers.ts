@@ -90,24 +90,17 @@ export function setupWidgetIPC(): void {
     }
   })
 
-  // 获取小组件实例
-  registerHandle(CHANNELS.WIDGET_INSTANCE_GET, (_, instanceId) => {
+  // 获取当前窗口所属的小组件实例（由 widget 窗口调用）
+  registerHandle(CHANNELS.WIDGET_INSTANCE_GET_CURRENT, (event) => {
     try {
+      const instanceId = windowRegistry.getInstanceIdByWebContentsId(event.sender.id)
+      if (!instanceId) {
+        return { success: false, error: '无法确定当前窗口所属实例' }
+      }
       const instance = widgetService.getInstance(instanceId)
       return { success: true, data: instance }
     } catch (error) {
-      log.error('获取小组件实例失败:', error)
-      return { success: false, error: String(error) }
-    }
-  })
-
-  // 获取所有小组件实例
-  registerHandle(CHANNELS.WIDGET_INSTANCE_GET_ALL, () => {
-    try {
-      const instances = widgetService.getAllInstances()
-      return { success: true, data: instances }
-    } catch (error) {
-      log.error('获取小组件实例列表失败:', error)
+      log.error('获取当前小组件实例失败:', error)
       return { success: false, error: String(error) }
     }
   })
@@ -213,17 +206,6 @@ export function setupWidgetIPC(): void {
       return { success }
     } catch (error) {
       log.error('更新小组件全局设置失败:', error)
-      return { success: false, error: String(error) }
-    }
-  })
-
-  // 获取全局设置
-  registerHandle(CHANNELS.WIDGET_SETTINGS_GET, () => {
-    try {
-      const settings = widgetService.getGlobalSettings()
-      return { success: true, data: settings }
-    } catch (error) {
-      log.error('获取小组件全局设置失败:', error)
       return { success: false, error: String(error) }
     }
   })
