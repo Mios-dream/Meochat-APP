@@ -1,4 +1,4 @@
-import type { Application } from 'pixi.js'
+import { Point, type Application } from 'pixi.js'
 import type { Live2DModel } from 'untitled-pixi-live2d-engine'
 import type { InternalModel } from 'untitled-pixi-live2d-engine'
 import type { Live2DPartName, Live2DPointerPorts } from '../types'
@@ -27,7 +27,6 @@ function isClickOnModel(model: Live2DModel | null, event: MouseEvent): boolean {
   const coreModel = internalModel?.coreModel as
     | {
         getDrawableCount(): number
-        getDrawableVertexPositions(n: number): Float32Array
         getDrawableVertexIndices(n: number): Uint16Array
         getDrawableOpacity(n: number): number
         getDrawableDynamicFlagIsVisible(n: number): boolean
@@ -35,22 +34,24 @@ function isClickOnModel(model: Live2DModel | null, event: MouseEvent): boolean {
     | undefined
   if (!coreModel || !internalModel) return false
 
-  // 视口坐标 → Pixi 全局坐标 → 模型局部坐标（含 drawingMatrix 的逆）
-  const local = model.toLocal({ x: event.x, y: event.y })
-  // drawingMatrix 将 Cubism 模型坐标 (Y↑) 映射到 Pixi 局部坐标 (Y↓)，
-  // 求逆后得到与 getDrawableVertexPositions 一致的坐标系
-  const invDrawing = internalModel.drawingMatrix.clone()
-  invDrawing.invert()
-  const cubismLocal = invDrawing.apply(local)
+  // 使用引擎自带的 toModelPosition 将视口坐标转换到模型坐标系，
+  // 与 model.hitTest 内部链路保持一致。
+  // 注意：不能手动对 drawingMatrix 求逆。Cubism2（legacy）与 Cubism3/4
+  // 内部模型的 drawingMatrix 组成不同，且这里已先 toLocal 过一次，再逆
+  // 一次会对逆变换施加两遍，导致坐标空间错位，无 HitAreas 的模型点不中。
+  const point = model.toModelPosition(new Point(event.x, event.y), new Point(0, 0))
 
   const count = coreModel.getDrawableCount()
   for (let i = 0; i < count; i++) {
     if (!coreModel.getDrawableDynamicFlagIsVisible(i)) continue
     if (coreModel.getDrawableOpacity(i) < 0.02) continue
 
-    const verts = coreModel.getDrawableVertexPositions(i)
+    // 使用 internalModel.getDrawableVertices 而非 coreModel 原始顶点：
+    // 它已按 pixelsPerUnit/布局换算到与 toModelPosition 一致的坐标系，
+    // 且对 Cubism2 与 Cubism3/4 两种运行时都成立。
+    const verts = internalModel.getDrawableVertices(i)
     const idxs = coreModel.getDrawableVertexIndices(i)
-    if (hitTestMesh(cubismLocal.x, cubismLocal.y, verts, idxs)) return true
+    if (hitTestMesh(point.x, point.y, verts, idxs)) return true
   }
   return false
 }
@@ -331,7 +332,12 @@ export class Live2DPointerController {
     // 拖拽模式下由文档级监听器处理释放逻辑
     if (this.isDragging) return
 
-    if (!this.interactionStartedOnTransparent) {
+    // 按下点或释放点只要有一处落在模型上即可触发交互判定：
+    // 若按下点恰好落在角色缝隙/镂空等透明像素上，以释放点的实测
+    // 结果为准，避免整次交互被误判为透明而丢弃。
+    const interactionOnModel = !this.interactionStartedOnTransparent || isClickOnModel(model, event)
+
+    if (interactionOnModel) {
       const strokeDurationMs = Date.now() - this.strokeStartAt
       const displacement = this.strokeDistance
 
@@ -574,8 +580,12 @@ export class Live2DPointerController {
     }
 
     const handleUp = (event: MouseEvent): void => {
-      // 点击/抚摸检测
-      if (!this.interactionStartedOnTransparent && model) {
+      // 点击/抚摸检测：按下点或释放点任一落在模型上即可触发，
+      // 与 handleMouseUp 的判定保持一致。
+      const interactionOnModel =
+        !this.interactionStartedOnTransparent || isClickOnModel(model, event)
+
+      if (interactionOnModel) {
         const strokeDurationMs = Date.now() - this.strokeStartAt
         const displacement = this.strokeDistance
 
