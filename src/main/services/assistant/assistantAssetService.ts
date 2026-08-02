@@ -51,8 +51,6 @@ export interface AssistantAssetContext {
   getCurrentAssistant(): AssistantInfo | null
   /** 切换当前助手（更新内存、配置并广播） */
   setCurrentAssistant(name: string): Promise<SwitchResult>
-  /** 将当前助手清空（更新内存与配置） */
-  clearCurrentAssistant(): void
   /** 将助手信息持久化到本地磁盘 */
   saveAssistantToLocal(assistant: AssistantInfo): void
   /** 向所有窗口广播助手数据更新事件 */
@@ -103,7 +101,7 @@ export class AssistantAssetService {
    * 使用 downloadingAssets 集合防止重复触发下载。
    *
    * 特殊逻辑：如果当前选中的助手需要下载资源，会自动切换到其他资源完整的助手。
-   * 如果没有可用的助手，则将当前助手设置为空。
+   * 如果没有可用的替代助手（如首次启动全量下载），则保留当前助手，等待资源下载完成后正常渲染。
    *
    * @param onProgress - 可选的进度回调，参数为 (助手名称, 0-100 进度百分比)
    */
@@ -225,26 +223,14 @@ export class AssistantAssetService {
    * 切换优先级：
    * 1. 优先切换到默认助手（如果资源完整且不是当前助手）
    * 2. 否则切换到列表中第一个资源完整的助手
-   * 3. 如果没有可用助手，将当前助手设置为空
+   * 3. 如果没有可用助手，保留当前助手，等待资源下载完成（不再清空，
+   *    避免“列表已同步但当前助手被清空”的首次启动问题）
    *
    * @param excludeAssistantName - 需要排除的助手名称（即正在下载的助手）
    */
   private async switchToAvailableAssistant(excludeAssistantName: string): Promise<void> {
-    const DEFAULT_ASSISTANT_NAME = '澪'
-
     // 查找资源完整的助手
     const findAvailableAssistant = async (): Promise<AssistantInfo | null> => {
-      // 先检查默认助手
-      const defaultAssistant = this.ctx
-        .getAssistants()
-        .find((a) => a.name === DEFAULT_ASSISTANT_NAME)
-      if (defaultAssistant && defaultAssistant.name !== excludeAssistantName) {
-        const isAvailable = await this.isAssistantAssetsComplete(defaultAssistant)
-        if (isAvailable) {
-          return defaultAssistant
-        }
-      }
-
       // 再检查其他助手
       for (const assistant of this.ctx.getAssistants()) {
         if (assistant.name === excludeAssistantName) {
@@ -268,13 +254,10 @@ export class AssistantAssetService {
       // 使用 setCurrentAssistant 会更新内存、配置并通知前端
       await this.ctx.setCurrentAssistant(availableAssistant.name)
     } else {
-      log.warn(`没有可用的资源完整助手，将当前助手设置为空`)
-      this.ctx.clearCurrentAssistant()
-
-      // 通知前端当前助手已清空
-      BrowserWindow.getAllWindows().forEach((win) => {
-        win.webContents.send(CHANNELS.ASSISTANT_SWITCHED_EVENT, null)
-      })
+      // 没有资源完整的替代助手：保留当前助手选中，不将其清空。
+      // 资源正在后台下载，下载完成后前端即可正常加载模型；
+      // 若在此处清空，会导致“列表已同步但当前助手被清空”的问题。
+      log.warn(`没有可用的资源完整助手，保留当前助手「${excludeAssistantName}」，等待资源下载完成`)
     }
   }
 
@@ -350,15 +333,6 @@ export class AssistantAssetService {
         progress
       })
     })
-  }
-
-  /**
-   * 获取当前是否正在下载资源。
-   *
-   * @returns 正在下载的助手名称数组，空数组表示没有下载任务
-   */
-  public getDownloadingAssets(): string[] {
-    return Array.from(this.downloadingAssets)
   }
 
   /**

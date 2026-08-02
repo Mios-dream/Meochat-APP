@@ -52,10 +52,6 @@ export const assistantChannels = {
   ASSISTANT_SAVE_ASSETS: 'assistant:save-assets',
   /** 上传并解压 Live2D */
   ASSISTANT_SAVE_EXTRACT_LIVE2D: 'assistant:save-extract-live2d',
-  /** 下载助手资产 */
-  ASSISTANT_DOWNLOAD_ASSET: 'assistant:download-asset',
-  /** 获取正下载的助手列表 */
-  ASSISTANT_GET_DOWNLOADING: 'assistant:get-downloading',
   /** 从角色卡导入 */
   ASSISTANT_IMPORT_FROM_CARD: 'assistant:import-from-card',
   /** 从 ZIP 导入 */

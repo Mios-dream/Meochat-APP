@@ -430,6 +430,10 @@ const live2DManager = Live2DManager.getInstance()
 const chatService = ChatManager.getInstance()
 // 聊天框 IPC 事件监听清理函数数组
 let removeChatBoxListeners: () => void
+// 助手数据更新事件监听清理函数
+let removeDataUpdated: () => void = () => {}
+// 助手资源下载进度事件监听清理函数
+let removeDownloadProgress: () => void = () => {}
 const diarySystem = new DiarySystem()
 const assistantManager = AssistantManager.getInstance()
 // 获取交互系统实例
@@ -489,6 +493,9 @@ function percentToNormalized(value: number): number {
 
 async function loadLive2DModel(): Promise<boolean> {
   try {
+    // 重载前销毁上一次的模型与渲染器实例，避免重复初始化同一画布
+    live2DManager.destroy()
+
     const assistantAssets = await assistantManager.getAssistantAssets()
 
     if (assistantAssets && assistantAssets.live2d.modelJsonPath) {
@@ -498,7 +505,10 @@ async function loadLive2DModel(): Promise<boolean> {
         'app-resource://' + assistantAssets.live2d.modelJsonPath
       )
     } else {
+      // 无当前助手或无可用模型：加载默认模型并进入禁用模式（静止状态），
+      // 禁用特效由后续版本接管表现。
       await live2DManager.init('l2d-canvas', './turong/turong.model3.json')
+      live2DManager.disabledModel()
     }
 
     live2DManager.initListeners()
@@ -518,7 +528,7 @@ async function loadLive2DModel(): Promise<boolean> {
 async function sendOnboardingWelcomeIfNeeded(): Promise<void> {
   const fromRoute = route.query.welcome === 'true'
   if (fromRoute) {
-    await chatService.sendMessage('您好，阁下！我是澪，您的专属助手，将满足您的所有愿望。')
+    await chatService.sendMessage('您好，阁下！初次见面，请多指教！我想陪伴阁下度过今后的每一天！')
 
     // 欢迎语只需要触发一次，触发后移除路由标记，避免切换 tab 重复触发
     const restQuery = { ...route.query }
@@ -614,6 +624,27 @@ onMounted(async () => {
       })
     }
   })
+
+  // 监听助手数据更新事件：同步完成或助手切换后刷新当前助手，并重新加载模型。
+  // 组件仅在 mount 时读取一次当前助手，若不订阅则后台同步完成后一直停留空态。
+  removeDataUpdated = window.api.assistant.onAssistantDataUpdated(async (payload) => {
+    const nextAssistant = payload.currentAssistant
+    if (nextAssistant?.name === currentAssistant.value?.name) {
+      return
+    }
+    currentAssistant.value = nextAssistant
+    // 助手变化（含从无到有）时重新加载模型；无助手时进入默认模型禁用态
+    modelLoaded.value = false
+    await loadLive2DModel()
+  })
+
+  // 监听资源下载进度：首次启动资源在后台下载，下载完成后才具备模型资源，
+  // 若模型尚未加载成功则重试加载。
+  removeDownloadProgress = window.api.assistant.onDownloadProgress((payload) => {
+    if (payload.status === 'completed' && !modelLoaded.value) {
+      void loadLive2DModel()
+    }
+  })
 })
 
 onUnmounted(() => {
@@ -623,6 +654,9 @@ onUnmounted(() => {
   chatService.interruptCurrentPlayback()
   // 清理聊天框 IPC 事件监听
   removeChatBoxListeners()
+  // 清理助手数据更新与下载进度事件监听
+  removeDataUpdated()
+  removeDownloadProgress()
   if (configStore.config.assistantEnabled) {
     window.api.assistant.openAssistant()
   }

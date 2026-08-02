@@ -34,8 +34,13 @@ class AssistantService {
   private currentAssistant: AssistantInfo | null = null
   /** 后台同步进行中标志（防重入，避免并发触发多次同步） */
   private syncing = false
-  /** 同步读取云端的超时时间（毫秒），短超时保证内核不可用时快速失败并保留本地缓存 */
-  private static readonly CLOUD_SYNC_TIMEOUT = 5000
+  /**
+   * 同步读取云端的超时时间（毫秒）。
+   *
+   * 首次启动时后端刚通过健康检查，但助手数据仓库可能仍在初始化，需要略长的等待时间；
+   * 内核真正不可用时连接会立即失败（ECONNREFUSED），超时仅兜底慢响应场景。
+   */
+  private static readonly CLOUD_SYNC_TIMEOUT = 10000
 
   /** 助手资源服务（资产下载/上传/检查等） */
   private readonly assets: AssistantAssetService
@@ -52,10 +57,6 @@ class AssistantService {
       getAssistants: () => this.assistants,
       getCurrentAssistant: () => this.currentAssistant,
       setCurrentAssistant: (name) => this.setCurrentAssistant(name),
-      clearCurrentAssistant: () => {
-        this.currentAssistant = null
-        setConfig('currentAssistant', '')
-      },
       saveAssistantToLocal: (assistant) => this.saveAssistantToLocal(assistant),
       broadcastDataUpdated: () => this.broadcastDataUpdated()
     })
@@ -162,12 +163,15 @@ class AssistantService {
   }
 
   /**
-   * 加载助手数据（本地缓存秒开 + 后台云端同步）。
+   * 加载助手数据（本地缓存秒开 + 后台云端同步与资源补齐）。
    *
    * 加载流程（本地优先，保证启动秒开与离线可用）：
    * 1. 读取本地磁盘缓存到内存，立即可用
    * 2. 后台异步执行云端同步（以云端数据为准覆盖本地，仅成功才落盘）
-   * 3. 后台异步检查并下载缺失资源（不阻塞返回）
+   * 3. 同步完成后，基于最新助手列表后台检查并下载缺失资源（不阻塞返回）
+   *
+   * 说明：资源检查必须在云端同步之后执行，否则会基于同步前的旧列表（首次启动为空）检查，
+   * 导致新同步进来的助手头像/Live2D 模型等资源永远不会被下载。
    *
    * @param onProgress - 可选的进度回调，用于向渲染进程报告资产下载进度
    *   回调参数：(assistantName: 当前处理的助手名, progress: 0-100 的进度百分比)
@@ -181,10 +185,10 @@ class AssistantService {
       this.assistants = Array.from(this.readLocalAssistants().values())
       this.currentAssistant = this.pickCurrent(this.assistants)
 
-      // 2. 后台云端同步（不阻塞返回，云端不可用时保留本地缓存）
-      void this.requestSync()
-
-      // 3. 后台检查并下载缺失资源
+      // 2. 后台执行「云端同步 → 资源完整性检查」流水线（不阻塞返回）
+      //    资源检查必须等待云端同步完成后再执行：否则会基于同步前的旧列表（首次启动为空）检查，
+      //    导致新同步进来的助手资源（头像/Live2D 模型等）永远不会被下载，前端无法渲染。
+      await this.requestSync()
       this.assets.checkAndDownloadAllAssistantsAssets(onProgress)
 
       return { success: true }
@@ -223,6 +227,13 @@ class AssistantService {
       this.assistants = cloudAssistants
       this.currentAssistant = this.pickCurrent(cloudAssistants, cloudCurrentName)
       setConfig('currentAssistant', this.currentAssistant?.name ?? '')
+
+      // 前后端当前助手对齐：云端未记录当前助手（后端尚未加载任何模型），
+      // 但本地仍解析出候选助手时，主动通知后端切换，使后端加载的模型
+      // 与前端选中的助手保持一致（fire-and-forget，不阻塞同步流程）。
+      if (!cloudCurrentName && this.currentAssistant) {
+        void this.switchAssistantInCloud(this.currentAssistant.name)
+      }
 
       // 仅同步成功才落盘/删除本地目录，失败时保留本地缓存作为离线兜底
       this.persistAssistants(cloudAssistants)
@@ -672,31 +683,6 @@ class AssistantService {
   }
 
   // ─── 资源管理委托（实现委托给 AssistantAssetService） ─────────────────────────
-
-  /**
-   * 从云端下载助手的资产包并解压到本地（委托给资源服务）。
-   *
-   * @param assistantName - 要下载资产的助手名称
-   * @param onProgress - 下载进度回调，参数为 0-100 的百分比
-   * @param assetTypes - 需要下载的资源类型列表（子目录名），为空则下载全部
-   * @returns 下载是否成功
-   */
-  public downloadAssistantAssets(
-    assistantName: string,
-    onProgress: (progress: number) => void,
-    assetTypes: string[] = []
-  ): Promise<{ success: boolean }> {
-    return this.assets.downloadAssistantAssets(assistantName, onProgress, assetTypes)
-  }
-
-  /**
-   * 获取当前正在下载资源的助手列表（委托给资源服务）。
-   *
-   * @returns 正在下载的助手名称数组，空数组表示没有下载任务
-   */
-  public getDownloadingAssets(): string[] {
-    return this.assets.getDownloadingAssets()
-  }
 
   /**
    * 从内存缓存中获取助手的资产配置（委托给资源服务）。

@@ -44,38 +44,18 @@ export const assistantApi: AssistantApi = {
     ipcRenderer.invoke(CHANNELS.ASSISTANT_SAVE_ASSETS, assets),
   saveAndExtractLive2DModel: (fileData: Buffer | ArrayBuffer, assistantName: string) =>
     ipcRenderer.invoke(CHANNELS.ASSISTANT_SAVE_EXTRACT_LIVE2D, fileData, assistantName),
-  downloadAssistantAsset: async (params: {
-    assistantName: string
-    assetTypes?: string[]
-    onProgress?: (progress: number) => void
-  }) => {
-    const { assistantName, assetTypes, onProgress } = params
-    const progressListener = (
-      _event: Electron.IpcRendererEvent,
-      data: { assistantName: string; progress: number }
-    ): void => {
-      if (data.assistantName === assistantName && onProgress) onProgress(data.progress)
-    }
-    ipcRenderer.on(CHANNELS.ASSISTANT_DOWNLOAD_PROGRESS_EVENT, progressListener)
-    try {
-      return await ipcRenderer.invoke(CHANNELS.ASSISTANT_DOWNLOAD_ASSET, {
-        assistantName,
-        assetTypes
-      })
-    } finally {
-      ipcRenderer.removeListener(CHANNELS.ASSISTANT_DOWNLOAD_PROGRESS_EVENT, progressListener)
-    }
-  },
-  getDownloadingAssets: () => ipcRenderer.invoke(CHANNELS.ASSISTANT_GET_DOWNLOADING),
-  getCurrentAssistant: () => ipcRenderer.invoke(CHANNELS.ASSISTANT_GET_CURRENT),
-  switchAssistant: (name: string) => ipcRenderer.invoke(CHANNELS.ASSISTANT_SWITCH, name),
   importAssistantFromCard: (imageData: ArrayBuffer) =>
     ipcRenderer.invoke(CHANNELS.ASSISTANT_IMPORT_FROM_CARD, imageData),
   importAssistantFromZip: (zipPath: string) =>
     ipcRenderer.invoke(CHANNELS.ASSISTANT_IMPORT_FROM_ZIP, zipPath),
   scanLive2dExpressions: () => ipcRenderer.invoke(CHANNELS.ASSISTANT_SCAN_LIVE2D_EXPRESSIONS),
+  getCurrentAssistant: () => ipcRenderer.invoke(CHANNELS.ASSISTANT_GET_CURRENT),
+  switchAssistant: (name: string) => ipcRenderer.invoke(CHANNELS.ASSISTANT_SWITCH, name),
   onUploadProgress: (callback: (data: { assistantName: string; progress: number }) => void) =>
     ipc.on(CHANNELS.ASSISTANT_UPLOAD_PROGRESS_EVENT, callback),
+  onDownloadProgress: (
+    callback: (data: { status: string; assistantName?: string; progress?: number }) => void
+  ) => ipc.on(CHANNELS.ASSISTANT_DOWNLOAD_PROGRESS_EVENT, callback),
   onAssistantDataUpdated: (
     callback: (data: {
       assistants: AssistantInfo[]

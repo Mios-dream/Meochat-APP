@@ -52,12 +52,6 @@ export interface AssistantApi {
   ) => Promise<
     { success: true; path: string; mainJsonPath: string } | { success: false; error: string }
   >
-  downloadAssistantAsset: (params: {
-    assistantName: string
-    assetTypes?: string[]
-    onProgress?: (progress: number) => void
-  }) => Promise<string>
-  getDownloadingAssets: () => Promise<string[]>
   importAssistantFromCard: (
     imageData: ArrayBuffer
   ) => Promise<{ success: true; data: AssistantBaseInfo } | { success: false; error: string }>
@@ -69,6 +63,9 @@ export interface AssistantApi {
   >
   onUploadProgress: (
     callback: (data: { assistantName: string; progress: number }) => void
+  ) => () => void
+  onDownloadProgress: (
+    callback: (data: { status: string; assistantName?: string; progress?: number }) => void
   ) => () => void
   onAssistantDataUpdated: (
     callback: (data: {

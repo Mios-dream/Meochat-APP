@@ -117,34 +117,6 @@ class AssistantManager {
   }
 
   /**
-   * 下载助手资源（zip文件）并解压到应用目录的助手文件夹
-   *
-   * 支持按资源类型选择性下载：传入 assetTypes 数组时仅下载指定类型的资源，
-   * 不传或传空数组则下载全部资源。
-   *
-   * @param assistantName 助手名称
-   * @param onProgress 下载进度回调函数 (可选)
-   * @param assetTypes 需要下载的资源类型列表（子目录名），为空则下载全部
-   */
-  public async downloadAssistantAsset(
-    assistantName: string,
-    onProgress?: (progress: number) => void,
-    assetTypes: string[] = []
-  ): Promise<void> {
-    try {
-      await window.api.assistant.downloadAssistantAsset({
-        assistantName,
-        assetTypes,
-        onProgress
-      })
-      console.log(`助手资源${assistantName}下载和解压完成`)
-    } catch (error) {
-      console.error(`下载助手资源失败: ${error instanceof Error ? error.message : String(error)}`)
-      throw error
-    }
-  }
-
-  /**
    * 获取当前助手的资产配置
    * @returns 助手资产配置，没有则返回 null
    */

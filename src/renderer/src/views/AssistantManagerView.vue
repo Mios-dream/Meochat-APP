@@ -154,34 +154,20 @@
             >
               <div class="spinner"></div>
             </div>
-            <!-- 助手资源同步进度覆盖层 -->
+            <!-- 助手资源同步状态覆盖层（仅展示是否在更新） -->
             <div v-if="isAssistantSyncing(assistant.name)" class="sync-progress-overlay">
               <div class="sync-progress-content">
                 <div class="sync-progress-icon">
-                  <font-awesome-icon
-                    :icon="
-                      getAssistantSyncProgress(assistant.name) >= 100
-                        ? 'fa-solid fa-check'
-                        : 'fa-solid fa-arrow-down'
-                    "
-                  />
+                  <font-awesome-icon icon="fa-solid fa-arrow-down" />
                 </div>
-                <div class="sync-progress-text">
-                  {{
-                    getAssistantSyncProgress(assistant.name) >= 100
-                      ? '同步完成'
-                      : `同步中 ${getAssistantSyncProgress(assistant.name)}%`
-                  }}
-                </div>
-                <div class="sync-progress-bar-container">
-                  <div
-                    class="sync-progress-bar-fill"
-                    :style="{ width: `${getAssistantSyncProgress(assistant.name)}%` }"
-                    :class="{ complete: getAssistantSyncProgress(assistant.name) >= 100 }"
-                  ></div>
-                </div>
+                <div class="sync-progress-text">资源更新中</div>
               </div>
             </div>
+          </div>
+          <!-- 助手列表为空时的空态提示 -->
+          <div v-if="!assistantListLoading && assistantList.length === 0" class="assistant-empty">
+            <font-awesome-icon icon="fa-solid fa-user" class="assistant-empty-icon" />
+            <span class="assistant-empty-text">暂无助手</span>
           </div>
         </div>
       </div>
@@ -267,9 +253,6 @@ import Loader from '../components/Loader.vue'
 import BlurModal from '../components/BlurModal.vue'
 import { NotificationService } from '../services/NotificationService'
 
-// 默认助手名称（与后端 Config.DEFAULT_ASSISTANT_NAME 保持一致，禁止删除）
-const DEFAULT_ASSISTANT_NAME = '澪'
-
 // 通知服务实例（用于拦截删除默认助手时的提示）
 const notificationService = NotificationService.getInstance()
 
@@ -298,21 +281,17 @@ const isImportFromCard = ref(false)
 // 是否正在切换助手
 const isSwitchingAssistant = ref(false)
 
-// 每个助手的资源同步进度（key: 助手名称, value: 0-100 进度百分比，-1 表示已完成）
-const assistantSyncProgress = ref<Map<string, number>>(new Map())
+// 正在同步资源的助手名称集合（前端仅需展示「是否在更新」，无需关心具体进度）
+const assistantSyncing = ref<Set<string>>(new Set())
 
 // 事件监听清理函数
 let removeUploadProgress: () => void = () => {}
+let removeDownloadProgress: () => void = () => {}
 let removeDataUpdated: () => void = () => {}
 
 // 检查助手是否正在同步
 function isAssistantSyncing(assistantName: string): boolean {
-  return assistantSyncProgress.value.has(assistantName)
-}
-
-// 获取助手同步进度
-function getAssistantSyncProgress(assistantName: string): number {
-  return assistantSyncProgress.value.get(assistantName) || 0
+  return assistantSyncing.value.has(assistantName)
 }
 
 // 计算进度百分比（好感度范围 -50~100，低于 0 按 0 显示，最大 100%）
@@ -375,16 +354,14 @@ const contextMenuItems = computed(() => {
       icon: 'fa-solid fa-pen',
       text: '编辑',
       action: () => handleEditAssistant(contextMenuAssistant.value!)
-    }
-  ]
-  // 默认助手不可删除，隐藏菜单项
-  if (contextMenuAssistant.value?.name !== DEFAULT_ASSISTANT_NAME) {
-    items.push({
+    },
+    {
       icon: 'fa-solid fa-trash',
       text: '删除',
       action: () => handleDeleteAssistant(contextMenuAssistant.value!.name)
-    })
-  }
+    }
+  ]
+
   return items
 })
 
@@ -434,13 +411,6 @@ async function getAssistants(): Promise<void> {
 
 // 处理删除助手
 async function handleDeleteAssistant(name: string): Promise<void> {
-  // 兜底拦截：默认助手禁止删除（即使有其他入口绕过右键菜单）
-  if (name === DEFAULT_ASSISTANT_NAME) {
-    notificationService.error({
-      message: `默认助手「${name}」不可删除`
-    })
-    return
-  }
   // 设置确认对话框信息
   confirmMessage.value = `每一次的陪伴都值得珍藏，确定要与"${name}"就此告别吗？`
   assistantToDelete.value = name
@@ -571,24 +541,42 @@ async function handleImportZipPackage(): Promise<void> {
   }
 }
 
-// 处理助手资源下载进度事件
-function handleDownloadProgress(payload: { assistantName: string; progress: number }): void {
-  // console.log('助手资源下载进度', payload)
-  const { assistantName, progress } = payload
-  const newMap = new Map(assistantSyncProgress.value)
-  if (progress >= 100) {
-    // 下载完成后标记为-1，延迟移除进度条（给用户一点时间看到完成状态）
-    newMap.set(assistantName, 100)
-    assistantSyncProgress.value = newMap
-    setTimeout(() => {
-      const removeMap = new Map(assistantSyncProgress.value)
-      removeMap.delete(assistantName)
-      assistantSyncProgress.value = removeMap
-    }, 1500)
-  } else {
-    newMap.set(assistantName, progress)
-    assistantSyncProgress.value = newMap
+// 处理助手资源下载/上传进度事件
+//
+// 兼容两种载荷：
+// - 后台下载（首次启动/资源更新）：{ status, assistantName, progress }
+// - 资产上传（添加/编辑助手）：{ assistantName, progress }
+//
+// 前端只需维护「助手是否正在同步」的集合状态，无需展示具体进度百分比。
+function handleDownloadProgress(payload: {
+  status?: string
+  assistantName?: string
+  progress?: number
+}): void {
+  const { status, assistantName, progress } = payload
+
+  // 后台下载整体结束（completed / idle）：清空所有同步标记
+  if (status === 'completed' || status === 'idle') {
+    assistantSyncing.value = new Set()
+    return
   }
+
+  // checking 状态或缺少助手名：忽略
+  if (!assistantName) {
+    return
+  }
+
+  const newSet = new Set(assistantSyncing.value)
+
+  // 下载中 / 上传进行中（未完成）：标记该助手正在同步
+  if (status === 'downloading' || (progress !== undefined && progress < 100)) {
+    newSet.add(assistantName)
+  } else if (progress !== undefined && progress >= 100) {
+    // 单个助手同步完成：移除标记
+    newSet.delete(assistantName)
+  }
+
+  assistantSyncing.value = newSet
 }
 
 // 处理助手数据更新事件（后台云端同步完成后触发）
@@ -600,9 +588,9 @@ function handleAssistantDataUpdated(payload: {
   if (payload.assistants) {
     assistantList.value = payload.assistants
   }
-  if (payload.currentAssistant) {
-    assistantInfo.value = payload.currentAssistant
-  }
+  // 当前助手可能为 null（列表清空/后端删除全部助手），需显式清空，
+  // 避免残留已删除助手的卡片展示。
+  assistantInfo.value = payload.currentAssistant
 }
 
 // 当组件挂载时，获取助手状态
@@ -613,8 +601,11 @@ onMounted(() => {
 
   getAssistants()
 
-  // 监听助手资源下载进度事件
+  // 监听助手资源上传进度事件（添加/编辑助手时上传资产）
   removeUploadProgress = window.api.assistant.onUploadProgress(handleDownloadProgress)
+
+  // 监听助手资源后台下载进度事件（首次启动/资源同步时下载资产）
+  removeDownloadProgress = window.api.assistant.onDownloadProgress(handleDownloadProgress)
 
   // 监听助手数据更新事件
   removeDataUpdated = window.api.assistant.onAssistantDataUpdated(handleAssistantDataUpdated)
@@ -631,8 +622,9 @@ onUnmounted(() => {
   assistantListLoading.value = true
   // 移除事件监听
   document.removeEventListener('click', handleClickOutside)
-  // 移除助手资源下载进度监听
+  // 移除助手资源上传/下载进度监听
   removeUploadProgress()
+  removeDownloadProgress()
   // 移除助手数据更新监听
   removeDataUpdated()
 })
@@ -1033,6 +1025,27 @@ onUnmounted(() => {
   scrollbar-width: none;
 }
 
+/* 助手列表为空时的空态提示 */
+.assistant-empty {
+  width: 100%;
+  height: 160px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  color: #b0b0b0;
+}
+
+.assistant-empty-icon {
+  font-size: 32px;
+  opacity: 0.6;
+}
+
+.assistant-empty-text {
+  font-size: 14px;
+}
+
 .assistant-item {
   position: relative;
   display: flex;
@@ -1363,24 +1376,5 @@ onUnmounted(() => {
   color: #fb7299;
   font-weight: bold;
   text-align: center;
-}
-
-.sync-progress-bar-container {
-  width: 100%;
-  height: 4px;
-  background-color: #ffe6f0;
-  border-radius: 2px;
-  overflow: hidden;
-}
-
-.sync-progress-bar-fill {
-  height: 100%;
-  background: linear-gradient(90deg, #fb7299, #ff97b3);
-  border-radius: 2px;
-  transition: width 0.3s ease;
-}
-
-.sync-progress-bar-fill.complete {
-  background: linear-gradient(90deg, #52c41a, #73d13d);
 }
 </style>

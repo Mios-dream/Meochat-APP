@@ -19,8 +19,6 @@ import { resolveAppDataDir } from '../utils/pathResolve'
  * - assistant:get-assets         获取助手资产配置
  * - assistant:save-assets        保存助手资产配置
  * - assistant:save-extract-live2d 上传并解压Live2D模型
- * - assistant:download-asset     下载助手资产文件
- * - assistant:get-downloading    获取正在下载的助手列表
  * - assistant:get-current        获取当前助手信息
  * - assistant:refresh-current    从云端刷新当前助手数据
  * - assistant:import-from-card   从角色卡导入
@@ -173,35 +171,6 @@ export function setupAssistantServerIPC(): void {
       return await assistantService.saveAndExtractLive2D(fileData, assistantName)
     }
   )
-
-  /**
-   * 下载助手资产文件
-   *
-   * 支持按资源类型选择性下载：传入 assetTypes 数组时仅下载指定类型的资源，
-   * 不传或传空数组则下载全部资源。
-   */
-  registerHandle(
-    CHANNELS.ASSISTANT_DOWNLOAD_ASSET,
-    async (
-      event,
-      { assistantName, assetTypes }: { assistantName: string; assetTypes?: string[] }
-    ) => {
-      return await assistantService.downloadAssistantAssets(
-        assistantName,
-        (progress) => {
-          event.sender.send(CHANNELS.ASSISTANT_DOWNLOAD_PROGRESS_EVENT, { assistantName, progress })
-        },
-        assetTypes ?? []
-      )
-    }
-  )
-
-  /**
-   * 获取当前正在下载资源的助手列表
-   */
-  registerHandle(CHANNELS.ASSISTANT_GET_DOWNLOADING, async () => {
-    return assistantService.getDownloadingAssets()
-  })
 
   /**
    * 获取当前助手信息
