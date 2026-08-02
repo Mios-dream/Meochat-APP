@@ -47,8 +47,6 @@ export const utilityChannels = {
 
   /** 获取引导状态 */
   ONBOARDING_GET_STATE: 'onboarding:get-state',
-  /** 设置引导模式 */
-  ONBOARDING_SET_MODE: 'onboarding:set-mode',
   /** 保存个人资料 */
   ONBOARDING_SAVE_PROFILE: 'onboarding:save-profile',
   /** 标记引导完成 */

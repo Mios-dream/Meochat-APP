@@ -1,4 +1,4 @@
-import { shell, dialog } from 'electron'
+import { shell } from 'electron'
 import { CHANNELS } from '@shared/ipc/channels'
 import { registerHandle } from '../utils/registerIpcHandler'
 import { KernelManager, KernelServiceManager } from '../services/kernelManager'
@@ -18,32 +18,6 @@ function setupKernelIPC(): void {
   /** 获取内核完整状态 */
   registerHandle(CHANNELS.KERNEL_GET_STATE, () => {
     return kernelManager.getState()
-  })
-
-  // ─── 更新操作 ────────────────────────────────────
-
-  /** 检查内核更新 */
-  registerHandle(CHANNELS.KERNEL_CHECK_UPDATE, async () => {
-    try {
-      const state = await kernelManager.checkForUpdates()
-      return { success: true, data: state }
-    } catch (error) {
-      const msg = (error as Error).message
-      log.error('内核更新检查失败:', msg)
-      return { success: false, error: msg }
-    }
-  })
-
-  /** 更新到最新版本内核（从 GitHub Releases 下载，保留用户数据） */
-  registerHandle(CHANNELS.KERNEL_UPDATE_TO_LATEST, async () => {
-    try {
-      const success = await kernelManager.downloadAndInstall()
-      return { success }
-    } catch (error) {
-      const msg = (error as Error).message
-      log.error('内核更新失败:', msg)
-      return { success: false, error: msg }
-    }
   })
 
   // ─── 环境检查 ────────────────────────────────────
@@ -133,14 +107,6 @@ function setupKernelIPC(): void {
     return logs
   })
 
-  // ─── 状态重置 ────────────────────────────────────
-
-  /** 重置内核状态到默认（idle） */
-  registerHandle(CHANNELS.KERNEL_RESET_STATE, () => {
-    kernelManager.resetState()
-    return { success: true }
-  })
-
   /** 检查后端健康状态 */
   registerHandle(CHANNELS.KERNEL_CHECK_BACKEND_HEALTH, async () => {
     try {
@@ -185,72 +151,14 @@ function setupKernelIPC(): void {
 
   // ─── 资源管理 ────────────────────────────────────
 
-  /** 导入资源包（用户选择 zip 文件后调用） */
-  registerHandle(CHANNELS.KERNEL_IMPORT_ASSETS, async () => {
+  /** 自举初始化内核环境（装配内置资源 + uv sync），失败即停 */
+  registerHandle(CHANNELS.KERNEL_BOOTSTRAP, async () => {
     try {
-      const result = await dialog.showOpenDialog({
-        title: '选择资源包',
-        filters: [{ name: '资源包', extensions: ['zip'] }],
-        properties: ['openFile']
-      })
-
-      if (result.canceled || result.filePaths.length === 0) {
-        return { success: false, error: '用户取消了选择' }
-      }
-
-      const zipPath = result.filePaths[0]
-      const importResult = await kernelManager.importAssetBundle(zipPath)
-      return importResult
+      const result = await kernelManager.bootstrapKernel()
+      return result
     } catch (error) {
       const msg = (error as Error).message
-      log.error('导入资源包失败:', msg)
-      return { success: false, error: msg }
-    }
-  })
-
-  /** 检查资源完整性 */
-  registerHandle(CHANNELS.KERNEL_CHECK_RESOURCES, async () => {
-    try {
-      const result = await kernelManager.checkResources()
-      return { success: true, data: result }
-    } catch (error) {
-      const msg = (error as Error).message
-      log.error('检查资源完整性失败:', msg)
-      return { success: false, error: msg }
-    }
-  })
-
-  /** 检查数据资源完整性（models + agents） */
-  registerHandle(CHANNELS.KERNEL_CHECK_DATA_RESOURCES, async () => {
-    try {
-      const result = await kernelManager.checkDataResources()
-      return { success: true, data: result }
-    } catch (error) {
-      const msg = (error as Error).message
-      log.error('检查数据资源完整性失败:', msg)
-      return { success: false, error: msg }
-    }
-  })
-
-  /** 导入数据资源包（用户选择 zip 文件后调用） */
-  registerHandle(CHANNELS.KERNEL_IMPORT_DATA_ASSETS, async () => {
-    try {
-      const result = await dialog.showOpenDialog({
-        title: '选择数据资源包',
-        filters: [{ name: '数据资源包', extensions: ['zip'] }],
-        properties: ['openFile']
-      })
-
-      if (result.canceled || result.filePaths.length === 0) {
-        return { success: false, error: '用户取消了选择' }
-      }
-
-      const zipPath = result.filePaths[0]
-      const importResult = await kernelManager.importDataBundle(zipPath)
-      return importResult
-    } catch (error) {
-      const msg = (error as Error).message
-      log.error('导入数据资源包失败:', msg)
+      log.error('自举初始化失败:', msg)
       return { success: false, error: msg }
     }
   })

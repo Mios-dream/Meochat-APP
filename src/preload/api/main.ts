@@ -44,7 +44,6 @@ export function buildMainWindowApi(): MainWindowApi {
 
     onboarding: {
       getState: () => ipcRenderer.invoke(CHANNELS.ONBOARDING_GET_STATE),
-      setMode: (mode: unknown) => ipcRenderer.invoke(CHANNELS.ONBOARDING_SET_MODE, mode),
       saveProfile: (profile: unknown) =>
         ipcRenderer.invoke(CHANNELS.ONBOARDING_SAVE_PROFILE, profile),
       markCompleted: () => ipcRenderer.invoke(CHANNELS.ONBOARDING_MARK_COMPLETED),

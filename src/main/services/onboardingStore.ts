@@ -1,11 +1,10 @@
 import Store, { Schema } from 'electron-store'
 
 import { resolveAppDataDir } from '../utils/pathResolve'
-import { OnboardingMode, OnboardingProfile, OnboardingState } from '@shared/types/onboarding'
+import { OnboardingProfile, OnboardingState } from '@shared/types/onboarding'
 
 interface OnboardingStoreShape {
   completed: boolean
-  mode: OnboardingMode
   profile: OnboardingProfile
   completedAt: number
   updatedAt: number
@@ -13,7 +12,6 @@ interface OnboardingStoreShape {
 
 const onboardingSchema: Schema<OnboardingStoreShape> = {
   completed: { type: 'boolean', default: false },
-  mode: { type: 'string', default: '' },
   profile: {
     type: 'object',
     default: {
@@ -49,17 +47,10 @@ class OnboardingStoreService {
   public getState(): OnboardingState {
     return {
       completed: this.store.get('completed'),
-      mode: this.store.get('mode'),
       profile: this.store.get('profile'),
       completedAt: this.store.get('completedAt'),
       updatedAt: this.store.get('updatedAt')
     }
-  }
-
-  public setMode(mode: OnboardingMode): OnboardingState {
-    this.store.set('mode', mode)
-    this.touch()
-    return this.getState()
   }
 
   public saveProfile(profile: OnboardingProfile): OnboardingState {
@@ -82,7 +73,6 @@ class OnboardingStoreService {
 
   public reset(): OnboardingState {
     this.store.set('completed', false)
-    this.store.set('mode', '')
     this.store.set('profile', {
       birthday: '',
       gender: '',

@@ -11,6 +11,8 @@ import StreamZip from 'node-stream-zip'
  * - targetDir: 解压目标目录
  * - nameEncoding: 条目名编码 ('utf8' | 'gbk')
  * - isFullDownload: 是否全量下载（全量时清空目标目录）
+ * - subDir: 可选目标子目录前缀（如 'data'），将解压到 {targetDir}/{subDir} 下
+ * - deleteZip: 解压完成后是否删除源 zip（默认 true，内核自举传 false 以保留内置包）
  */
 
 interface WorkerData {
@@ -18,6 +20,8 @@ interface WorkerData {
   targetDir: string
   nameEncoding: 'utf8' | 'gbk'
   isFullDownload: boolean
+  subDir?: string
+  deleteZip?: boolean
 }
 
 interface ExtractResult {
@@ -26,10 +30,14 @@ interface ExtractResult {
 }
 
 /**
- * 检查路径安全性，防止路径穿越攻击
+ * 检查路径安全性，防止路径穿越攻击。
+ * 将条目名中的反斜杠统一规范为平台分隔符后再解析，兼容后端打包产生的
+ * Windows 风格条目名（如 "api\asr_api.py"），同时确保 "..\" 形式的穿越在
+ * 所有平台上都能被识别并拦截。
  */
 function isPathSafe(relativePath: string, targetDir: string): boolean {
-  const resolved = path.resolve(targetDir, relativePath)
+  const normalized = relativePath.replace(/\\/g, path.sep)
+  const resolved = path.resolve(targetDir, normalized)
   return resolved.startsWith(targetDir + path.sep) || resolved === targetDir
 }
 
@@ -37,7 +45,7 @@ function isPathSafe(relativePath: string, targetDir: string): boolean {
  * 执行解压操作
  */
 async function extractZip(data: WorkerData): Promise<ExtractResult> {
-  const { zipPath, targetDir, nameEncoding, isFullDownload } = data
+  const { zipPath, targetDir, nameEncoding, isFullDownload, subDir = '', deleteZip = true } = data
 
   try {
     // 全量下载时清空目标目录
@@ -51,7 +59,10 @@ async function extractZip(data: WorkerData): Promise<ExtractResult> {
     }
 
     // 打开 zip 文件
-    const zip = new StreamZip.async({ file: zipPath, nameEncoding })
+    // skipEntryNameValidation: 内核资产包由后端 Windows 环境打包，条目名使用反斜杠
+    // 分隔符（如 "api\asr_api.py"），node-stream-zip 默认将其判为恶意条目而拒绝解压。
+    // 关闭该校验后由下方 isPathSafe 自行兜底路径穿越防护。
+    const zip = new StreamZip.async({ file: zipPath, nameEncoding, skipEntryNameValidation: true })
 
     try {
       const entries = Object.values(await zip.entries())
@@ -65,7 +76,8 @@ async function extractZip(data: WorkerData): Promise<ExtractResult> {
           continue
         }
 
-        const relativeEntryName = entry.name
+        // 附加子目录前缀（如 'data'），实现 {targetDir}/{subDir}/... 布局
+        const relativeEntryName = subDir ? path.join(subDir, entry.name) : entry.name
         const normalizedRelativePath = path.normalize(relativeEntryName)
 
         // 安全检查：防止路径穿越
@@ -105,8 +117,8 @@ async function extractZip(data: WorkerData): Promise<ExtractResult> {
       await zip.close()
     }
 
-    // 清理临时 zip 文件
-    if (fs.existsSync(zipPath)) {
+    // 清理临时 zip 文件（内核自举时 deleteZip=false 保留内置包）
+    if (deleteZip && fs.existsSync(zipPath)) {
       fs.unlinkSync(zipPath)
     }
 

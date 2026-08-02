@@ -6,12 +6,10 @@ import { ipc } from './ipc'
 
 export const kernelApi: KernelApi = {
   getState: () => ipcRenderer.invoke(CHANNELS.KERNEL_GET_STATE),
-  checkUpdate: () => ipcRenderer.invoke(CHANNELS.KERNEL_CHECK_UPDATE),
-  updateToLatest: () => ipcRenderer.invoke(CHANNELS.KERNEL_UPDATE_TO_LATEST),
   onStateUpdate: (callback: (state: KernelUpdateState) => void) =>
     ipc.on(CHANNELS.KERNEL_STATE_UPDATE_EVENT, callback),
-  resetState: () => ipcRenderer.invoke(CHANNELS.KERNEL_RESET_STATE),
   checkEnvironment: () => ipcRenderer.invoke(CHANNELS.KERNEL_CHECK_ENVIRONMENT),
+  bootstrapKernel: () => ipcRenderer.invoke(CHANNELS.KERNEL_BOOTSTRAP),
   setupEnvironment: () => ipcRenderer.invoke(CHANNELS.KERNEL_SETUP_ENVIRONMENT),
   startBackend: () => ipcRenderer.invoke(CHANNELS.KERNEL_START_BACKEND),
   stopBackend: () => ipcRenderer.invoke(CHANNELS.KERNEL_STOP_BACKEND),
@@ -25,9 +23,5 @@ export const kernelApi: KernelApi = {
   onServiceStream: (callback: (data: ArrayBuffer) => void) =>
     ipc.on(CHANNELS.KERNEL_SERVICE_STREAM_EVENT, callback),
   openLogDir: () => ipcRenderer.invoke(CHANNELS.KERNEL_OPEN_LOG_DIR),
-  checkApiHealth: () => ipcRenderer.invoke(CHANNELS.KERNEL_CHECK_API_HEALTH),
-  importAssets: () => ipcRenderer.invoke(CHANNELS.KERNEL_IMPORT_ASSETS),
-  checkResources: () => ipcRenderer.invoke(CHANNELS.KERNEL_CHECK_RESOURCES),
-  checkDataResources: () => ipcRenderer.invoke(CHANNELS.KERNEL_CHECK_DATA_RESOURCES),
-  importDataAssets: () => ipcRenderer.invoke(CHANNELS.KERNEL_IMPORT_DATA_ASSETS)
+  checkApiHealth: () => ipcRenderer.invoke(CHANNELS.KERNEL_CHECK_API_HEALTH)
 }

@@ -10,7 +10,7 @@ import type { AssistantApi } from '../base/assistant'
 import type { ChatApi } from '../base/chat'
 import type { SystemApi } from '../base/system'
 
-import type { OnboardingMode, OnboardingProfile, OnboardingState } from '@shared/types/onboarding'
+import type { OnboardingProfile, OnboardingState } from '@shared/types/onboarding'
 import type {
   WidgetConfigFile,
   WidgetInstance,
@@ -30,7 +30,6 @@ export interface MainWindowApi extends CommonApi {
 
   onboarding: {
     getState: () => Promise<OnboardingState>
-    setMode: (mode: OnboardingMode) => Promise<OnboardingState>
     saveProfile: (profile: OnboardingProfile) => Promise<OnboardingState>
     markCompleted: () => Promise<OnboardingState>
     reset: () => Promise<OnboardingState>

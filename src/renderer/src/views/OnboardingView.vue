@@ -30,25 +30,46 @@
           <div class="status-sub">检测到苏醒信号...</div>
         </div>
 
+        <!-- MODE_SELECT - 选择运行模式 -->
+        <div
+          v-else-if="currentState === 'MODE_SELECT'"
+          key="mode-select"
+          class="screen center-screen mode-select-screen"
+        >
+          <div class="mode-select-glow"></div>
+          <div class="mode-select-icon">✦</div>
+          <div class="mode-select-title">选择运行模式</div>
+          <p class="mode-select-sub">请选择核心的运行方式</p>
+          <div class="mode-select-cards">
+            <button class="mode-card" @click="chooseLocalMode">
+              <span class="mode-card-icon">
+                <font-awesome-icon icon="fa-solid fa-microchip" />
+              </span>
+              <span class="mode-card-title">本地模式</span>
+              <span class="mode-card-desc">自举解压内核资源并启动本地服务</span>
+            </button>
+            <button class="mode-card" @click="chooseApiMode">
+              <span class="mode-card-icon is-api">
+                <font-awesome-icon icon="fa-solid fa-cloud" />
+              </span>
+              <span class="mode-card-title">API 模式</span>
+              <span class="mode-card-desc">连接远程核心服务，无需安装依赖</span>
+            </button>
+          </div>
+        </div>
+
         <!-- LOG_STREAM - 意识唤醒协议 -->
         <div v-else-if="currentState === 'LOG_STREAM'" key="logstream" class="screen awaken-screen">
           <!-- 背景辉光层 -->
-          <div
-            class="awaken-glow"
-            :class="{
-              'glow-system': systemStatus === 'ready',
-              'glow-data': dataStatus === 'ready',
-              'glow-all': systemStatus === 'ready' && dataStatus === 'ready'
-            }"
-          ></div>
+          <div class="awaken-glow" :class="{ 'glow-all': !backendError }"></div>
 
           <!-- 核心唤醒指示器 -->
           <div class="awaken-core">
             <div
               class="core-ring"
               :class="{
-                'is-pulsing': systemStatus === 'checking' || dataStatus === 'checking',
-                'is-steady': systemStatus === 'ready' && dataStatus === 'ready'
+                'is-pulsing': !backendError && !backendRunning,
+                'is-steady': backendRunning
               }"
             >
               <div class="core-ring-inner"></div>
@@ -62,111 +83,29 @@
             <p class="awaken-sub">{{ awakenSubtitle }}</p>
           </div>
 
-          <!-- 晶体装配面板 -->
-          <div class="crystal-panel">
-            <!-- 系统晶体 -->
-            <div class="crystal-card" :class="`crystal--${systemStatus}`">
-              <div class="crystal-card-bg"></div>
-              <div class="crystal-card-glow"></div>
-              <div class="crystal-card-content">
-                <div class="crystal-card-icon">
-                  <font-awesome-icon icon="fa-solid fa-cubes" />
-                </div>
-                <h3 class="crystal-card-title">装载助手系统</h3>
-                <p class="crystal-card-status">{{ systemStatusText }}</p>
-                <div v-if="systemStatus === 'importing'" class="crystal-progress-wrap">
-                  <div class="crystal-progress-bar">
-                    <div
-                      class="crystal-progress-fill"
-                      :style="{ width: `${kernelProgress}%` }"
-                    ></div>
-                  </div>
-                  <span class="crystal-progress-pct">{{ kernelProgress }}%</span>
-                </div>
-                <button
-                  v-if="systemStatus === 'missing'"
-                  class="crystal-btn"
-                  :disabled="isImportingAssets"
-                  @click="handleImportAssets"
-                >
-                  <span class="crystal-btn-glow"></span>
-                  <span>{{ isImportingAssets ? '装配中...' : '选择系统包' }}</span>
-                </button>
-                <div v-if="systemStatus === 'ready'" class="crystal-card-badge">
-                  <span class="badge-icon">✦</span>
-                  <span>已装载</span>
-                </div>
+          <!-- 装配进度面板（自举解压内置资源包 + uv sync 依赖安装，单一进度） -->
+          <div class="bootstrap-panel">
+            <div class="bootstrap-status">{{ logStatusTitle }}</div>
+            <div class="bootstrap-sub">{{ logStatusSub }}</div>
+            <div class="bootstrap-progress-wrap">
+              <div class="bootstrap-progress-bar">
+                <div class="bootstrap-progress-fill" :style="{ width: `${kernelProgress}%` }"></div>
               </div>
-            </div>
-
-            <!-- 连接线装饰 -->
-            <div class="crystal-divider" :class="{ linked: systemStatus === 'ready' && dataStatus !== 'pending' }">
-              <div class="divider-line"></div>
-              <div class="divider-orb"></div>
-              <div class="divider-line"></div>
-            </div>
-
-            <!-- 数据晶体 -->
-            <div class="crystal-card" :class="`crystal--${dataStatus}`">
-              <div class="crystal-card-bg"></div>
-              <div class="crystal-card-glow"></div>
-              <div class="crystal-card-content">
-                <div class="crystal-card-icon">
-                  <font-awesome-icon icon="fa-solid fa-database" />
-                </div>
-                <h3 class="crystal-card-title">装载助手数据</h3>
-                <p class="crystal-card-status">{{ dataStatusText }}</p>
-                <div v-if="dataStatus === 'importing'" class="crystal-progress-wrap">
-                  <div class="crystal-progress-bar">
-                    <div
-                      class="crystal-progress-fill"
-                      :style="{ width: `${kernelProgress}%` }"
-                    ></div>
-                  </div>
-                  <span class="crystal-progress-pct">{{ kernelProgress }}%</span>
-                </div>
-                <button
-                  v-if="dataStatus === 'missing'"
-                  class="crystal-btn"
-                  :disabled="isImportingDataAssets"
-                  @click="handleImportDataAssets"
-                >
-                  <span class="crystal-btn-glow"></span>
-                  <span>{{ isImportingDataAssets ? '装配中...' : '选择数据包' }}</span>
-                </button>
-                <div v-if="dataStatus === 'ready'" class="crystal-card-badge">
-                  <span class="badge-icon">✦</span>
-                  <span>已装载</span>
-                </div>
-              </div>
+              <span class="bootstrap-progress-pct">{{ kernelProgress }}%</span>
             </div>
           </div>
 
-          <!-- 仍然启动中的提示 -->
-          <div v-if="backendStillStarting" class="awaken-notice">
-            <div class="notice-dots">
-              <span></span><span></span><span></span>
-            </div>
-            <p>核心正在苏醒中... 已等待 {{ healthCheckElapsed }} 秒</p>
-            <button class="notice-btn" @click="restartBackendService">重启服务</button>
-          </div>
-
-          <!-- 非资源缺失的一般错误 -->
-          <div
-            v-if="backendError && !isKernelMissing"
-            class="awaken-notice is-error"
-          >
+          <!-- 启动异常（出错即停） -->
+          <div v-if="backendError" class="awaken-notice is-error">
             <p>{{ backendError }}</p>
           </div>
 
-          <!-- 数据资源导入错误 -->
-          <div
-            v-if="dataError && isDataMissing"
-            class="awaken-notice is-error"
-          >
-            <p>{{ dataError }}</p>
+          <!-- 仍然启动中的提示 -->
+          <div v-if="backendStillStarting && !backendError" class="awaken-notice">
+            <div class="notice-dots"><span></span><span></span><span></span></div>
+            <p>核心正在苏醒中... 已等待 {{ healthCheckElapsed }} 秒</p>
+            <button class="notice-btn" @click="restartBackendService">重启服务</button>
           </div>
-
           <!-- 底部工具栏 -->
           <div class="awaken-toolbar">
             <button class="tool-btn" @click="toggleLogDrawer">
@@ -200,28 +139,6 @@
               </div>
               <div class="log-panel-body">
                 <KernelLogTerminal :visible="showLogDrawer" />
-              </div>
-            </div>
-          </div>
-
-          <!-- API 地址输入弹窗 -->
-          <div v-if="showApiInput" class="log-overlay" @click.self="cancelApiMode">
-            <div class="api-input-panel">
-              <h3 class="panel-title">连接远程核心</h3>
-              <p class="panel-hint">请输入 API 服务地址</p>
-              <label class="field field-full">
-                <span>API 地址</span>
-                <input
-                  v-model="apiAddress"
-                  type="text"
-                  placeholder="例如：http://127.0.0.1:8001"
-                  @keyup.enter="confirmApiMode"
-                />
-              </label>
-              <p v-if="backendError" class="error-text">{{ backendError }}</p>
-              <div class="actions" style="justify-content: space-between">
-                <button class="btn-cold" @click="cancelApiMode">取消</button>
-                <button class="btn-submit" @click="confirmApiMode">连接</button>
               </div>
             </div>
           </div>
@@ -372,6 +289,30 @@
         <!-- fallback -->
         <div v-else key="empty" class="screen"></div>
       </Transition>
+
+      <!-- API 地址输入弹窗（全局覆盖层：模式选择页与 LOG_STREAM 工具栏均可弹出） -->
+      <div v-if="showApiInput" class="log-overlay" @click.self="cancelApiMode">
+        <div class="api-input-panel">
+          <h3 class="panel-title">连接远程核心</h3>
+          <p class="panel-hint">请输入 API 服务地址</p>
+          <label class="field field-full">
+            <span>API 地址</span>
+            <input
+              v-model="apiAddress"
+              type="text"
+              placeholder="例如：http://127.0.0.1:8001"
+              @keyup.enter="confirmApiMode"
+            />
+          </label>
+          <p v-if="backendError" class="error-text">{{ backendError }}</p>
+          <div class="actions" style="justify-content: space-between">
+            <button class="btn-cold" @click="cancelApiMode">取消</button>
+            <button class="btn-submit" :disabled="connectingApi" @click="confirmApiMode">
+              {{ connectingApi ? '连接中...' : '连接' }}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -381,8 +322,8 @@ import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 import { useConfigStore } from '../stores/useConfigStore'
-import { OnboardingMode, OnboardingProfile } from '@shared/types/onboarding'
-import type { KernelUpdateState, EnvironmentCheckResult } from '@shared/types/kernel'
+import { OnboardingProfile } from '@shared/types/onboarding'
+import type { KernelUpdateState } from '@shared/types/kernel'
 import KernelLogTerminal from '../components/KernelLogTerminal.vue'
 import ParticleCanvas from '../components/onboarding/ParticleCanvas.vue'
 import { request } from '@shared/api/request'
@@ -392,6 +333,7 @@ import { request } from '@shared/api/request'
 type OnboardingState =
   | 'BOOT'
   | 'SYSTEM_WAKE'
+  | 'MODE_SELECT'
   | 'LOG_STREAM'
   | 'PERSONALITY_ONLINE'
   | 'SAKURA_TRANSITION'
@@ -409,8 +351,10 @@ const configStore = useConfigStore()
 // ─── state machine ──────────────────────────────────────────────────────────
 
 const currentState = ref<OnboardingState>('BOOT')
-const currentMode = ref<OnboardingMode>('local')
 const isDissolving = ref(false)
+
+// 运行模式以配置 kernelMode 为准（local / api），此处仅作界面展示与流转判断
+const currentMode = computed(() => configStore.config.kernelMode)
 
 // ─── particle canvas control ────────────────────────────────────────────────
 
@@ -421,6 +365,7 @@ const particleMode = computed(() => {
     case 'BOOT':
       return 'hidden' as const
     case 'SYSTEM_WAKE':
+    case 'MODE_SELECT':
       return 'idle' as const
     case 'LOG_STREAM':
     case 'PERSONALITY_ONLINE':
@@ -455,6 +400,7 @@ const phaseClass = computed(() => {
   switch (currentState.value) {
     case 'BOOT':
     case 'SYSTEM_WAKE':
+    case 'MODE_SELECT':
       return 'cold'
     case 'LOG_STREAM':
     case 'PERSONALITY_ONLINE':
@@ -472,11 +418,6 @@ const kernelState = ref<KernelUpdateState | null>(null)
 const backendRunning = ref(false)
 const backendPid = ref(-1)
 const backendError = ref('')
-const isKernelMissing = ref(false)
-const isImportingAssets = ref(false)
-const isDataMissing = ref(false)
-const dataError = ref('')
-const isImportingDataAssets = ref(false)
 const backendStillStarting = ref(false) // 健康检查超时但进程仍在运行
 const healthCheckAbort = ref(false) // 取消健康检查轮询
 const healthCheckElapsed = ref(0) // 健康检查已等待秒数
@@ -485,49 +426,16 @@ const assistantLoadError = ref('')
 const assistantProgress = ref(0)
 const logStatusTitle = ref('正在初始化内核...')
 const logStatusSub = ref('正在检查运行环境')
-const logProgressDot = ref(1)
 const kernelProgress = ref(0)
-let logDotTimer: ReturnType<typeof setInterval> | null = null
 let kernelStateUnlisten: (() => void) | null = null
 let serviceStateUnlisten: (() => void) | null = null
 let assistantDownloadResolve: (() => void) | null = null
 
-// ─── 晶体状态机 ─────────────────────────────────────────────────────────
-type ModuleStatus = 'pending' | 'checking' | 'missing' | 'importing' | 'ready'
-const systemStatus = ref<ModuleStatus>('pending')
-const dataStatus = ref<ModuleStatus>('pending')
-
-const systemStatusText = computed(() => {
-  switch (systemStatus.value) {
-    case 'pending': return '等待检测...'
-    case 'checking': return '正在扫描系统组件...'
-    case 'missing': return '需要装载系统核心'
-    case 'importing': return '正在装配系统组件...'
-    case 'ready': return '系统已就绪'
-  }
-})
-
-const dataStatusText = computed(() => {
-  switch (dataStatus.value) {
-    case 'pending': return '等待检测...'
-    case 'checking': return '正在验证数据完整性...'
-    case 'missing': return '需要装载数据核心'
-    case 'importing': return '正在装载数据...'
-    case 'ready': return '数据已就绪'
-  }
-})
-
 const awakenSubtitle = computed(() => {
-  if (systemStatus.value === 'ready' && dataStatus.value === 'ready') {
-    return '所有组件已就绪，正在启动核心...'
-  }
-  if (systemStatus.value === 'ready' && dataStatus.value !== 'pending') {
-    return '系统核心已就绪，等待数据组件...'
-  }
-  if (systemStatus.value === 'ready') {
-    return '系统核心已就绪，正在检测数据组件...'
-  }
-  return '澪的意识核心正在苏醒，请依序装载组件'
+  if (backendError.value) return '初始化遇到问题，已停止运行'
+  if (backendRunning.value) return '核心已就绪，正在唤醒意识...'
+  if (backendStillStarting.value) return '核心正在苏醒，请稍候...'
+  return '正在装配内核环境与助手数据'
 })
 
 // ─── profile ────────────────────────────────────────────────────────────────
@@ -541,6 +449,7 @@ const profile = reactive<OnboardingProfile>({
 const apiAddress = ref('')
 const showLogDrawer = ref(false)
 const showApiInput = ref(false)
+const connectingApi = ref(false) // API 健康检查进行中（防止重复提交）
 
 const logSourceText = computed(() => {
   if (currentMode.value === 'api') return 'API 模式'
@@ -549,22 +458,7 @@ const logSourceText = computed(() => {
   return '内核未就绪'
 })
 
-// ─── LOG_STREAM dot animation ───────────────────────────────────────────────
-
-function startLogDots(): void {
-  let i = 1
-  logDotTimer = setInterval(() => {
-    i = (i % 5) + 1
-    logProgressDot.value = i
-  }, 700)
-}
-
-function stopLogDots(): void {
-  if (logDotTimer) {
-    clearInterval(logDotTimer)
-    logDotTimer = null
-  }
-}
+// ─── LOG_STREAM helpers ─────────────────────────────────────────────────────
 
 function startHealthCheckElapsedTimer(): void {
   healthCheckElapsed.value = 0
@@ -649,93 +543,33 @@ async function startSystemWake(): Promise<void> {
   await wait(1500)
 }
 
-// ─── kernel: environment check & setup ──────────────────────────────────────
+// ─── kernel: bootstrap & backend start ──────────────────────────────────────
 
 /**
- * 检查内核运行环境，必要时执行安装
- * 返回 true 表示内核就绪可以启动后端
+ * 自举初始化内核运行环境（解压内置 zip 资源包 + uv sync 安装依赖）
+ * 完整版内置数据包时一并解压到 kernelDir/data（离线模型）
+ * 模型完整性由后端自行检查与自动下载，前端不参与
+ * 返回 true 表示环境就绪，失败即停止运行
  */
 async function ensureKernelReady(): Promise<boolean> {
   currentState.value = 'LOG_STREAM'
   backendError.value = ''
-  isKernelMissing.value = false
-  systemStatus.value = 'checking'
+  kernelProgress.value = 0
 
-  logStatusTitle.value = '正在检查环境...'
-  logStatusSub.value = '扫描运行环境与资源'
+  logStatusTitle.value = '正在检查运行环境...'
+  logStatusSub.value = '扫描内核资源与依赖'
 
-  // 1. 检查环境（含资源完整性）
-  const envResult = await window.api.kernel.checkEnvironment()
-  if (!envResult.success) {
-    backendError.value = `环境检查失败: ${envResult.error || '未知错误'}`
-    systemStatus.value = 'missing'
+  const result = await window.api.kernel.bootstrapKernel()
+  if (!result.success) {
+    backendError.value = result.error || '环境初始化失败，已停止运行。'
+    logStatusTitle.value = '初始化失败'
+    logStatusSub.value = '已停止运行，请查看日志'
     return false
   }
 
-  const env: EnvironmentCheckResult = envResult.data!
-  const kernelInstalled = env.items.find((i) => i.key === 'kernel')?.passed ?? false
-  const venvReady = env.items.find((i) => i.key === 'venv')?.passed ?? false
-
-  if (!kernelInstalled) {
-    // 2a. 内核未安装 → 引导用户导入后端资源包
-    backendError.value = '未检测到后端文件，请导入后端资源包。'
-    isKernelMissing.value = true
-    systemStatus.value = 'missing'
-    return false
-  }
-
-  if (!venvReady) {
-    // 2b. 内核已安装但 venv 未就绪 → 运行 uv sync（自动使用本地 wheels）
-    logStatusTitle.value = '正在安装 Python 依赖...'
-    logStatusSub.value = '首次安装约需数分钟，请耐心等待'
-    systemStatus.value = 'importing'
-
-    const setupResult = await window.api.kernel.setupEnvironment()
-    if (!setupResult.success) {
-      backendError.value = `环境安装失败: ${setupResult.error || '未知错误'}`
-      systemStatus.value = 'missing'
-      return false
-    }
-
-    logStatusTitle.value = '依赖安装完成'
-    logStatusSub.value = '环境已就绪'
-    systemStatus.value = 'ready'
-    await wait(800)
-  } else {
-    systemStatus.value = 'ready'
-  }
-
-  await wait(600)
+  logStatusTitle.value = '环境就绪'
+  logStatusSub.value = '内核资源与依赖已就绪'
   return true
-}
-
-/**
- * 检查数据资源完整性（模型文件 + 角色数据）
- * 返回 true 表示数据资源已就绪
- */
-async function ensureDataReady(): Promise<boolean> {
-  isDataMissing.value = false
-  dataError.value = ''
-  dataStatus.value = 'checking'
-
-  logStatusTitle.value = '正在检查数据资源...'
-  logStatusSub.value = '验证模型与角色数据完整性'
-
-  const result = await window.api.kernel.checkDataResources()
-  if (result.success && result.data?.ready) {
-    logStatusTitle.value = '数据资源完整'
-    logStatusSub.value = '模型与角色数据已就绪'
-    dataStatus.value = 'ready'
-    await wait(500)
-    return true
-  }
-
-  dataError.value = '数据资源不完整，请导入数据资源包。'
-  isDataMissing.value = true
-  dataStatus.value = 'missing'
-  logStatusTitle.value = '数据资源不完整'
-  logStatusSub.value = '需要导入数据资源包'
-  return false
 }
 
 // ─── backend: start service & health check ──────────────────────────────────
@@ -748,14 +582,12 @@ async function startBackendService(): Promise<boolean> {
   healthCheckElapsed.value = 0
   logStatusTitle.value = '正在启动核心服务...'
   logStatusSub.value = '初始化智慧核心所需的基础设施'
-  startLogDots()
 
   // 刷新后端日志（可能来自上一次运行）
   const status = await window.api.kernel.getBackendStatus()
   if (status.running) {
     logStatusTitle.value = '核心服务已在运行'
     logStatusSub.value = '正在检查连接状态...'
-    stopLogDots()
 
     // 检查健康状态
     const healthResult = await window.api.kernel.checkBackendHealth()
@@ -771,7 +603,6 @@ async function startBackendService(): Promise<boolean> {
   const startResult = await window.api.kernel.startBackend()
   if (!startResult.success) {
     backendError.value = startResult.error || '启动服务失败。'
-    stopLogDots()
     return false
   }
 
@@ -788,7 +619,6 @@ async function startBackendService(): Promise<boolean> {
     if (healthResult.healthy) {
       // 健康检查通过
       stopHealthCheckElapsedTimer()
-      stopLogDots()
       backendStillStarting.value = false
       logStatusTitle.value = '核心服务就绪'
       logStatusSub.value = '意识核心连接成功'
@@ -799,7 +629,6 @@ async function startBackendService(): Promise<boolean> {
     if (!healthResult.stillRunning) {
       // 进程已退出 - 真正的错误
       stopHealthCheckElapsedTimer()
-      stopLogDots()
       backendStillStarting.value = false
       backendError.value = healthResult.error || '后端服务启动失败。'
       return false
@@ -831,7 +660,6 @@ async function restartBackendService(): Promise<void> {
   currentState.value = 'LOG_STREAM'
   logStatusTitle.value = '正在重启后端服务...'
   logStatusSub.value = '请稍候'
-  startLogDots()
 
   // 先停止后端服务
   await window.api.kernel.stopBackend()
@@ -841,83 +669,8 @@ async function restartBackendService(): Promise<void> {
   const backendOk = await startBackendService()
   if (!backendOk) return
 
-  currentMode.value = 'local'
-  await window.api.onboarding.setMode('local')
   await loadAssistant()
   await advanceAfterAssistantLoaded()
-}
-
-async function handleImportAssets(): Promise<void> {
-  isImportingAssets.value = true
-  systemStatus.value = 'importing'
-  try {
-    const result = await window.api.kernel.importAssets()
-    if (result.success) {
-      backendError.value = ''
-      isKernelMissing.value = false
-      // 导入后端资源包后重新检查环境
-      const kernelReady = await ensureKernelReady()
-      if (!kernelReady) return
-
-      // 检查数据资源
-      const dataReady = await ensureDataReady()
-      if (!dataReady) return
-
-      const backendOk = await startBackendService()
-      if (!backendOk) return
-
-      currentMode.value = 'local'
-      await window.api.onboarding.setMode('local')
-      await loadAssistant()
-      await advanceAfterAssistantLoaded()
-    } else {
-      // 用户取消或导入失败，回到缺失状态
-      systemStatus.value = 'missing'
-      if (result.error !== '用户取消了选择') {
-        backendError.value = `后端资源包导入失败: ${result.error || '未知错误'}`
-      }
-    }
-  } catch (e) {
-    backendError.value = `后端资源包导入异常: ${(e as Error).message}`
-    systemStatus.value = 'missing'
-  } finally {
-    isImportingAssets.value = false
-  }
-}
-
-async function handleImportDataAssets(): Promise<void> {
-  isImportingDataAssets.value = true
-  dataStatus.value = 'importing'
-  try {
-    const result = await window.api.kernel.importDataAssets()
-    if (result.success) {
-      isDataMissing.value = false
-      dataError.value = ''
-      // 导入数据资源包后重新检查数据完整性
-      const dataReady = await ensureDataReady()
-      if (!dataReady) return
-
-      // 继续启动后端
-      const backendOk = await startBackendService()
-      if (!backendOk) return
-
-      currentMode.value = 'local'
-      await window.api.onboarding.setMode('local')
-      await loadAssistant()
-      await advanceAfterAssistantLoaded()
-    } else {
-      // 用户取消或导入失败，回到缺失状态
-      dataStatus.value = 'missing'
-      if (result.error !== '用户取消了选择') {
-        dataError.value = `数据资源包导入失败: ${result.error || '未知错误'}`
-      }
-    }
-  } catch (e) {
-    dataError.value = `数据资源包导入异常: ${(e as Error).message}`
-    dataStatus.value = 'missing'
-  } finally {
-    isImportingDataAssets.value = false
-  }
 }
 
 async function retryBackend(): Promise<void> {
@@ -928,27 +681,18 @@ async function retryBackend(): Promise<void> {
       await advanceAfterAssistantLoaded()
     }
   } else {
-    // 重试完整流程：检查内核环境 → 数据资源 → 启动后端服务
+    // 重试完整流程：自举环境 → 启动后端服务
     backendError.value = ''
-    isKernelMissing.value = false
-    isDataMissing.value = false
-    dataError.value = ''
     backendStillStarting.value = false
-    systemStatus.value = 'pending'
-    dataStatus.value = 'pending'
+    kernelProgress.value = 0
     currentState.value = 'LOG_STREAM'
 
     const kernelReady = await ensureKernelReady()
     if (!kernelReady) return
 
-    const dataReady = await ensureDataReady()
-    if (!dataReady) return
-
     const backendOk = await startBackendService()
     if (!backendOk) return
 
-    currentMode.value = 'local'
-    await window.api.onboarding.setMode('local')
     await loadAssistant()
     await advanceAfterAssistantLoaded()
   }
@@ -956,56 +700,90 @@ async function retryBackend(): Promise<void> {
 
 async function switchMode(): Promise<void> {
   if (currentMode.value === 'local') {
-    // 显示 API 地址输入弹窗，让用户填写/确认地址后再连接
-    currentMode.value = 'api'
-    apiAddress.value = configStore.config.baseUrl || 'http://127.0.0.1:8001'
-    backendError.value = ''
-    showApiInput.value = true
+    await switchToApiMode()
   } else {
-    currentMode.value = 'local'
-    currentState.value = 'LOG_STREAM'
-    backendError.value = ''
-    isKernelMissing.value = false
-    isDataMissing.value = false
-    dataError.value = ''
-    backendStillStarting.value = false
-    systemStatus.value = 'pending'
-    dataStatus.value = 'pending'
-    await window.api.onboarding.setMode('local')
-
-    const kernelReady = await ensureKernelReady()
-    if (!kernelReady) return
-
-    const dataReady = await ensureDataReady()
-    if (!dataReady) return
-
-    const ok = await startBackendService()
-    if (ok) {
-      await loadAssistant()
-      await advanceAfterAssistantLoaded()
-    }
+    await switchToLocalMode()
   }
 }
 
-async function confirmApiMode(): Promise<void> {
-  showApiInput.value = false
+// ─── MODE_SELECT: 选择运行模式 ──────────────────────────────────────────────
+
+/** 进入模式选择页（引导流程起始步骤） */
+async function startModeSelect(): Promise<void> {
+  currentState.value = 'MODE_SELECT'
+}
+
+/** 选择本地运行模式：持久化 kernelMode 配置并执行本地内核自举与后端启动 */
+async function chooseLocalMode(): Promise<void> {
+  await configStore.updateConfig('kernelMode', 'local')
+  await proceedLocalMode()
+}
+
+/** 选择 API 运行模式：打开远程地址输入弹窗（健康检查通过后才提交 API 模式） */
+async function chooseApiMode(): Promise<void> {
+  apiAddress.value = configStore.config.baseUrl || 'http://127.0.0.1:8001'
+  backendError.value = ''
+  showApiInput.value = true
+}
+
+/** 本地模式主流程：自举内核环境 → 启动后端服务 → 加载助手 */
+async function proceedLocalMode(): Promise<void> {
   currentState.value = 'LOG_STREAM'
   backendError.value = ''
-  isKernelMissing.value = false
   backendStillStarting.value = false
-  logStatusTitle.value = 'API 模式'
-  logStatusSub.value = `等待连接 ${apiAddress.value}...`
-  await wait(600)
-  const ok = await connectApiMode()
-  if (ok) {
-    await loadAssistant()
-    await advanceAfterAssistantLoaded()
-  }
+  kernelProgress.value = 0
+
+  const kernelReady = await ensureKernelReady()
+  if (!kernelReady) return
+
+  const backendOk = await startBackendService()
+  if (!backendOk) return
+
+  await loadAssistant()
+  if (assistantLoadError.value) return
+  await advanceAfterAssistantLoaded()
 }
 
+/** 切换到 API 模式：打开远程地址输入弹窗（健康检查通过后才停止本地服务并提交模式） */
+async function switchToApiMode(): Promise<void> {
+  apiAddress.value = configStore.config.baseUrl || 'http://127.0.0.1:8001'
+  backendError.value = ''
+  showApiInput.value = true
+}
+
+/** 切换到本地模式：持久化 kernelMode 配置并执行本地内核自举与后端启动 */
+async function switchToLocalMode(): Promise<void> {
+  await configStore.updateConfig('kernelMode', 'local')
+  await proceedLocalMode()
+}
+
+/**
+ * 确认 API 模式：健康检查通过后才提交切换（持久化 kernelMode 并停止本地服务）
+ * 检查未通过时保持弹窗打开，可在弹窗内修改地址重试，避免模式被频繁来回切换
+ */
+async function confirmApiMode(): Promise<void> {
+  if (connectingApi.value) return
+  connectingApi.value = true
+  backendError.value = ''
+  const ok = await connectApiMode()
+  connectingApi.value = false
+  if (!ok) return
+
+  // 健康检查通过：停止本地后端服务（避免本地核心后台空转），提交 API 模式并继续引导流程
+  try {
+    await window.api.kernel.stopBackend()
+  } catch {
+    // 停止失败不阻塞切换流程
+  }
+  showApiInput.value = false
+  await configStore.updateConfig('kernelMode', 'api')
+  await loadAssistant()
+  await advanceAfterAssistantLoaded()
+}
+
+/** 取消 API 连接：仅关闭弹窗，不改变运行模式与 kernelMode 配置 */
 function cancelApiMode(): void {
   showApiInput.value = false
-  currentMode.value = 'local'
 }
 
 // ─── backend: API mode ──────────────────────────────────────────────────────
@@ -1286,25 +1064,8 @@ async function runFlow(): Promise<void> {
   // 2. SYSTEM_WAKE
   await startSystemWake()
 
-  // 3. LOG_STREAM → ensure kernel ready (install/setup if needed)
-  currentMode.value = 'local'
-  await window.api.onboarding.setMode('local')
-
-  const kernelReady = await ensureKernelReady()
-  if (!kernelReady) return // stay in LOG_STREAM showing error
-
-  // 4. LOG_STREAM → check data resources (models + agents)
-  const dataReady = await ensureDataReady()
-  if (!dataReady) return // stay in LOG_STREAM showing data error
-
-  // 5. LOG_STREAM → start backend service & wait for health
-  const backendOk = await startBackendService()
-  if (!backendOk) return // stay in LOG_STREAM showing error
-
-  // 5. PERSONALITY_ONLINE → load assistant
-  await loadAssistant()
-  if (assistantLoadError.value) return
-  await advanceAfterAssistantLoaded()
+  // 3. MODE_SELECT → 由用户选择运行模式（本地自举 / 远程 API）
+  await startModeSelect()
 }
 
 // ─── bootstrap ──────────────────────────────────────────────────────────────
@@ -1349,7 +1110,6 @@ onUnmounted(() => {
   window.api.ipcRenderer.removeAllListeners('assistant:download-progress')
   if (kernelStateUnlisten) kernelStateUnlisten()
   if (serviceStateUnlisten) serviceStateUnlisten()
-  stopLogDots()
   stopHealthCheckElapsedTimer()
 })
 </script>
@@ -1472,6 +1232,123 @@ onUnmounted(() => {
   margin-bottom: 20px;
 }
 
+/* ─── MODE_SELECT ───────────────────────────────────────────────────────── */
+
+.mode-select-screen {
+  position: relative;
+}
+
+.mode-select-glow {
+  position: absolute;
+  width: 360px;
+  height: 360px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(251, 114, 153, 0.1) 0%, transparent 70%);
+  animation: glowPulse 3s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.mode-select-icon {
+  font-size: 30px;
+  color: #f48fb1;
+  text-shadow: 0 0 20px rgba(251, 114, 153, 0.4);
+  animation: contractIconFloat 2s ease-in-out infinite;
+  margin-bottom: 6px;
+}
+
+.mode-select-title {
+  font-family: 'LoliFont', 'Microsoft YaHei', sans-serif;
+  font-size: clamp(1.4rem, 2.4vw, 1.8rem);
+  color: #7d2444;
+  letter-spacing: 0.12em;
+}
+
+.mode-select-sub {
+  margin: 6px 0 28px;
+  font-size: 14px;
+  color: rgba(160, 100, 120, 0.65);
+  letter-spacing: 0.04em;
+}
+
+.mode-select-cards {
+  display: flex;
+  gap: 18px;
+}
+
+.mode-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  width: 200px;
+  padding: 26px 20px;
+  border: 1px solid rgba(251, 114, 153, 0.18);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 12px 32px rgba(180, 60, 90, 0.1);
+  cursor: pointer;
+  font-family: inherit;
+  transition:
+    transform 0.25s ease,
+    box-shadow 0.25s ease,
+    border-color 0.25s ease,
+    background 0.25s ease;
+}
+
+.mode-card:hover {
+  transform: translateY(-4px);
+  border-color: rgba(251, 114, 153, 0.4);
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 18px 40px rgba(180, 60, 90, 0.18);
+}
+
+.mode-card:active {
+  transform: translateY(-1px);
+}
+
+.mode-card-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 16px;
+  background: rgba(251, 114, 153, 0.1);
+  color: #fb7299;
+  font-size: 22px;
+  transition: background 0.25s ease;
+}
+
+.mode-card:hover .mode-card-icon {
+  background: rgba(251, 114, 153, 0.18);
+}
+
+.mode-card-icon.is-api {
+  background: rgba(140, 160, 255, 0.12);
+  color: #7a8df5;
+}
+
+.mode-card:hover .mode-card-icon.is-api {
+  background: rgba(140, 160, 255, 0.2);
+}
+
+.mode-card-title {
+  font-family: 'LoliFont', 'Microsoft YaHei', sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+  color: #6f2c48;
+  letter-spacing: 0.06em;
+}
+
+.mode-card-desc {
+  font-size: 12px;
+  color: rgba(160, 100, 120, 0.6);
+  text-align: center;
+  line-height: 1.6;
+  letter-spacing: 0.02em;
+}
+
 /* ─── status text (shared) ──────────────────────────────────────────────── */
 
 .status-title {
@@ -1497,364 +1374,6 @@ onUnmounted(() => {
 .phase-warm .status-sub,
 .phase-warming .status-sub {
   color: rgba(200, 130, 150, 0.7);
-}
-
-/* ─── progress indicator (LOG_STREAM) ───────────────────────────────────── */
-
-.progress-indicator {
-  margin-top: 18px;
-  display: flex;
-  gap: 10px;
-}
-
-.log-toggle {
-  margin-bottom: 14px;
-}
-
-.log-toggle-corner {
-  position: absolute;
-  bottom: 24px;
-  right: 28px;
-  margin-top: 0;
-  z-index: 6;
-}
-
-.btn-log {
-  border: 1px solid rgba(251, 114, 153, 0.25);
-  border-radius: 12px;
-  padding: 6px 16px;
-  background: rgba(255, 255, 255, 0.7);
-  color: #b05473;
-  font-size: 12px;
-  cursor: pointer;
-  letter-spacing: 0.04em;
-  transition:
-    border-color 0.2s ease,
-    background 0.2s ease,
-    transform 0.15s ease;
-}
-
-.btn-log:hover {
-  border-color: rgba(251, 114, 153, 0.5);
-  background: rgba(255, 255, 255, 0.85);
-  transform: translateY(-1px);
-}
-
-.log-modal {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(255, 245, 247, 0.55);
-  backdrop-filter: blur(2px);
-  z-index: 5;
-}
-
-.log-dialog {
-  width: min(680px, 90vw);
-  max-height: min(60vh, 480px);
-  background: rgba(255, 255, 255, 0.92);
-  border: 1px solid rgba(251, 114, 153, 0.2);
-  border-radius: 20px;
-  box-shadow: 0 20px 48px rgba(180, 60, 90, 0.18);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.log-dialog-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 18px;
-  font-size: 12px;
-  color: #b05473;
-  background: rgba(255, 255, 255, 0.7);
-  border-bottom: 1px solid rgba(251, 114, 153, 0.12);
-  letter-spacing: 0.06em;
-}
-
-.log-drawer-sub {
-  color: rgba(176, 84, 115, 0.6);
-  font-size: 11px;
-}
-
-.log-dialog-action {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  border: none;
-  border-radius: 6px;
-  background: rgba(251, 114, 153, 0.08);
-  color: #b05473;
-  cursor: pointer;
-  transition:
-    background 0.2s,
-    color 0.2s,
-    transform 0.15s;
-  font-size: 12px;
-}
-
-.log-dialog-action:hover {
-  background: rgba(251, 114, 153, 0.18);
-  color: #fb7299;
-  transform: scale(1.08);
-}
-
-.log-dialog-action:active {
-  transform: scale(0.95);
-}
-
-.log-dialog-body-terminal {
-  flex: 1;
-  overflow: hidden;
-  min-height: 260px;
-  border-radius: 0 0 16px 16px;
-}
-
-.progress-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: rgba(251, 114, 153, 0.2);
-  transition:
-    background 0.35s ease,
-    box-shadow 0.35s ease;
-}
-
-.progress-dot.active {
-  background: #fb7299;
-  box-shadow: 0 0 10px rgba(251, 114, 153, 0.5);
-}
-
-/* ─── kernel progress bar (LOG_STREAM) ──────────────────────────────────── */
-
-.kernel-progress-wrap {
-  margin-top: 18px;
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  width: 320px;
-  max-width: 70vw;
-}
-
-.kernel-progress-bar {
-  flex: 1;
-  height: 6px;
-  border-radius: 6px;
-  background: rgba(251, 114, 153, 0.12);
-  overflow: hidden;
-}
-
-.kernel-progress-fill {
-  height: 100%;
-  background: linear-gradient(90deg, #fb7299, #f95a8a);
-  border-radius: 6px;
-  transition: width 0.5s ease;
-  box-shadow: 0 0 10px rgba(251, 114, 153, 0.4);
-}
-
-.kernel-progress-pct {
-  font-family: 'Consolas', monospace;
-  font-size: 13px;
-  color: #c2516b;
-  min-width: 40px;
-  text-align: right;
-}
-
-/* ─── model download section (LOG_STREAM) ────────────────────────────────── */
-
-.model-download-section {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0;
-  animation: mdFadeIn 0.5s ease;
-}
-
-.md-icon-wrap {
-  position: relative;
-  width: 56px;
-  height: 56px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 14px;
-}
-
-.md-pulse-ring {
-  position: absolute;
-  inset: 0;
-  border-radius: 50%;
-  border: 2px solid rgba(251, 114, 153, 0.25);
-  animation: mdPulse 2s ease-out infinite;
-}
-
-.md-icon-inner {
-  position: relative;
-  font-size: 22px;
-  color: #fb7299;
-  animation: mdIconFloat 2.5s ease-in-out infinite;
-  filter: drop-shadow(0 0 8px rgba(251, 114, 153, 0.35));
-}
-
-.model-download-section .status-title {
-  margin-bottom: 4px;
-}
-
-.md-status-hint {
-  margin: 0 0 20px;
-  font-size: 13px;
-  color: rgba(180, 100, 120, 0.6);
-  letter-spacing: 0.04em;
-}
-
-/* model cards */
-.md-model-cards {
-  display: flex;
-  gap: 14px;
-  margin-bottom: 20px;
-}
-
-.md-card {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 18px;
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.65);
-  border: 1px solid rgba(251, 114, 153, 0.12);
-  min-width: 200px;
-  transition:
-    border-color 0.4s ease,
-    background 0.4s ease,
-    box-shadow 0.4s ease,
-    transform 0.3s ease;
-}
-
-.md-card.pending {
-  opacity: 0.5;
-}
-
-.md-card.active {
-  border-color: rgba(251, 114, 153, 0.35);
-  background: rgba(255, 255, 255, 0.85);
-  box-shadow: 0 0 18px rgba(251, 114, 153, 0.12);
-  transform: translateY(-1px);
-}
-
-.md-card.done {
-  border-color: rgba(100, 200, 120, 0.3);
-  background: rgba(240, 255, 245, 0.7);
-}
-
-.md-card-icon {
-  flex-shrink: 0;
-  width: 24px;
-  height: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  font-size: 13px;
-  font-weight: 700;
-  transition:
-    background 0.4s ease,
-    color 0.4s ease;
-}
-
-.md-card-icon.pending {
-  background: rgba(251, 114, 153, 0.08);
-  color: rgba(200, 120, 140, 0.4);
-}
-
-.md-card-icon.active {
-  background: rgba(251, 114, 153, 0.15);
-  color: #fb7299;
-  animation: mdIconSpin 1.5s linear infinite;
-}
-
-.md-card-icon.done {
-  background: rgba(100, 200, 120, 0.15);
-  color: #4caf50;
-}
-
-.md-card-info {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.md-card-name {
-  font-size: 13px;
-  font-weight: 600;
-  color: #6f2c48;
-  letter-spacing: 0.03em;
-}
-
-.md-card.done .md-card-name {
-  color: #3a7d44;
-}
-
-.md-card-desc {
-  font-size: 11px;
-  color: rgba(160, 100, 120, 0.45);
-  letter-spacing: 0.03em;
-}
-
-.md-card.done .md-card-desc {
-  color: rgba(60, 130, 70, 0.45);
-}
-
-/* model download progress bar */
-.md-progress {
-  margin-top: 4px;
-}
-
-/* ─── model download keyframes ───────────────────────────────────────────── */
-
-@keyframes mdFadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes mdPulse {
-  0% {
-    transform: scale(0.85);
-    opacity: 0.7;
-  }
-  100% {
-    transform: scale(1.5);
-    opacity: 0;
-  }
-}
-
-@keyframes mdIconFloat {
-  0%,
-  100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-4px);
-  }
-}
-
-@keyframes mdIconSpin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
 }
 
 /* ─── PERSONALITY_ONLINE ───────────────────────────────────────────────── */
@@ -2151,35 +1670,6 @@ onUnmounted(() => {
   font-family: 'Microsoft YaHei', sans-serif;
 }
 
-/* ─── hint block (still starting) ───────────────────────────────────────── */
-
-.hint-block {
-  margin-top: 22px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-}
-
-.hint-text {
-  color: #f59e0b;
-  font-size: 14px;
-  text-align: center;
-  font-weight: 500;
-}
-
-.hint-sub {
-  color: rgba(180, 100, 120, 0.6);
-  font-size: 12px;
-  text-align: center;
-}
-
-.hint-actions {
-  display: flex;
-  gap: 10px;
-  margin-top: 4px;
-}
-
 /* ─── error block ───────────────────────────────────────────────────────── */
 
 .error-block {
@@ -2194,11 +1684,6 @@ onUnmounted(() => {
   color: #ef5350;
   font-size: 14px;
   text-align: center;
-}
-
-.error-actions {
-  display: flex;
-  gap: 10px;
 }
 
 /* ─── cold buttons ──────────────────────────────────────────────────────── */
@@ -2224,17 +1709,6 @@ onUnmounted(() => {
   background: rgba(251, 114, 153, 0.18);
   border-color: rgba(251, 114, 153, 0.55);
   transform: translateY(-1px);
-}
-
-.btn-ghost-cold {
-  background: transparent;
-  border-color: rgba(251, 114, 153, 0.2);
-  color: rgba(180, 100, 120, 0.7);
-}
-
-.btn-ghost-cold:hover {
-  background: rgba(251, 114, 153, 0.06);
-  color: #c2516b;
 }
 
 /* ─── screen transition ─────────────────────────────────────────────────── */
@@ -2378,7 +1852,8 @@ onUnmounted(() => {
   justify-content: center;
   gap: 0;
   overflow: hidden;
-  background: radial-gradient(ellipse at 50% 30%, rgba(251, 114, 153, 0.06) 0%, transparent 60%),
+  background:
+    radial-gradient(ellipse at 50% 30%, rgba(251, 114, 153, 0.06) 0%, transparent 60%),
     linear-gradient(180deg, #fff5f7 0%, #fff 50%, #fef0f5 100%);
 }
 
@@ -2392,16 +1867,13 @@ onUnmounted(() => {
   transition: background 1.2s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.awaken-glow.glow-system {
-  background: radial-gradient(ellipse at 40% 50%, rgba(251, 114, 153, 0.10) 0%, transparent 55%);
-}
-
-.awaken-glow.glow-data {
-  background: radial-gradient(ellipse at 60% 50%, rgba(251, 114, 153, 0.10) 0%, transparent 55%);
-}
-
 .awaken-glow.glow-all {
-  background: radial-gradient(ellipse at 50% 50%, rgba(251, 114, 153, 0.15) 0%, rgba(249, 90, 138, 0.08) 35%, transparent 60%);
+  background: radial-gradient(
+    ellipse at 50% 50%,
+    rgba(251, 114, 153, 0.15) 0%,
+    rgba(249, 90, 138, 0.08) 35%,
+    transparent 60%
+  );
 }
 
 /* ─── 核心唤醒指示器 ──────────────────────────────────────────────────── */
@@ -2420,7 +1892,7 @@ onUnmounted(() => {
   position: absolute;
   inset: 0;
   border-radius: 50%;
-  border: 2px solid rgba(251, 114, 153, 0.20);
+  border: 2px solid rgba(251, 114, 153, 0.2);
   animation: coreRingIdle 3s ease-in-out infinite;
 }
 
@@ -2430,7 +1902,7 @@ onUnmounted(() => {
 }
 
 .core-ring.is-steady {
-  border-color: rgba(251, 114, 153, 0.50);
+  border-color: rgba(251, 114, 153, 0.5);
   animation: coreRingSteady 2s ease-in-out infinite;
   box-shadow:
     0 0 20px rgba(251, 114, 153, 0.15),
@@ -2451,7 +1923,7 @@ onUnmounted(() => {
 .core-star {
   font-size: 22px;
   color: #fb7299;
-  text-shadow: 0 0 16px rgba(251, 114, 153, 0.40);
+  text-shadow: 0 0 16px rgba(251, 114, 153, 0.4);
   animation: starFloat 2.5s ease-in-out infinite;
 }
 
@@ -2479,345 +1951,69 @@ onUnmounted(() => {
   animation: textFade 0.6s ease;
 }
 
-/* ─── 晶体装配面板 ────────────────────────────────────────────────────── */
+/* ─── 装配进度面板（自举 + uv sync 单一进度） ─────────────────────────── */
 
-.crystal-panel {
-  display: flex;
-  align-items: stretch;
-  gap: 0;
-  width: min(620px, 88vw);
-}
-
-/* ─── 单个晶体卡 ──────────────────────────────────────────────────────── */
-
-.crystal-card {
-  position: relative;
-  flex: 1;
-  min-width: 0;
-  border-radius: 20px;
-  padding: 22px 18px 20px;
+.bootstrap-panel {
   display: flex;
   flex-direction: column;
   align-items: center;
-  text-align: center;
-  transition:
-    background 0.8s ease,
-    border-color 0.8s ease,
-    box-shadow 0.8s ease,
-    transform 0.4s ease;
-  overflow: hidden;
-}
-
-.crystal-card-bg {
-  position: absolute;
-  inset: 0;
+  width: min(420px, 82vw);
+  padding: 20px 24px;
   border-radius: 20px;
-  background: rgba(255, 255, 255, 0.70);
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(251, 114, 153, 0.12);
   backdrop-filter: blur(10px);
-  border: 1px solid rgba(251, 114, 153, 0.10);
-  transition:
-    background 0.8s ease,
-    border-color 0.8s ease;
-  z-index: 0;
+  box-shadow: 0 12px 36px rgba(180, 60, 90, 0.08);
+  animation: textFade 0.5s ease;
 }
 
-.crystal-card-glow {
-  position: absolute;
-  inset: -2px;
-  border-radius: 22px;
-  opacity: 0;
-  transition: opacity 0.8s ease;
-  z-index: 0;
-  pointer-events: none;
-}
-
-.crystal-card-content {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  width: 100%;
-}
-
-/* ─── 晶体图标 ──────────────────────────────────────────────────────── */
-
-.crystal-card-icon {
-  width: 48px;
-  height: 48px;
-  border-radius: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 20px;
-  margin-bottom: 10px;
-  background: rgba(251, 114, 153, 0.08);
-  color: #fb7299;
-  transition:
-    background 0.6s ease,
-    color 0.6s ease,
-    box-shadow 0.6s ease;
-}
-
-/* ─── 晶体标题与状态 ────────────────────────────────────────────────── */
-
-.crystal-card-title {
-  margin: 0 0 4px;
+.bootstrap-status {
   font-family: 'LoliFont', 'Microsoft YaHei', sans-serif;
   font-size: 15px;
   font-weight: 600;
   color: #6f2c48;
   letter-spacing: 0.06em;
+  text-align: center;
 }
 
-.crystal-card-status {
-  margin: 0;
+.bootstrap-sub {
+  margin-top: 4px;
   font-size: 12px;
   color: rgba(160, 100, 120, 0.55);
   letter-spacing: 0.03em;
-  min-height: 1.2em;
-  transition: color 0.4s ease;
+  text-align: center;
 }
 
-/* ─── 各状态样式 ────────────────────────────────────────────────────── */
-
-/* pending - 暗淡等待 */
-.crystal-card.crystal--pending .crystal-card-bg {
-  background: rgba(255, 255, 255, 0.45);
-}
-
-.crystal-card.crystal--pending .crystal-card-icon {
-  background: rgba(180, 140, 150, 0.10);
-  color: rgba(180, 140, 150, 0.40);
-}
-
-.crystal-card.crystal--pending .crystal-card-title {
-  color: rgba(140, 100, 115, 0.50);
-}
-
-.crystal-card.crystal--pending .crystal-card-status {
-  color: rgba(140, 100, 115, 0.30);
-}
-
-/* checking - 脉冲扫描 */
-.crystal-card.crystal--checking .crystal-card-glow {
-  opacity: 1;
-  background: radial-gradient(ellipse at 50% 50%, rgba(251, 114, 153, 0.06) 0%, transparent 70%);
-  animation: glowPulse 1.6s ease-in-out infinite;
-}
-
-.crystal-card.crystal--checking .crystal-card-icon {
-  animation: iconScan 1.6s ease-in-out infinite;
-}
-
-/* missing - 需要导入 */
-.crystal-card.crystal--missing .crystal-card-bg {
-  background: rgba(255, 248, 245, 0.85);
-  border-color: rgba(243, 168, 120, 0.25);
-}
-
-.crystal-card.crystal--missing .crystal-card-glow {
-  opacity: 1;
-  background: radial-gradient(ellipse at 50% 50%, rgba(243, 168, 120, 0.08) 0%, transparent 70%);
-  animation: glowPulse 2s ease-in-out infinite;
-}
-
-.crystal-card.crystal--missing .crystal-card-icon {
-  background: rgba(243, 168, 120, 0.12);
-  color: #d4945a;
-}
-
-.crystal-card.crystal--missing .crystal-card-title {
-  color: #7d5538;
-}
-
-.crystal-card.crystal--missing .crystal-card-status {
-  color: rgba(200, 140, 80, 0.60);
-}
-
-/* importing - 正在装载 */
-.crystal-card.crystal--importing .crystal-card-bg {
-  background: rgba(255, 255, 255, 0.85);
-  border-color: rgba(251, 114, 153, 0.25);
-}
-
-.crystal-card.crystal--importing .crystal-card-glow {
-  opacity: 1;
-  background: radial-gradient(ellipse at 50% 50%, rgba(251, 114, 153, 0.10) 0%, transparent 65%);
-  animation: glowPulse 1s ease-in-out infinite;
-}
-
-.crystal-card.crystal--importing .crystal-card-icon {
-  background: rgba(251, 114, 153, 0.15);
-  color: #fb7299;
-  box-shadow: 0 0 16px rgba(251, 114, 153, 0.15);
-  animation: iconActive 1.2s ease-in-out infinite;
-}
-
-/* ready - 已就绪 */
-.crystal-card.crystal--ready .crystal-card-bg {
-  background: rgba(255, 255, 255, 0.90);
-  border-color: rgba(251, 114, 153, 0.20);
-}
-
-.crystal-card.crystal--ready .crystal-card-glow {
-  opacity: 1;
-  background: radial-gradient(ellipse at 50% 50%, rgba(251, 114, 153, 0.12) 0%, rgba(249, 90, 138, 0.06) 40%, transparent 70%);
-}
-
-.crystal-card.crystal--ready .crystal-card-icon {
-  background: rgba(251, 114, 153, 0.15);
-  color: #fb7299;
-  box-shadow: 0 0 20px rgba(251, 114, 153, 0.12);
-}
-
-.crystal-card.crystal--ready .crystal-card-title {
-  color: #7d2444;
-}
-
-.crystal-card.crystal--ready .crystal-card-status {
-  color: rgba(80, 170, 110, 0.65);
-}
-
-/* ─── 进度条 ────────────────────────────────────────────────────────── */
-
-.crystal-progress-wrap {
+.bootstrap-progress-wrap {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   width: 100%;
-  margin-top: 12px;
+  margin-top: 16px;
 }
 
-.crystal-progress-bar {
+.bootstrap-progress-bar {
   flex: 1;
-  height: 4px;
-  border-radius: 4px;
-  background: rgba(251, 114, 153, 0.10);
+  height: 6px;
+  border-radius: 6px;
+  background: rgba(251, 114, 153, 0.12);
   overflow: hidden;
 }
 
-.crystal-progress-fill {
+.bootstrap-progress-fill {
   height: 100%;
-  border-radius: 4px;
+  border-radius: 6px;
   background: linear-gradient(90deg, #fb7299, #f95a8a);
-  transition: width 0.4s ease;
-  box-shadow: 0 0 8px rgba(251, 114, 153, 0.35);
+  transition: width 0.5s ease;
+  box-shadow: 0 0 10px rgba(251, 114, 153, 0.4);
 }
 
-.crystal-progress-pct {
+.bootstrap-progress-pct {
   font-family: 'Consolas', monospace;
-  font-size: 11px;
+  font-size: 12px;
   color: #c2516b;
-  min-width: 32px;
+  min-width: 36px;
   text-align: right;
-}
-
-/* ─── 操作按钮 ──────────────────────────────────────────────────────── */
-
-.crystal-btn {
-  position: relative;
-  margin-top: 14px;
-  border: none;
-  border-radius: 14px;
-  padding: 9px 22px;
-  font-size: 13px;
-  font-weight: 600;
-  font-family: inherit;
-  color: #fff;
-  background: linear-gradient(135deg, #fb7299, #f95a8a);
-  cursor: pointer;
-  letter-spacing: 0.06em;
-  overflow: hidden;
-  transition:
-    transform 0.2s ease,
-    box-shadow 0.2s ease,
-    opacity 0.2s ease;
-  box-shadow:
-    0 4px 16px rgba(251, 114, 153, 0.25),
-    0 0 0 1px rgba(255, 255, 255, 0.20) inset;
-}
-
-.crystal-btn:hover {
-  transform: translateY(-2px);
-  box-shadow:
-    0 6px 24px rgba(251, 114, 153, 0.35),
-    0 0 0 1px rgba(255, 255, 255, 0.25) inset;
-}
-
-.crystal-btn:active {
-  transform: translateY(0);
-}
-
-.crystal-btn:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-  transform: none;
-}
-
-.crystal-btn-glow {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(135deg, transparent 30%, rgba(255, 255, 255, 0.15) 50%, transparent 70%);
-  animation: btnShimmer 2.5s ease-in-out infinite;
-}
-
-/* ─── 就绪徽章 ──────────────────────────────────────────────────────── */
-
-.crystal-card-badge {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 12px;
-  font-size: 13px;
-  color: rgba(80, 170, 110, 0.80);
-  letter-spacing: 0.06em;
-  animation: badgeAppear 0.5s cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.badge-icon {
-  font-size: 14px;
-  animation: badgeSparkle 1.5s ease-in-out infinite;
-}
-
-/* ─── 晶体分割器 ────────────────────────────────────────────────────── */
-
-.crystal-divider {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  flex-shrink: 0;
-  gap: 4px;
-}
-
-.divider-line {
-  width: 1px;
-  flex: 1;
-  min-height: 20px;
-  background: linear-gradient(180deg, rgba(251, 114, 153, 0.08), rgba(251, 114, 153, 0.15), rgba(251, 114, 153, 0.08));
-  transition: background 0.8s ease;
-}
-
-.crystal-divider.linked .divider-line {
-  background: linear-gradient(180deg, rgba(251, 114, 153, 0.25), rgba(251, 114, 153, 0.40), rgba(251, 114, 153, 0.25));
-}
-
-.divider-orb {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: rgba(251, 114, 153, 0.15);
-  transition:
-    background 0.6s ease,
-    box-shadow 0.6s ease;
-}
-
-.crystal-divider.linked .divider-orb {
-  background: #fb7299;
-  box-shadow: 0 0 10px rgba(251, 114, 153, 0.40);
-  animation: orbPulse 1.5s ease-in-out infinite;
 }
 
 /* ─── 等待提示 ────────────────────────────────────────────────────────── */
@@ -2837,8 +2033,8 @@ onUnmounted(() => {
 }
 
 .awaken-notice.is-error {
-  border-color: rgba(230, 100, 100, 0.20);
-  background: rgba(255, 245, 245, 0.70);
+  border-color: rgba(230, 100, 100, 0.2);
+  background: rgba(255, 245, 245, 0.7);
   color: rgba(200, 80, 80, 0.75);
 }
 
@@ -2865,10 +2061,10 @@ onUnmounted(() => {
 
 .notice-btn {
   margin-left: auto;
-  border: 1px solid rgba(251, 114, 153, 0.20);
+  border: 1px solid rgba(251, 114, 153, 0.2);
   border-radius: 10px;
   padding: 4px 12px;
-  background: rgba(255, 255, 255, 0.70);
+  background: rgba(255, 255, 255, 0.7);
   color: #b05473;
   font-size: 11px;
   cursor: pointer;
@@ -2879,7 +2075,7 @@ onUnmounted(() => {
 }
 
 .notice-btn:hover {
-  border-color: rgba(251, 114, 153, 0.40);
+  border-color: rgba(251, 114, 153, 0.4);
   background: rgba(255, 255, 255, 0.85);
 }
 
@@ -2916,7 +2112,7 @@ onUnmounted(() => {
 }
 
 .tool-btn:hover {
-  background: rgba(255, 255, 255, 0.80);
+  background: rgba(255, 255, 255, 0.8);
   border-color: rgba(251, 114, 153, 0.25);
   color: #b05473;
   transform: translateY(-1px);
@@ -2938,7 +2134,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(255, 245, 247, 0.50);
+  background: rgba(255, 245, 247, 0.5);
   backdrop-filter: blur(3px);
   z-index: 20;
   animation: logFadeIn 0.3s ease;
@@ -2952,7 +2148,7 @@ onUnmounted(() => {
   border-radius: 20px;
   box-shadow:
     0 16px 48px rgba(180, 60, 90, 0.12),
-    0 0 0 1px rgba(255, 255, 255, 0.30) inset;
+    0 0 0 1px rgba(255, 255, 255, 0.3) inset;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -2965,13 +2161,13 @@ onUnmounted(() => {
   padding: 12px 18px;
   font-size: 12px;
   color: #b05473;
-  background: rgba(255, 255, 255, 0.60);
+  background: rgba(255, 255, 255, 0.6);
   border-bottom: 1px solid rgba(251, 114, 153, 0.08);
   letter-spacing: 0.06em;
 }
 
 .log-panel-sub {
-  color: rgba(176, 84, 115, 0.50);
+  color: rgba(176, 84, 115, 0.5);
   font-size: 11px;
   margin-right: auto;
 }
@@ -3015,7 +2211,8 @@ onUnmounted(() => {
 /* ─── 关键帧动画 ────────────────────────────────────────────────────── */
 
 @keyframes coreRingIdle {
-  0%, 100% {
+  0%,
+  100% {
     transform: scale(1);
     opacity: 0.4;
   }
@@ -3041,7 +2238,8 @@ onUnmounted(() => {
 }
 
 @keyframes coreRingSteady {
-  0%, 100% {
+  0%,
+  100% {
     transform: scale(1);
     opacity: 0.5;
   }
@@ -3052,7 +2250,8 @@ onUnmounted(() => {
 }
 
 @keyframes starFloat {
-  0%, 100% {
+  0%,
+  100% {
     transform: translateY(0) rotate(0deg);
   }
   50% {
@@ -3060,79 +2259,9 @@ onUnmounted(() => {
   }
 }
 
-@keyframes glowPulse {
-  0%, 100% {
-    opacity: 0.5;
-  }
-  50% {
-    opacity: 1;
-  }
-}
-
-@keyframes iconScan {
-  0%, 100% {
-    transform: scale(1);
-    opacity: 0.7;
-  }
-  50% {
-    transform: scale(1.06);
-    opacity: 1;
-  }
-}
-
-@keyframes iconActive {
-  0%, 100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-3px);
-  }
-}
-
-@keyframes btnShimmer {
-  0% {
-    transform: translateX(-100%);
-  }
-  100% {
-    transform: translateX(100%);
-  }
-}
-
-@keyframes badgeAppear {
-  0% {
-    opacity: 0;
-    transform: scale(0.8);
-  }
-  100% {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
-@keyframes badgeSparkle {
-  0%, 100% {
-    opacity: 1;
-    transform: scale(1) rotate(0deg);
-  }
-  50% {
-    opacity: 0.7;
-    transform: scale(1.2) rotate(20deg);
-  }
-}
-
-@keyframes orbPulse {
-  0%, 100% {
-    transform: scale(1);
-    opacity: 0.6;
-  }
-  50% {
-    transform: scale(1.5);
-    opacity: 1;
-  }
-}
-
 @keyframes dotBounce {
-  0%, 100% {
+  0%,
+  100% {
     transform: translateY(0);
     opacity: 0.3;
   }

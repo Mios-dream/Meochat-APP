@@ -5,23 +5,20 @@ import pty from 'node-pty'
 import fs from 'fs'
 import path from 'path'
 import axios from 'axios'
-import StreamZip from 'node-stream-zip'
+import { Worker } from 'worker_threads'
+import workerPath from '@/workers/extractWorker?modulePath'
 import log from '../utils/logger'
-import type { KernelRemoteVersion, KernelUpdateState } from '@shared/types/kernel'
 import { resolveAppDataDir, resolveLogDir } from '../utils/pathResolve'
 import type {
+  KernelUpdateState,
   EnvironmentCheckResult,
-  EnvironmentCheckItem,
-  DataResourceCheckResult
+  EnvironmentCheckItem
 } from '@shared/types/kernel'
 import { decodeBuffer } from '../utils/buffer'
 import { detectZipNameEncoding } from '../utils/zipUtils'
 
 const execAsync = promisify(exec)
 
-const GITHUB_API = 'https://api.github.com'
-const BACKEND_REPO_OWNER = 'Mios-dream'
-const BACKEND_REPO_NAME = 'MoeChat'
 const KERNEL_DIR_NAME = 'kernel'
 const CURRENT_KERNEL_DIR = 'current'
 const VERSION_FILE_NAME = 'version.txt'
@@ -29,10 +26,21 @@ const KERNEL_STATE_CHANNEL = 'kernel:state-update'
 const SERVICE_STREAM_CHANNEL = 'kernel:service-stream'
 
 /**
- * 升级时需要保留的用户数据目录，这些目录不会被新版本覆盖。
+ * 比较两个点分版本号（如 1.7.0 / 1.10.1）。
+ * 逐段按数值比较，避免字符串字典序导致的 1.10 < 1.7 误判。
+ * @returns a 比 b 新返回正数，旧返回负数，相等返回 0
  */
-const PRESERVED_DATA_DIRS = ['data', '.venv']
-const PRESERVED_DATA_FILES = ['config.yaml']
+function compareVersion(a: string, b: string): number {
+  const partsA = a.split('.').map((n) => parseInt(n, 10) || 0)
+  const partsB = b.split('.').map((n) => parseInt(n, 10) || 0)
+  const length = Math.max(partsA.length, partsB.length)
+  for (let i = 0; i < length; i++) {
+    const numA = partsA[i] ?? 0
+    const numB = partsB[i] ?? 0
+    if (numA !== numB) return numA - numB
+  }
+  return 0
+}
 
 /** 向所有窗口广播原始数据流 */
 function broadcastToAllWindows(channel: string, payload: Buffer): void {
@@ -48,8 +56,6 @@ class KernelManager {
 
   private state: KernelUpdateState = {
     currentVersion: null,
-    latestVersion: null,
-    updateAvailable: false,
     operationStatus: 'idle',
     progress: 0,
     statusText: '',
@@ -167,16 +173,6 @@ class KernelManager {
     return this.state
   }
 
-  /** 重置内核状态到默认（idle），通常在更新完成后调用 */
-  resetState(): void {
-    this.state.operationStatus = 'idle'
-    this.state.progress = 0
-    this.state.statusText = ''
-    this.state.error = null
-    this.state.updateAvailable = false
-    this.notifyState()
-  }
-
   /** 获取当前激活内核版本 */
   getCurrentVersion(): string | null {
     return this.state.currentVersion
@@ -195,8 +191,9 @@ class KernelManager {
   }
 
   /**
-   * 检查内核运行环境（资源完整性、运行时、venv、磁盘空间）
-   * 使用内嵌便携 Python + uv，不再依赖系统级 uv 安装
+   * 检查内核运行环境（运行时、内核资源、venv、磁盘空间）
+   * 使用内嵌便携 Python + uv，不再依赖系统级 uv 安装。
+   * 模型完整性由后端自行检查与自动下载，前端不参与。
    */
   async checkEnvironment(): Promise<EnvironmentCheckResult> {
     const items: EnvironmentCheckItem[] = []
@@ -204,7 +201,7 @@ class KernelManager {
     let runtimeOk = false
     let venvReady = false
     let kernelOk = false
-    let modelOk = false
+
     // 1. 检查内嵌 Python 运行时完整性
     runtimeOk = fs.existsSync(this.portableUvExe)
     items.push({
@@ -213,16 +210,18 @@ class KernelManager {
       message: runtimeOk ? `就绪 (${this.portableRuntimeDir})` : '内嵌管理器损坏，请重新安装应用',
       key: 'uv'
     })
-    // 2. 检查 内核源码完整性（pyproject.toml 存在）
+
+    // 2. 检查内核源码完整性（pyproject.toml 存在，首次运行由自举流程装配）
     if (fs.existsSync(this.kernelDir)) {
       kernelOk = fs.existsSync(path.join(this.kernelDir, 'pyproject.toml'))
     }
     items.push({
-      name: '系统完整性',
+      name: '内核资源',
       passed: kernelOk,
-      message: kernelOk ? '系统数据已就绪，核心正在运行' : '未检测到系统数据包，需要导入',
+      message: kernelOk ? '内核资源已就绪' : '内核资源未装配，需要自举初始化',
       key: 'kernel'
     })
+
     // 3. 检查虚拟环境是否就绪（.venv/bin/python 存在）
     if (kernelOk) {
       const kernelPath = await this.getActiveKernelPath()
@@ -242,19 +241,11 @@ class KernelManager {
         ? '虚拟环境已就绪'
         : kernelOk
           ? '虚拟环境未配置，需要运行 uv sync'
-          : '需要先导入后端资源包',
+          : '需要先装配内核资源',
       key: 'venv'
     })
-    // 4. 检查助手模型文件是否完整
-    modelOk = fs.existsSync(path.join(this.kernelDir, 'data', 'models'))
-    items.push({
-      name: '核心数据',
-      passed: modelOk,
-      message: modelOk ? '助手核心数据被保护中' : '助手核心数据缺失，需要导入数据资源包',
-      key: 'data'
-    })
 
-    // 5. 检查磁盘空间（建议 ≥20GB，PyTorch + 依赖约需 14GB）
+    // 4. 检查磁盘空间（建议 ≥20GB，PyTorch + 依赖约需 14GB）
     const kernelRoot = this.kernelRoot
     let diskSpaceOk = true
     let diskMessage = '磁盘空间充足'
@@ -280,9 +271,323 @@ class KernelManager {
     })
 
     const allPassed = items.every((item) => item.passed)
-    const needsSetup = kernelOk && !venvReady && !modelOk && runtimeOk
+    const needsSetup = runtimeOk && kernelOk && !venvReady
 
     return { items, allPassed, needsSetup }
+  }
+
+  /**
+   * 自举初始化内核运行环境（安装包内置 zip 资源 → appData）
+   * 1. 校验便携 uv 运行时完整性
+   * 2. 解析内置资产包版本并与已装内核版本比对，决定：
+   *    - 全新安装：解压资产包（源码 + wheels），完整版额外解压数据包（data/ 模型）
+   *    - 就地升级：保留 data/（模型），仅替换内核源码与 wheels，随后重跑 uv sync
+   * 3. 虚拟环境未就绪时，运行 uv sync 安装依赖（使用内置 wheels）
+   * 任一环节失败即返回错误，由调用方停止运行
+   */
+  async bootstrapKernel(): Promise<{ success: boolean; error?: string }> {
+    try {
+      // 1. 便携 uv 运行时必须存在（安装包自带资源）
+      if (!fs.existsSync(this.portableUvExe)) {
+        return {
+          success: false,
+          error: `便携运行时损坏，请重新安装应用。\n期望路径: ${this.portableUvExe}`
+        }
+      }
+
+      // 2. 恢复就地升级中断时残留的数据备份（防止模型数据遗弃）
+      this.restoreDataUpgradeBackup()
+
+      // 3. 解析安装包内置资产包（缺失则无法自举/升级）
+      const assetsPackage = this.resolveAssetsPackage()
+      if (!assetsPackage) {
+        return { success: false, error: '安装包缺少内核资产包，请重新下载安装包。' }
+      }
+
+      // 3.1 版本比对：内置资产包版本高于已装内核版本 → 就地升级
+      const kernelExists = fs.existsSync(path.join(this.kernelDir, 'pyproject.toml'))
+      const installedVersion = this.readInstalledVersion()
+      const bundledVersion = this.parseBundleVersion(assetsPackage)
+      const needUpgrade =
+        kernelExists &&
+        installedVersion != null &&
+        bundledVersion != null &&
+        compareVersion(bundledVersion, installedVersion) > 0
+
+      if (!kernelExists || needUpgrade) {
+        this.setOperation(
+          'installing',
+          needUpgrade ? '正在升级内核（保留模型数据）...' : '正在解压内核资源包...'
+        )
+        this.state.progress = 0
+        this.notifyState()
+        log.info(
+          `[KernelManager] 内核自举开始: 已装版本=${installedVersion ?? '无'} 内置版本=${bundledVersion ?? '未知'} 就地升级=${needUpgrade}`
+        )
+
+        if (needUpgrade) {
+          // 就地升级：保留 data/（模型），替换内核源码与 wheels
+          await this.replaceKernelKeepingData(assetsPackage, (ratio) => {
+            this.state.progress = Math.round(ratio * 90)
+            this.notifyState()
+          })
+        } else {
+          // 全新安装：解压内核资产包（源码 + wheels）到 kernelDir 根目录
+          await this.extractBundlePackage(assetsPackage, this.kernelDir, '', (ratio) => {
+            this.state.progress = Math.round(ratio * 60)
+            this.notifyState()
+          })
+
+          // 若内置数据包存在，解压到 {kernel}/data（完整版离线模型数据）
+          const dataPackage = this.resolveDataPackage()
+          if (dataPackage) {
+            this.state.statusText = '正在解压内置数据包...'
+            this.notifyState()
+            await this.extractBundlePackage(dataPackage, this.kernelDir, 'data', (ratio) => {
+              this.state.progress = Math.round(60 + ratio * 30)
+              this.notifyState()
+            })
+          }
+        }
+
+        this.state.progress = 90
+        this.notifyState()
+        log.info(`[KernelManager] 内核资源就绪，来源: ${assetsPackage}`)
+      }
+
+      // 刷新内核版本号（setupKernelEnvironment 依赖 currentVersion）
+      this.state.currentVersion = this.readInstalledVersion()
+      if (this.state.currentVersion) {
+        this.notifyState()
+      }
+
+      // 4. 虚拟环境未就绪时，运行 uv sync（内置 wheels 离线安装）
+      const venvReady = this.isVenvReady()
+      if (!venvReady) {
+        log.info('[KernelManager] 虚拟环境未就绪，开始安装 Python 依赖')
+        const setup = await this.setupKernelEnvironment()
+        if (!setup.success) return setup
+      }
+
+      return { success: true }
+    } catch (error) {
+      const msg = (error as Error).message
+      this.state.error = msg
+      this.setOperation('error', `初始化失败: ${msg}`)
+      return { success: false, error: msg }
+    }
+  }
+
+  /** 判断虚拟环境是否已就绪 */
+  private isVenvReady(): boolean {
+    const venvPythonPath =
+      process.platform === 'win32'
+        ? path.join(this.kernelDir, '.venv', 'Scripts', 'python.exe')
+        : path.join(this.kernelDir, '.venv', 'bin', 'python')
+    return fs.existsSync(venvPythonPath)
+  }
+
+  /**
+   * 解析安装包内置内核资产包（moechat-assets-*.zip）
+   * 优先取名称排序最靠后的包（版本号在文件名中，字典序即版本序）；
+   * 未找到时返回 null。
+   */
+  private resolveAssetsPackage(): string | null {
+    return this.resolveBundlePackage('moechat-assets-')
+  }
+
+  /**
+   * 解析安装包内置数据包（moechat-data-*.zip）
+   * 精简版不含数据包，返回 null（模型由后端首次运行自动下载）。
+   */
+  private resolveDataPackage(): string | null {
+    return this.resolveBundlePackage('moechat-data-')
+  }
+
+  /**
+   * 在 kernel-assets 内置资源目录中查找指定前缀的 zip 包。
+   * @param prefix 包名前缀（如 'moechat-assets-'、'moechat-data-'）
+   * @returns 匹配的 zip 绝对路径；无匹配返回 null
+   */
+  private resolveBundlePackage(prefix: string): string | null {
+    const bundleDir = this.portableKernelAssetsDir
+    if (!fs.existsSync(bundleDir)) return null
+
+    try {
+      const zips = fs
+        .readdirSync(bundleDir)
+        .filter((name) => name.startsWith(prefix) && name.endsWith('.zip'))
+      if (zips.length === 0) return null
+      zips.sort()
+      return path.join(bundleDir, zips[zips.length - 1])
+    } catch {
+      // 读取异常交由上层报错
+      return null
+    }
+  }
+
+  /**
+   * 读取已安装内核版本（kernelDir/version.txt），缺失或读取失败返回 null。
+   * version.txt 由资产包解压时写入内核根目录。
+   */
+  private readInstalledVersion(): string | null {
+    try {
+      const versionPath = this.versionFilePath
+      if (!fs.existsSync(versionPath)) return null
+      const version = fs.readFileSync(versionPath, 'utf8').trim()
+      return version || null
+    } catch {
+      return null
+    }
+  }
+
+  /**
+   * 从资产包文件名解析版本号（如 moechat-assets-v1.7.0-cpu.zip → 1.7.0）。
+   * 解析失败返回 null。
+   */
+  private parseBundleVersion(zipPath: string): string | null {
+    const match = path.basename(zipPath).match(/moechat-assets-v(\d+\.\d+\.\d+)/)
+    return match ? match[1] : null
+  }
+
+  /** 就地升级时内核数据（data/）的临时备份目录，与 kernelDir 同盘保证原子 rename */
+  private get dataUpgradeBackupDir(): string {
+    return path.join(this.kernelRoot, '.data-upgrade-backup')
+  }
+
+  /**
+   * 就地升级内核：备份并保留 data/（模型），清空重建 kernelDir 后解压新资产包，再恢复 data/。
+   * 解压失败时回滚：尽力恢复旧 data/，避免模型数据丢失。
+   *
+   * @param assetsPackage 内置资产包绝对路径
+   * @param onProgress 进度回调（解压阶段 0-1 比值）
+   */
+  private async replaceKernelKeepingData(
+    assetsPackage: string,
+    onProgress: (ratio: number) => void
+  ): Promise<void> {
+    const dataDir = path.join(this.kernelDir, 'data')
+    const backupDir = this.dataUpgradeBackupDir
+    let hasData = false
+
+    // 1. 将现有 data/（模型）原子移动到备份目录（同盘 rename 瞬时完成）
+    if (fs.existsSync(dataDir)) {
+      fs.rmSync(backupDir, { recursive: true, force: true })
+      fs.renameSync(dataDir, backupDir)
+      hasData = true
+    }
+
+    try {
+      // 2. 清空旧内核目录（旧源码、wheels、.venv 一并移除，随后重跑 uv sync）
+      fs.rmSync(this.kernelDir, { recursive: true, force: true })
+      fs.mkdirSync(this.kernelDir, { recursive: true })
+
+      // 3. 解压新资产包到全新 kernelDir
+      await this.extractBundlePackage(assetsPackage, this.kernelDir, '', onProgress)
+    } catch (error) {
+      // 解压失败：回滚 data/，保留旧内核目录（可能残留部分文件，交由下次自举重建）
+      if (hasData && !fs.existsSync(dataDir)) {
+        fs.mkdirSync(path.dirname(dataDir), { recursive: true })
+        fs.renameSync(backupDir, dataDir)
+      }
+      throw error
+    }
+
+    // 4. 恢复 data/ 到新内核目录
+    if (hasData) {
+      fs.mkdirSync(dataDir, { recursive: true })
+      fs.renameSync(backupDir, dataDir)
+    }
+  }
+
+  /**
+   * 恢复就地升级中断时残留的数据备份。
+   * data/ 曾被移动到备份目录但未完成恢复（进程崩溃/断电等），在每次自举开始时检测并还原，
+   * 防止模型数据被遗弃在备份目录而内核目录缺失 data/。
+   */
+  private restoreDataUpgradeBackup(): void {
+    const dataDir = path.join(this.kernelDir, 'data')
+    const backupDir = this.dataUpgradeBackupDir
+    if (fs.existsSync(backupDir) && !fs.existsSync(dataDir)) {
+      try {
+        fs.mkdirSync(path.dirname(dataDir), { recursive: true })
+        fs.renameSync(backupDir, dataDir)
+        log.info('[KernelManager] 已恢复升级中断时的模型数据备份')
+      } catch (error) {
+        log.error('[KernelManager] 恢复数据备份失败:', error)
+      }
+    }
+  }
+
+  /**
+   * 使用 Worker 线程解压内置 zip 包到目标目录，实时上报进度。
+   * 保留源 zip（不删除），供后续运行重复自举。
+   *
+   * @param zipPath 内置 zip 包的绝对路径
+   * @param targetDir 解压目标目录（如 kernelDir）
+   * @param subDir 可选的子目录前缀（如 'data' 表示解压到 {targetDir}/data 下）
+   * @param onProgress 进度回调，参数为 0-1 的比值
+   */
+  private extractBundlePackage(
+    zipPath: string,
+    targetDir: string,
+    subDir: string,
+    onProgress: (ratio: number) => void
+  ): Promise<void> {
+    return new Promise((resolve, reject) => {
+      detectZipNameEncoding(zipPath)
+        .then((nameEncoding) => {
+          // 创建 Worker 执行解压
+          const worker = new Worker(workerPath, {
+            workerData: {
+              zipPath,
+              targetDir,
+              nameEncoding,
+              isFullDownload: false,
+              subDir,
+              deleteZip: false
+            }
+          })
+
+          worker.on('message', (message) => {
+            if (message.type === 'progress') {
+              const ratio = message.total > 0 ? message.processed / message.total : 0
+              onProgress(ratio)
+            } else if (message.type === 'complete') {
+              if (message.success) {
+                resolve()
+              } else {
+                reject(new Error(message.error || '解压失败'))
+              }
+            }
+          })
+
+          worker.on('error', (error) => {
+            log.error('[KernelManager] 解压 Worker 错误:', error)
+            reject(new Error(`解压进程错误: ${error.message}`))
+          })
+
+          // Worker 退出时如果还没收到 complete 消息，返回错误
+          worker.on('exit', (code) => {
+            if (code !== 0) {
+              log.error(`[KernelManager] 解压 Worker 异常退出，代码: ${code}`)
+              reject(new Error(`解压 Worker 异常退出，代码: ${code}`))
+            }
+          })
+        })
+        .catch((error) => {
+          log.error('[KernelManager] 探测 zip 编码失败:', error)
+          reject(new Error(`探测 zip 编码失败: ${(error as Error).message}`))
+        })
+    })
+  }
+
+  /** 安装包内置内核资源目录（kernel-assets） */
+  get portableKernelAssetsDir(): string {
+    if (app.isPackaged) {
+      return path.join(process.resourcesPath, 'kernel-assets')
+    }
+    return path.join(app.getAppPath(), 'resources', 'kernel-assets')
   }
 
   /**
@@ -304,9 +609,6 @@ class KernelManager {
     this.notifyState()
 
     try {
-      // 确保 Python 版本与 wheels 匹配（根据 wheel ABI 标签锁定版本）
-      await this.ensurePythonVersionPinned()
-
       await this.setupEnvironment((progress) => {
         this.state.progress = Math.round(progress * 100)
         this.notifyState()
@@ -324,705 +626,11 @@ class KernelManager {
     }
   }
 
-  /**
-   * 校验资源包 zip 合法性（检查 manifest.json 是否存在）
-   * @returns 校验通过返回 true，否则返回错误信息
-   */
-  private async validateAssetZip(zipPath: string): Promise<{ valid: boolean; error?: string }> {
-    let zip: InstanceType<typeof StreamZip.async> | null = null
-    try {
-      zip = new StreamZip.async({ file: zipPath, skipEntryNameValidation: true })
-      const entries = await zip.entries()
-      const entryNames = Object.values(entries).map((e: { name: string }) =>
-        e.name.replace(/\\/g, '/')
-      )
-
-      const topLevelDir = this.detectSingleTopLevelDir(entries)
-
-      // 检查 manifest.json 是否存在（考虑可能的外层目录）
-      const hasManifest = entryNames.some((name) => {
-        const relative = topLevelDir
-          ? name.startsWith(`${topLevelDir}/`)
-            ? name.slice(topLevelDir.length + 1)
-            : null
-          : name
-        return relative === 'manifest.json'
-      })
-
-      if (!hasManifest) {
-        return { valid: false, error: '无效的资源包：未找到 manifest.json' }
-      }
-
-      return { valid: true }
-    } catch (error) {
-      const msg = (error as Error).message
-      return { valid: false, error: `无法读取资源包：${msg}` }
-    } finally {
-      if (zip) {
-        await zip.close().catch(() => {})
-      }
-    }
-  }
+  // ─── 依赖安装 ─────────────────────────────────────
 
   /**
-   * 导入资源包（完整内核安装）
-   * 用户从网盘下载 moechat-assets-*.zip 后，在 App 内点"导入"调用此方法。
-   * 资源包包含完整的 kernel 源码、wheel 缓存和模型文件，解压即用。
-   */
-  async importAssetBundle(zipPath: string): Promise<{ success: boolean; error?: string }> {
-    try {
-      // 校验资源包合法性
-      const validation = await this.validateAssetZip(zipPath)
-      if (!validation.valid) {
-        return { success: false, error: validation.error }
-      }
-
-      this.setOperation('installing', '正在导入资源包...')
-      this.state.progress = 0
-      this.notifyState()
-      log.info(`[KernelManager] 开始导入资源包: ${zipPath}`)
-
-      await this.extractZipToKernelDir(zipPath)
-
-      // 读取版本号
-      const versionPath = path.join(this.kernelDir, 'version.txt')
-      if (fs.existsSync(versionPath)) {
-        const version = fs.readFileSync(versionPath, 'utf8').trim()
-        this.state.currentVersion = version
-        log.info(`[KernelManager] 资源包版本: ${version}`)
-      }
-
-      // 统计导入结果
-      const wheelCount = (() => {
-        const dir = path.join(this.kernelDir, 'wheels')
-        if (!fs.existsSync(dir)) return 0
-        try {
-          return fs.readdirSync(dir).filter((f) => f.endsWith('.whl')).length
-        } catch {
-          return 0
-        }
-      })()
-
-      this.state.progress = 100
-      this.setOperation('done', `资源包导入完成（${wheelCount} 个 wheel）`)
-      this.notifyState()
-      log.info(`[KernelManager] 资源包导入完成: ${wheelCount} 个 wheel`)
-      return { success: true }
-    } catch (error) {
-      const msg = (error as Error).message
-      log.error(`[KernelManager] 资源包导入失败: ${msg}`)
-      this.state.error = msg
-      this.setOperation('error', `资源包导入失败: ${msg}`)
-      return { success: false, error: msg }
-    }
-  }
-
-  /** 将 zip 解压到内核目录（移除外层目录），保留现有数据目录 */
-  private async extractZipToKernelDir(zipPath: string, subDir?: string): Promise<void> {
-    const nameEncoding = await detectZipNameEncoding(zipPath)
-
-    const zip = new StreamZip.async({
-      file: zipPath,
-      skipEntryNameValidation: true,
-      nameEncoding
-    })
-    try {
-      const entries = await zip.entries()
-
-      // 检测外层包装目录（如 moechat-assets-v1.7.0/），有则剥离
-      const topDir = this.detectSingleTopLevelDir(entries)
-
-      for (const entry of Object.values(entries)) {
-        let relativePath = entry.name.replace(/\\/g, '/')
-
-        if (topDir) {
-          if (!relativePath.startsWith(`${topDir}/`)) continue
-          if (relativePath === `${topDir}/`) continue
-          relativePath = relativePath.slice(topDir.length + 1)
-        }
-        if (!relativePath) continue
-
-        // 若指定子目录（如 'data'），所有条目装到子目录下
-        const targetRelPath = subDir ? `${subDir}/${relativePath}` : relativePath
-        const targetPath = path.join(this.kernelDir, targetRelPath)
-
-        if (entry.isDirectory) {
-          await fs.promises.mkdir(targetPath, { recursive: true })
-        } else {
-          await fs.promises.mkdir(path.dirname(targetPath), { recursive: true })
-          const readStream = await zip.stream(entry)
-          const writeStream = fs.createWriteStream(targetPath)
-          await new Promise<void>((resolve, reject) => {
-            readStream.pipe(writeStream)
-            readStream.on('error', reject)
-            writeStream.on('error', reject)
-            writeStream.on('finish', resolve)
-          })
-        }
-
-        this.state.progress = Math.min(99, this.state.progress + 1)
-        this.notifyState()
-      }
-    } finally {
-      await zip.close().catch(() => {})
-    }
-  }
-
-  /**
-   * 检查资源完整性（内核源码、wheels、模型文件）
-   * 不依赖后端运行，直接在文件系统上检查。
-   * 这是判断是否需要导入资源包的主要依据。
-   */
-  async checkResources(): Promise<{
-    kernelInstalled: boolean
-    wheels: { ready: boolean; count: number }
-    models: { ready: boolean; details: { name: string; exists: boolean }[] }
-  }> {
-    const kernelDir = this.kernelDir
-
-    // 1. 检查内核源码是否已安装（核心标识）
-    const kernelInstalled = fs.existsSync(path.join(kernelDir, 'pyproject.toml'))
-
-    // 2. 检查 wheel
-    const wheelsDir = path.join(kernelDir, 'wheels')
-    let wheelCount = 0
-    if (fs.existsSync(wheelsDir)) {
-      try {
-        const files = await fs.promises.readdir(wheelsDir)
-        wheelCount = files.filter((f) => f.endsWith('.whl')).length
-      } catch {
-        wheelCount = 0
-      }
-    }
-
-    // 3. 检查模型目录（data/models/ 存在即可）
-    const modelsDir = path.join(kernelDir, 'data', 'models')
-    const modelsReady = fs.existsSync(modelsDir)
-
-    return {
-      kernelInstalled,
-      wheels: { ready: wheelCount >= 3, count: wheelCount },
-      models: { ready: modelsReady, details: [{ name: '模型目录 (models)', exists: modelsReady }] }
-    }
-  }
-
-  /**
-   * 检查数据资源完整性（data/models + data/agents）
-   * 数据资源包独立于后端内核资源包，可单独导入
-   */
-  async checkDataResources(): Promise<DataResourceCheckResult> {
-    const kernelDir = this.kernelDir
-
-    const modelsDir = path.join(kernelDir, 'data', 'models')
-    const modelsExists = fs.existsSync(modelsDir)
-
-    const agentsDir = path.join(kernelDir, 'data', 'agents')
-    const agentsExists = fs.existsSync(agentsDir)
-
-    const items = [
-      { name: '模型文件 (models)', key: 'models', exists: modelsExists },
-      { name: '角色数据 (agents)', key: 'agents', exists: agentsExists }
-    ]
-
-    return {
-      ready: items.every((i) => i.exists),
-      items
-    }
-  }
-
-  /**
-   * 导入数据资源包（仅 models + agents，不覆盖后端内核文件）
-   * 用户选择的数据 zip 应包含 data/ 目录结构
-   */
-  async importDataBundle(zipPath: string): Promise<{ success: boolean; error?: string }> {
-    try {
-      // 校验资源包合法性
-      const validation = await this.validateAssetZip(zipPath)
-      if (!validation.valid) {
-        return { success: false, error: validation.error }
-      }
-
-      this.setOperation('installing', '正在导入数据资源包...')
-      this.state.progress = 0
-      this.notifyState()
-      log.info(`[KernelManager] 开始导入数据资源包: ${zipPath}`)
-
-      await this.extractZipToKernelDir(zipPath, 'data')
-
-      this.state.progress = 100
-      this.setOperation('done', '数据资源包导入完成')
-      this.notifyState()
-      log.info('[KernelManager] 数据资源包导入完成')
-      return { success: true }
-    } catch (error) {
-      const msg = (error as Error).message
-      log.error(`[KernelManager] 数据资源包导入失败: ${msg}`)
-      this.state.error = msg
-      this.setOperation('error', `数据资源包导入失败: ${msg}`)
-      return { success: false, error: msg }
-    }
-  }
-
-  /** 检查远端是否有新内核版本（从 GitHub Releases） */
-  async checkForUpdates(): Promise<KernelUpdateState> {
-    this.setOperation('checking', '正在检查内核更新...')
-
-    try {
-      const latest = await this.fetchLatestRelease()
-
-      if (!latest) {
-        this.setOperation('idle', '')
-        this.state.latestVersion = null
-        this.state.updateAvailable = false
-        this.notifyState()
-        return { ...this.state }
-      }
-
-      this.state.latestVersion = latest
-
-      if (this.state.currentVersion) {
-        this.state.updateAvailable =
-          this.compareVersions(latest.version, this.state.currentVersion) > 0
-      } else {
-        this.state.updateAvailable = true
-      }
-
-      if (this.state.updateAvailable) {
-        this.setOperation('idle', `发现新内核 v${latest.version}`)
-      } else {
-        this.setOperation('idle', '内核已是最新版本')
-      }
-
-      this.notifyState()
-      return { ...this.state }
-    } catch (error) {
-      const msg = (error as Error).message
-      log.error('检查内核更新失败:', msg)
-      this.state.error = msg
-      this.setOperation('error', `检查更新失败: ${msg}`)
-      return { ...this.state }
-    }
-  }
-
-  /**
-   * 从 GitHub Releases 下载并安装最新版本内核
-   * 会保留用户数据目录，只替换代码文件
-   */
-  async downloadAndInstall(version?: string): Promise<boolean> {
-    let targetVersion: string
-
-    if (version) {
-      targetVersion = version
-    } else if (this.state.latestVersion?.version) {
-      targetVersion = this.state.latestVersion.version
-    } else {
-      try {
-        this.state.latestVersion = await this.fetchLatestRelease()
-        if (!this.state.latestVersion?.version) {
-          this.state.error = '无法获取内核版本信息'
-          this.setOperation('error', '无法获取内核版本信息')
-          return false
-        }
-        targetVersion = this.state.latestVersion.version
-      } catch {
-        this.state.error = '无法获取内核下载信息'
-        this.setOperation('error', '无法获取内核下载信息')
-        return false
-      }
-    }
-
-    if (
-      this.state.currentVersion &&
-      this.compareVersions(this.state.currentVersion, targetVersion) >= 0
-    ) {
-      const pyprojectPath = path.join(this.kernelDir, 'pyproject.toml')
-      if (fs.existsSync(pyprojectPath)) {
-        this.setOperation('done', `内核已是最新版本 v${this.state.currentVersion}`)
-        this.notifyState()
-        return true
-      }
-    }
-
-    if (!this.state.latestVersion || this.state.latestVersion.version !== targetVersion) {
-      try {
-        this.state.latestVersion = await this.fetchLatestRelease()
-      } catch {
-        // 继续使用已有的
-      }
-    }
-
-    const downloadUrl = this.state.latestVersion?.downloadUrl
-    if (!downloadUrl) {
-      this.state.error = '未找到内核下载地址'
-      this.setOperation('error', '未找到内核下载地址')
-      return false
-    }
-
-    const tempDir = path.join(app.getPath('temp'), 'moechat-kernel-update')
-    const tempZip = path.join(tempDir, `moechat-kernel-${targetVersion}.zip`)
-
-    try {
-      if (!fs.existsSync(tempDir)) {
-        fs.mkdirSync(tempDir, { recursive: true })
-      }
-
-      this.setOperation('downloading', '正在下载内核...')
-      await this.downloadFile(downloadUrl, tempZip, (progress) => {
-        this.state.progress = Math.round(progress * 40)
-        this.notifyState()
-      })
-
-      this.setOperation('installing', '正在解压内核...')
-      this.state.progress = 40
-      this.notifyState()
-
-      await this.installKernelFromZip(tempZip, targetVersion)
-
-      this.state.progress = 55
-      this.notifyState()
-
-      this.setOperation('settingUpEnv', '正在安装Python依赖...')
-      await this.setupEnvironment((progress) => {
-        this.state.progress = 55 + Math.round(progress * 0.4)
-        this.notifyState()
-      })
-
-      this.state.progress = 100
-      this.setOperation('done', `内核 v${targetVersion} 安装完成`)
-      this.notifyState()
-
-      return true
-    } catch (error) {
-      const msg = (error as Error).message
-      log.error('下载安装内核失败:', msg)
-      this.state.error = msg
-      this.setOperation('error', `安装失败: ${msg}`)
-      return false
-    } finally {
-      await fs.promises.unlink(tempZip).catch(() => {})
-    }
-  }
-
-  /** 从 GitHub Releases API 获取最新版本 */
-  private async fetchLatestRelease(): Promise<KernelRemoteVersion | null> {
-    try {
-      const url = `${GITHUB_API}/repos/${BACKEND_REPO_OWNER}/${BACKEND_REPO_NAME}/releases/latest`
-      const response = await axios.get(url, {
-        headers: {
-          Accept: 'application/vnd.github.v3+json',
-          'User-Agent': 'MoeChat-APP'
-        },
-        timeout: 15000
-      })
-
-      const release = response.data
-      const tagName: string = release.tag_name || ''
-      const version = tagName.replace(/^v/, '')
-      const body: string = release.body || ''
-
-      const asset = release.assets?.find(
-        (a: { name: string; browser_download_url: string; size: number }) => {
-          const name = a.name.toLowerCase()
-          return (
-            name.endsWith('.zip') &&
-            (name.includes('moechat') ||
-              name.includes('kernel') ||
-              name.includes('backend') ||
-              name.includes('source'))
-          )
-        }
-      )
-
-      if (!asset) {
-        const sourceAsset = release.assets?.find((a: { name: string }) => a.name.endsWith('.zip'))
-        if (!sourceAsset) {
-          log.warn('未找到内核下载资源')
-          return null
-        }
-        return {
-          version,
-          publishedAt: release.published_at || '',
-          releaseNotes: this.truncateReleaseNotes(body),
-          downloadUrl: sourceAsset.browser_download_url,
-          size: sourceAsset.size || 0
-        }
-      }
-
-      return {
-        version,
-        publishedAt: release.published_at || '',
-        releaseNotes: this.truncateReleaseNotes(body),
-        downloadUrl: asset.browser_download_url,
-        size: asset.size || 0
-      }
-    } catch (error) {
-      log.error('获取 GitHub Release 失败:', (error as Error).message)
-      return null
-    }
-  }
-
-  /** 截取更新日志前 2000 字符 */
-  private truncateReleaseNotes(notes: string): string {
-    if (!notes) return ''
-    return notes.length > 2000 ? notes.slice(0, 2000) + '\n\n...(内容过长已截断)' : notes
-  }
-
-  /** 下载文件并回调进度（带超时和流式写入） */
-  private async downloadFile(
-    url: string,
-    destPath: string,
-    onProgress: (progress: number) => void
-  ): Promise<void> {
-    const writer = fs.createWriteStream(destPath)
-    const response = await axios({
-      url,
-      method: 'GET',
-      responseType: 'stream',
-      headers: { 'User-Agent': 'MoeChat-APP', Accept: 'application/octet-stream' },
-      timeout: 600000
-    })
-
-    const totalLength = parseInt(String(response.headers['content-length'] || '0'), 10)
-
-    return new Promise((resolve, reject) => {
-      let downloaded = 0
-      response.data.on('data', (chunk: Buffer) => {
-        downloaded += chunk.length
-        if (totalLength > 0) onProgress(downloaded / totalLength)
-      })
-      response.data.pipe(writer)
-      writer.on('finish', () => {
-        writer.close()
-        resolve()
-      })
-      writer.on('error', (err) => {
-        writer.close()
-        reject(err)
-      })
-      response.data.on('error', (err: Error) => {
-        writer.close()
-        reject(err)
-      })
-    })
-  }
-
-  /**
-   * 解压并安装内核到固定目录 kernel/current/
-   * 保留用户数据目录，仅替换代码文件
-   */
-  private async installKernelFromZip(zipPath: string, version: string): Promise<void> {
-    const targetDir = this.kernelDir
-    try {
-      await fs.promises.access(targetDir)
-      await this.cleanCodeFiles(targetDir)
-    } catch {
-      // 目录不存在，跳过清理
-    }
-
-    try {
-      await this.extractZipToKernelDir(zipPath)
-    } finally {
-      // extractZipToKernelDir 已自行管理 zip 关闭
-    }
-
-    await fs.promises.writeFile(this.versionFilePath, version, 'utf8')
-    this.state.currentVersion = version
-    log.info(`内核 v${version} 升级完成: ${targetDir}`)
-  }
-
-  /**
-   * 清理内核目录中的文件（保留用户数据目录）
-   */
-  private async cleanCodeFiles(dir: string): Promise<void> {
-    try {
-      await fs.promises.access(dir)
-    } catch {
-      return
-    }
-
-    try {
-      const entries = await fs.promises.readdir(dir, { withFileTypes: true })
-      for (const entry of entries) {
-        const fullPath = path.join(dir, entry.name)
-        if (PRESERVED_DATA_DIRS.includes(entry.name)) {
-          log.info(`保留目录: ${entry.name}`)
-          continue
-        }
-        if (PRESERVED_DATA_FILES.includes(entry.name)) {
-          log.info(`保留文件: ${entry.name}`)
-          continue
-        }
-        try {
-          if (entry.isDirectory()) {
-            await fs.promises.rm(fullPath, { recursive: true, force: true })
-          } else {
-            await fs.promises.unlink(fullPath)
-          }
-        } catch (error) {
-          log.error(`清理失败: ${fullPath}, ${(error as Error).message}`)
-        }
-      }
-      log.info(`内核目录清理完成: ${dir}`)
-    } catch (error) {
-      log.error(`清理内核目录失败: ${(error as Error).message}`)
-    }
-  }
-
-  /** 比较版本号，返回 >0 如果 a > b */
-  private compareVersions(a: string, b: string): number {
-    const partsA = a.split('.').map(Number)
-    const partsB = b.split('.').map(Number)
-    const len = Math.max(partsA.length, partsB.length)
-    for (let i = 0; i < len; i++) {
-      const na = partsA[i] || 0
-      const nb = partsB[i] || 0
-      if (na > nb) return 1
-      if (na < nb) return -1
-    }
-    return 0
-  }
-
-  /**
-   * 判断是否存在单一外层目录（用于去掉压缩包外层文件夹）
-   */
-  private detectSingleTopLevelDir(entries: {
-    [name: string]: { name: string; isDirectory: boolean }
-  }): string | null {
-    let topLevelDir: string | null = null
-    let hasRootFile = false
-
-    for (const entry of Object.values(entries)) {
-      const entryName = entry.name.replace(/\\/g, '/')
-      const parts = entryName.split('/').filter(Boolean)
-      if (parts.length === 0) continue
-
-      const first = parts[0]
-      if (!topLevelDir) {
-        topLevelDir = first
-      } else if (topLevelDir !== first) {
-        return null
-      }
-
-      if (parts.length === 1 && !entry.isDirectory) {
-        hasRootFile = true
-      }
-    }
-
-    if (!topLevelDir || hasRootFile) return null
-    return topLevelDir
-  }
-
-  // ─── wheel 兼容性检测 ─────────────────────────────
-
-  /**
-   * 从 wheel 文件名中提取 ABI 标签（如 cp311、cp313、py3、none）
-   * PEP 427: {distribution}-{version}(-{build tag})?-{python tag}-{abi tag}-{platform tag}.whl
-   */
-  private getWheelAbiTag(filename: string): string | null {
-    const match = filename.match(
-      /^[a-zA-Z0-9_.-]+?-\d+[^-]*?(?:-[a-zA-Z0-9_.]+)?-([^-]+)-([^-]+)-[\w.]+\.whl$/
-    )
-    return match ? match[2] : null
-  }
-
-  /**
-   * 检查 wheel ABI 标签是否与给定的 Python 版本（主.次）兼容
-   * - none/py3 等通用标签兼容任何版本
-   * - cp311 ↔ cp311 精确匹配
-   * - cp311 → cp313 不匹配
-   */
-  private isWheelAbiCompatible(abiTag: string, target: string): boolean {
-    const targetTag = `cp${target.replace('.', '')}`
-    if (abiTag === targetTag) return true
-    if (abiTag.startsWith('py') || abiTag === 'none') return true
-    return false
-  }
-
-  /**
-   * 检测 uv 将为当前项目使用的 Python 版本（主.次）
-   * 优先检查 .venv 中已安装的 Python，否则通过 uv python list 查询。
-   */
-  private async resolvePythonVersion(): Promise<string | null> {
-    // 1. 优先从已存在的 .venv 中读取
-    const venvPython =
-      process.platform === 'win32'
-        ? path.join(this.kernelDir, '.venv', 'Scripts', 'python.exe')
-        : path.join(this.kernelDir, '.venv', 'bin', 'python')
-    if (fs.existsSync(venvPython)) {
-      try {
-        const { stdout } = await execAsync(
-          `"${venvPython}" -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')"`
-        )
-        const ver = stdout.trim()
-        if (/^\d+\.\d+$/.test(ver)) return ver
-      } catch {
-        /* fall through */
-      }
-    }
-
-    // 2. 通过 uv 查询可用 Python 的最新安装版本
-    try {
-      const { stdout } = await execAsync(`"${this.portableUvExe}" python list --only-installed`, {
-        cwd: this.kernelDir
-      })
-      // 取第一行非 freethreaded 的 CPython 版本
-      const lines = stdout
-        .split('\n')
-        .map((l) => l.trim())
-        .filter((l) => l.startsWith('cpython-') && !l.includes('freethreaded'))
-      if (lines.length > 0) {
-        const match = lines[0].match(/cpython-(\d+\.\d+)/)
-        if (match) return match[1]
-      }
-    } catch {
-      /* fall through */
-    }
-
-    return null
-  }
-
-  /**
-   * 通过 wheel ABI 标签检测所需的 Python 版本，写入 .python-version 锁定 uv 使用的版本
-   * 仅在 .python-version 和 .venv 均不存在时写入，避免覆盖已有配置
-   */
-  private async ensurePythonVersionPinned(): Promise<void> {
-    const versionFile = path.join(this.kernelDir, '.python-version')
-    const venvPython =
-      process.platform === 'win32'
-        ? path.join(this.kernelDir, '.venv', 'Scripts', 'python.exe')
-        : path.join(this.kernelDir, '.venv', 'bin', 'python')
-
-    // 已有锁定或 venv，无需干预
-    if (fs.existsSync(versionFile) || fs.existsSync(venvPython)) return
-
-    const wheelsDir = path.join(this.kernelDir, 'wheels')
-    if (!fs.existsSync(wheelsDir)) return
-
-    try {
-      const files = fs.readdirSync(wheelsDir)
-      for (const f of files) {
-        if (!f.endsWith('.whl')) continue
-        const abi = this.getWheelAbiTag(f)
-        if (abi && /^cp\d+$/.test(abi)) {
-          // cp311 → 3.11, cp39 → 3.9
-          const num = abi.slice(2)
-          const major = num[0]
-          const minor = num.slice(1)
-          const version = `${major}.${minor}`
-          fs.writeFileSync(versionFile, version, 'utf8')
-          log.info(`[setup] 根据 wheel ABI 标签锁定 Python 版本: ${version} (${f})`)
-          return
-        }
-      }
-    } catch (error) {
-      log.warn(`[setup] 检测 wheel Python 版本失败: ${(error as Error).message}`)
-    }
-  }
-
-  /**
-   * 两步安装环境依赖：
-   *   1. uv sync        → 下载全部依赖，实时转发 stderr 进度到终端
-   *   2. install.py --cuda-only → 检测 GPU 并替换为 CUDA 版 torch
+   * 安装环境依赖：uv sync 下载全部依赖，实时转发进度到终端
+   * CPU/CUDA 版本由打包阶段决定，运行时不再升级 CUDA。
    *
    * 不依赖 `uv run`，避免 uv run 隐式 sync 吞掉进度条输出。
    */
@@ -1047,9 +655,8 @@ class KernelManager {
       this.notifyState()
 
       // ── 步骤 1: uv sync ────────────────────────────
-      log.info(`[setup] 步骤 1/2: uv sync (cwd: ${kernelDir})`)
+      log.info(`[setup] uv sync (cwd: ${kernelDir})`)
       this.runSyncWithProgress(kernelDir, uvExe, onProgress)
-        .then(() => this.runCudaUpgrade(kernelDir, onProgress))
         .then(() => {
           log.info('依赖安装完成')
           onProgress(1)
@@ -1064,6 +671,22 @@ class KernelManager {
   }
 
   /**
+   * 解析本地 wheels 缓存目录（uv sync 离线安装用）
+   * wheels 目录存在且包含 .whl 时返回该目录，否则返回 null（回退网络下载）。
+   * Python 版本与包兼容性由后端 pyproject.toml 自动管理，无需前端预检。
+   */
+  private resolveWheelsDir(): string | null {
+    const rawDir = path.join(this.kernelDir, 'wheels')
+    if (!fs.existsSync(rawDir)) return null
+    try {
+      const hasWhl = fs.readdirSync(rawDir).some((f) => f.endsWith('.whl'))
+      return hasWhl ? rawDir : null
+    } catch {
+      return null
+    }
+  }
+
+  /**
    * 通过伪终端 (PTY) 执行 uv sync，使 uv 认为连接的是真实终端，
    * 进而输出 ANSI 进度条动画（含百分比和下载速度）。
    *
@@ -1071,56 +694,18 @@ class KernelManager {
    * 标准 PTY。原始 ANSI 数据直接转发给前端的 xterm 组件渲染，
    * 同时解析其中的百分比用于更新 UI 进度条。
    */
-  /**
-   * 解析与当前 Python 版本兼容的本地 wheels 目录路径
-   * 若所有 wheel 均不兼容则返回 null（后续将从 PyPI 下载）
-   */
-  private async resolveCompatibleWheelsDir(): Promise<string | null> {
-    const rawDir = path.join(this.kernelDir, 'wheels')
-    if (!fs.existsSync(rawDir)) return null
-
-    const pyVersion = await this.resolvePythonVersion()
-    if (!pyVersion) {
-      log.warn('[setup] 无法检测 uv Python 版本，使用原始 wheels 目录（可能因版本不匹配失败）')
-      return rawDir
-    }
-
-    let hasWhl = false
-    let anyCompatible = false
-    const files = fs.readdirSync(rawDir)
-    for (const f of files) {
-      if (!f.endsWith('.whl')) continue
-      hasWhl = true
-      const abi = this.getWheelAbiTag(f)
-      if (!abi || this.isWheelAbiCompatible(abi, pyVersion)) {
-        anyCompatible = true
-      } else {
-        log.warn(
-          `[setup] 跳过不兼容的 wheel: ${f} (abi=${abi}, target=cp${pyVersion.replace('.', '')})`
-        )
-      }
-    }
-
-    if (!hasWhl) return rawDir
-    if (!anyCompatible) {
-      log.warn(`[setup] 本地 wheels 均与 Python ${pyVersion} 不兼容，将从 PyPI 下载依赖`)
-      return null
-    }
-    return rawDir
-  }
-
   private async runSyncWithProgress(
     kernelDir: string,
     uvExe: string,
     onProgress: (p: number) => void
   ): Promise<void> {
     const uvArgs = ['sync']
-    const findLinksDir = await this.resolveCompatibleWheelsDir()
-    if (findLinksDir) {
-      uvArgs.push('--find-links', findLinksDir)
-      log.info(`[setup] 使用本地 wheel 缓存: ${findLinksDir}`)
+    const wheelsDir = this.resolveWheelsDir()
+    if (wheelsDir) {
+      uvArgs.push('--find-links', wheelsDir)
+      log.info(`[setup] 使用本地 wheel 缓存: ${wheelsDir}`)
     } else {
-      log.info('[setup] 无兼容的本地 wheel，将从 PyPI 下载依赖')
+      log.info('[setup] 无本地 wheel 缓存，将从 PyPI 下载依赖')
     }
     return new Promise((resolve, reject) => {
       const term = pty.spawn(uvExe, uvArgs, {
@@ -1166,82 +751,6 @@ class KernelManager {
           const msg = errs.slice(0, 5).join('\n') || `退出码: ${event.exitCode}`
           reject(new Error(`uv sync 失败 (${msg})`))
         }
-      })
-    })
-  }
-
-  /**
-   * 执行 CUDA 检测与 torch 升级（install.py --cuda-only）
-   * 同步完成后 venv Python 已存在，直接用 venv Python 运行
-   */
-  private runCudaUpgrade(kernelDir: string, onProgress: (p: number) => void): Promise<void> {
-    const venvPython =
-      process.platform === 'win32'
-        ? path.join(kernelDir, '.venv', 'Scripts', 'python.exe')
-        : path.join(kernelDir, '.venv', 'bin', 'python')
-
-    const installPy = path.join(kernelDir, 'install.py')
-
-    if (!fs.existsSync(venvPython)) {
-      log.warn('venv Python 不存在，跳过 CUDA 升级')
-      return Promise.resolve()
-    }
-    if (!fs.existsSync(installPy)) {
-      log.warn('install.py 不存在，跳过 CUDA 升级')
-      return Promise.resolve()
-    }
-
-    return new Promise<void>((resolve) => {
-      this.state.statusText = '检测 GPU 并配置加速...'
-      this.notifyState()
-
-      // 也使用 PTY，让 uv pip install 的 ANSI 进度条能正常渲染
-      const term = pty.spawn(venvPython, [installPy, '--cuda-only', '--json'], {
-        cwd: kernelDir,
-        name: 'xterm-256color',
-        cols: 120,
-        rows: 30,
-        env: { ...process.env } as Record<string, string>
-      })
-
-      let settled = false
-      let buffer = ''
-
-      term.onData((data: string) => {
-        broadcastToAllWindows(SERVICE_STREAM_CHANNEL, Buffer.from(data, 'utf-8'))
-        this.addOperationLog(Buffer.from(data, 'utf-8'))
-
-        // 尝试从 ANSI 流中提取 JSON 进度事件
-        buffer += data
-        const lines = buffer.split('\n')
-        buffer = lines.pop() ?? ''
-
-        for (const line of lines) {
-          const trimmed = line.trim()
-          if (!trimmed) continue
-          try {
-            const event = JSON.parse(trimmed)
-            this.state.statusText = (event.message || '').slice(0, 200)
-            if (event.progress != null) {
-              // CUDA 阶段占总体进度的 15% (85% → 100%)
-              onProgress(0.85 + event.progress * 0.15)
-            }
-          } catch {
-            // 非 JSON 行（ANSI 进度条或普通日志），由 xterm 直接渲染
-          }
-        }
-        this.notifyState()
-      })
-
-      term.onExit((event: { exitCode: number; signal?: number }) => {
-        if (settled) return
-        settled = true
-        if (event.exitCode === 0) {
-          log.info('CUDA 升级完成')
-        } else {
-          log.warn(`CUDA 升级退出码 ${event.exitCode}，保留 CPU 版本`)
-        }
-        resolve()
       })
     })
   }
@@ -1589,7 +1098,7 @@ class KernelServiceManager {
   async checkBackendHealth(
     port = 8001,
     maxAttempts = 30,
-    intervalMs = 1000
+    intervalMs = 5000
   ): Promise<{ healthy: boolean; error?: string; stillRunning?: boolean }> {
     for (let i = 0; i < maxAttempts; i++) {
       // 每次轮询前检查进程是否已异常退出

@@ -128,31 +128,11 @@
         <div v-if="kernelMode === 'api' && apiOnline !== null" class="whisper-line version">
           {{ apiOnline ? '远程连接正常' : '远程连接失败' }}
         </div>
-
-        <div
-          v-if="
-            kernelMode === 'local' && kernelState.updateAvailable && !isOperating && !isServiceDown
-          "
-          class="whisper-line hint"
-        >
-          新的内核更新可用...
-        </div>
       </div>
     </div>
 
     <!-- 悬浮操作按钮 -->
     <div class="floating-actions" :class="{ visible: showSidePanels }">
-      <button
-        v-if="kernelMode === 'local'"
-        class="float-btn orbit-btn"
-        :disabled="isCheckingUpdate || isOperating"
-        title="检查更新"
-        @click="handleCheckUpdate"
-      >
-        <span class="orbit-ring"></span>
-        <font-awesome-icon icon="fa-solid fa-satellite" :class="{ 'fa-spin': isCheckingUpdate }" />
-      </button>
-
       <button
         v-if="kernelMode === 'api'"
         class="float-btn orbit-btn"
@@ -162,32 +142,6 @@
       >
         <span class="orbit-ring"></span>
         <font-awesome-icon icon="fa-solid fa-satellite" :class="{ 'fa-spin': isCheckingApi }" />
-      </button>
-
-      <button
-        v-if="kernelMode === 'local' && kernelState.updateAvailable && !isOperating"
-        class="float-btn evolve-btn"
-        :disabled="isUpdating"
-        title="更新内核"
-        @click="handleUpdateToLatest"
-      >
-        <span class="evolve-particles"></span>
-        <font-awesome-icon icon="fa-solid fa-wand-magic-sparkles" />
-      </button>
-
-      <button
-        v-if="
-          kernelMode === 'local' &&
-          kernelState.updateAvailable &&
-          kernelState.operationStatus === 'error'
-        "
-        class="float-btn retry-btn"
-        :disabled="isUpdating"
-        title="重试更新"
-        @click="handleUpdateToLatest"
-      >
-        <span class="retry-ring"></span>
-        <font-awesome-icon icon="fa-solid fa-rotate-right" />
       </button>
 
       <button
@@ -523,8 +477,6 @@ const serviceStatusText = computed(() => {
 
 const kernelState = ref<KernelUpdateState>({
   currentVersion: null,
-  latestVersion: null,
-  updateAvailable: false,
   operationStatus: 'idle',
   progress: 0,
   statusText: '',
@@ -560,7 +512,6 @@ const coreStateClass = computed(() => {
   if (isOperating.value) return 'core-evolving'
   if (isServiceDown.value) return 'core-dormant'
   // 完成状态保持宁静状态样式
-  if (kernelState.value.updateAvailable) return 'core-awakening'
   return 'core-peace'
 })
 
@@ -632,8 +583,6 @@ const statusClass = computed(() => {
   if (isServiceDown.value) return 'status-dormant'
   const s = kernelState.value.operationStatus
   if (s === 'error') return 'status-error'
-  // 完成状态保持宁静状态样式
-  if (kernelState.value.updateAvailable) return 'status-awakening'
   return 'status-peace'
 })
 
@@ -652,7 +601,6 @@ const heartColorPrimary = computed(() => {
   if (isServiceStarting.value || isBackendLoading.value || isOperating.value) return '#c8a0e0'
   if (isServiceDown.value) return '#c8bdd8'
   // 完成状态使用默认颜色
-  if (kernelState.value.updateAvailable) return '#f59e8b'
   return '#fb7299'
 })
 
@@ -671,127 +619,8 @@ const heartColorSecondary = computed(() => {
   if (isServiceStarting.value || isBackendLoading.value || isOperating.value) return '#e0c8f5'
   if (isServiceDown.value) return '#e0d8f0'
   // 完成状态使用默认颜色
-  if (kernelState.value.updateAvailable) return '#fcc8b5'
   return '#fca5b9'
 })
-
-// ─── 更新操作 ──────────────────────────────────────
-
-const isCheckingUpdate = ref(false)
-const isUpdating = ref(false)
-
-async function handleCheckUpdate(): Promise<void> {
-  isCheckingUpdate.value = true
-  try {
-    notificationService.info({
-      title: '内核更新',
-      message: '正在检查内核更新...',
-      key: 'kernel-check-update'
-    })
-
-    const result = await window.api.kernel.checkUpdate()
-    if (!result.success) {
-      console.error('检查更新失败:', result.error)
-      notificationService.error({
-        title: '内核更新',
-        message: `检查更新失败: ${result.error || '未知错误'}`,
-        key: 'kernel-check-update'
-      })
-    } else if (result.data?.updateAvailable) {
-      notificationService.success({
-        title: '内核更新',
-        message: `发现新版本 v${result.data.latestVersion?.version}`,
-        key: 'kernel-check-update'
-      })
-    } else {
-      notificationService.info({
-        title: '内核更新',
-        message: '内核已是最新版本',
-        key: 'kernel-check-update'
-      })
-    }
-  } catch (e) {
-    console.error('检查更新异常:', (e as Error).message)
-    notificationService.error({
-      title: '内核更新',
-      message: `检查更新异常: ${(e as Error).message}`,
-      key: 'kernel-check-update'
-    })
-  } finally {
-    isCheckingUpdate.value = false
-  }
-}
-
-async function handleUpdateToLatest(): Promise<void> {
-  isUpdating.value = true
-  try {
-    if (backendService.value.running) {
-      notificationService.info({
-        title: '内核更新',
-        message: '正在停止后端服务...',
-        key: 'kernel-update'
-      })
-      const stopResult = await window.api.kernel.stopBackend()
-      if (!stopResult.success) {
-        console.warn('停止后端服务失败，继续更新')
-      }
-    }
-
-    notificationService.info({
-      title: '内核更新',
-      message: '开始下载并安装内核更新...',
-      key: 'kernel-update'
-    })
-
-    const result = await window.api.kernel.updateToLatest()
-    if (!result.success) {
-      console.error('更新失败:', result.error)
-      notificationService.error({
-        title: '内核更新',
-        message: `更新失败: ${result.error || '未知错误'}`,
-        key: 'kernel-update'
-      })
-      return
-    }
-
-    notificationService.info({
-      title: '内核更新',
-      message: '正在重启后端服务...',
-      key: 'kernel-update'
-    })
-
-    const restartResult = await window.api.kernel.restartBackend()
-    if (!restartResult.success) {
-      console.error('重启后端服务失败:', restartResult.error)
-      notificationService.error({
-        title: '内核更新',
-        message: `重启服务失败: ${restartResult.error || '未知错误'}`,
-        key: 'kernel-update'
-      })
-    }
-
-    await window.api.kernel.resetState()
-
-    notificationService.success({
-      title: '内核更新',
-      message: '内核更新完成！',
-      key: 'kernel-update'
-    })
-
-    setTimeout(() => {
-      void checkBackendStatus()
-    }, 3000)
-  } catch (e) {
-    console.error('更新异常:', (e as Error).message)
-    notificationService.error({
-      title: '内核更新',
-      message: `更新异常: ${(e as Error).message}`,
-      key: 'kernel-update'
-    })
-  } finally {
-    isUpdating.value = false
-  }
-}
 
 // ─── 环境检测 ──────────────────────────────────────
 
@@ -1325,19 +1154,6 @@ onUnmounted(() => {
 
 .core-peace .core-heart {
   filter: drop-shadow(0 0 20px rgba(251, 114, 153, 0.3));
-}
-
-.core-awakening .core-aura {
-  background: radial-gradient(circle, rgba(245, 158, 139, 0.2) 0%, transparent 70%);
-  animation: auraPulse 1.5s ease-in-out infinite;
-}
-
-.core-awakening .core-heart {
-  filter: drop-shadow(0 0 30px rgba(245, 158, 139, 0.6));
-}
-
-.core-awakening .heart-path {
-  animation: heartBeat 1.5s ease-in-out infinite;
 }
 
 .core-evolving .core-aura {
@@ -1966,13 +1782,6 @@ onUnmounted(() => {
   border: 1px solid rgba(251, 114, 153, 0.15);
 }
 
-.status-awakening {
-  color: rgba(245, 158, 139, 0.9);
-  background: rgba(245, 158, 139, 0.1);
-  border: 1px solid rgba(245, 158, 139, 0.2);
-  animation: statusGlow 2s ease-in-out infinite;
-}
-
 .status-evolving {
   color: #c8a0e0;
   background: rgba(200, 160, 224, 0.1);
@@ -2115,74 +1924,6 @@ onUnmounted(() => {
 }
 
 @keyframes orbitSpin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-.evolve-btn {
-  border-color: rgba(251, 114, 153, 0.25);
-}
-
-.evolve-btn:hover:not(:disabled) {
-  box-shadow: 0 8px 24px rgba(251, 114, 153, 0.2);
-  border-color: rgba(251, 114, 153, 0.5);
-}
-
-.evolve-particles {
-  position: absolute;
-  inset: 0;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(251, 114, 153, 0.3) 0%, transparent 70%);
-  opacity: 0;
-  transition: opacity 0.3s ease;
-}
-
-.evolve-btn:hover .evolve-particles {
-  opacity: 1;
-  animation: particleBurst 1s ease-out infinite;
-}
-
-@keyframes particleBurst {
-  0% {
-    transform: scale(0.8);
-    opacity: 0.8;
-  }
-  100% {
-    transform: scale(2);
-    opacity: 0;
-  }
-}
-
-.retry-btn {
-  border-color: rgba(239, 68, 68, 0.25);
-  color: rgba(239, 68, 68, 0.8);
-}
-
-.retry-btn:hover:not(:disabled) {
-  border-color: rgba(239, 68, 68, 0.5);
-  color: rgba(239, 68, 68, 1);
-  box-shadow: 0 8px 24px rgba(239, 68, 68, 0.2);
-}
-
-.retry-ring {
-  position: absolute;
-  inset: -4px;
-  border-radius: 50%;
-  border: 1px dashed rgba(239, 68, 68, 0.45);
-  animation: retrySpin 2.5s linear infinite;
-  opacity: 0;
-  transition: opacity 0.3s ease;
-}
-
-.retry-btn:hover .retry-ring {
-  opacity: 1;
-}
-
-@keyframes retrySpin {
   from {
     transform: rotate(0deg);
   }

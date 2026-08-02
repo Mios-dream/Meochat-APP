@@ -1,6 +1,6 @@
 import { CHANNELS } from '@shared/ipc/channels'
 import { registerHandle } from '../utils/registerIpcHandler'
-import { OnboardingMode, OnboardingProfile } from '@shared/types/onboarding'
+import { OnboardingProfile } from '@shared/types/onboarding'
 import { OnboardingStoreService } from '../services/onboardingStore'
 
 const onboardingStore = OnboardingStoreService.getInstance()
@@ -11,10 +11,6 @@ const onboardingStore = OnboardingStoreService.getInstance()
 export function setupOnboardingIPC(): void {
   registerHandle(CHANNELS.ONBOARDING_GET_STATE, async () => {
     return onboardingStore.getState()
-  })
-
-  registerHandle(CHANNELS.ONBOARDING_SET_MODE, async (_event, mode: OnboardingMode) => {
-    return onboardingStore.setMode(mode)
   })
 
   registerHandle(CHANNELS.ONBOARDING_SAVE_PROFILE, async (_event, profile: OnboardingProfile) => {

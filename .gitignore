@@ -14,4 +14,5 @@ tsconfig.web.tsbuildinfo
 .vscode
 .sisyphus
 resources/python-runtime/uv.exe
+resources/kernel-assets
 tsconfig.node.tsbuildinfo
