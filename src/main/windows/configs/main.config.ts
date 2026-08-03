@@ -18,7 +18,11 @@ export const mainWindowConfig: WindowConfig = {
     autoHideMenuBar: true,
     frame: false,
     show: false,
-    icon: '../../resources/icon/app.ico',
+    // 窗口图标按平台选择：Windows 用 .ico；Linux/macOS 用 .png（Electron 在 Linux 无法解码 .ico）
+    icon:
+      process.platform === 'win32'
+        ? '../../resources/icon/app.ico'
+        : '../../resources/icon/app.png',
     webPreferences: {
       devTools: true
     }

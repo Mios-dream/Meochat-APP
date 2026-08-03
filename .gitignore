@@ -13,6 +13,6 @@ tsconfig.web.tsbuildinfo
 .claude/settings.local.json
 .vscode
 .sisyphus
-resources/python-runtime/uv.exe
+resources/python-runtime
 resources/kernel-assets
 tsconfig.node.tsbuildinfo

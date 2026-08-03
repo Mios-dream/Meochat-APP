@@ -27,6 +27,8 @@
     "build:win:cuda": "set \"MOECHAT_VARIANT=cuda\" && npm run build && electron-builder --win",
     "build:mac": "npm run build && electron-builder --mac",
     "build:linux": "npm run build && electron-builder --linux",
+    "build:linux:cpu": "set \"MOECHAT_VARIANT=cpu\" && npm run build && electron-builder --linux",
+    "build:linux:cuda": "set \"MOECHAT_VARIANT=cuda\" && npm run build && electron-builder --linux",
     "release": "electron-builder"
   },
   "dependencies": {

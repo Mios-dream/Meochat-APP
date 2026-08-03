@@ -16,14 +16,23 @@
  *   模板 portable.nsi），因此 >2GB 时同样会失败，唯一可行的产物是纯 zip 归档
  *   （由 7za 生成，支持 zip64，无 2GB 限制），用户解压后直接运行 moechat.exe。
  *
- * 一键构建（推荐）：scripts/build-all.ps1 自动完成"准备资源 + 打包"，可选任意变体组合。
+ * 平台支持：
+ * - Windows：lite → NSIS 安装包；cpu/cuda → zip 归档（含离线数据）。
+ * - Linux  ：lite → AppImage / deb / snap；cpu/cuda → zip 归档（同 Windows 原因，>2GB 走 zip64）。
+ *   产物按平台 + 变体区分命名，linux 产物追加 linux 标识，避免与 Windows 同名混淆。
  *
- * 配套 npm scripts（Windows）：
- *   .\scripts\build-all.ps1 -KernelSource <后端dist目录>   # 一键构建全部三个变体（也可加 -Lite/-Cpu/-Cuda 开关选变体）
- *   npm run build:win                # lite，等同 build:win:lite
+ * 一键构建（推荐）：
+ *   scripts/build-all.ps1 -KernelSource <后端dist目录>        # Windows 全部三个变体
+ *   scripts/build-all-linux.ps1 -KernelSource <后端dist目录>  # Linux 全部三个变体
+ *
+ * 配套 npm scripts：
+ *   npm run build:win                # Windows lite，等同 build:win:lite
  *   npm run build:win:lite           # 精简版：NSIS 安装包
  *   npm run build:win:cpu            # cpu 版：zip（需先 prepare-kernel-assets.ps1 -Variant cpu -IncludeData）
  *   npm run build:win:cuda           # cuda 版：zip（需先 prepare-kernel-assets.ps1 -Variant cu130 -IncludeData）
+ *   npm run build:linux              # Linux lite：AppImage/deb/snap
+ *   npm run build:linux:cpu          # Linux cpu 版：zip
+ *   npm run build:linux:cuda         # Linux cuda 版：zip
  *
  * 说明：本文件为函数式配置，electron-builder 自动探测 electron-builder.ts
  * 并通过 jiti 运行时加载；electron-builder.yml 已废弃，避免双配置源造成维护漂移。
@@ -38,14 +47,13 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Configuration } from 'app-builder-lib'
 
+/** 当前配置文件所在目录（即项目根目录） */
+const projectRoot = dirname(fileURLToPath(import.meta.url))
 /** 支持的发布变体 */
 const VARIANTS = ['lite', 'cpu', 'cuda'] as const
 
 /** 发布变体类型 */
 type Variant = (typeof VARIANTS)[number]
-
-/** 当前配置文件所在目录（即项目根目录） */
-const projectRoot = dirname(fileURLToPath(import.meta.url))
 
 /**
  * 各发布变体对应的内核资产包 wheels 后缀，用于构建前校验资源包与变体是否匹配。
@@ -128,6 +136,10 @@ function assertAssetsReady(variant: Variant): void {
 export default function electronBuilderConfig(): Configuration {
   const variant = resolveVariant()
   const isLite = variant === 'lite'
+  // 当前构建所在平台：决定产物格式（win/linux 产物目标不同）。
+  // 原生模块（node-pty/robotjs/uiohook/koffi）按平台编译，故跨平台打包需在目标平台执行，
+  // 此处以构建机平台为准即可覆盖主流程（Windows 在 win 上构建、Linux 在 linux 上构建）。
+  const isLinuxBuild = process.platform === 'linux'
 
   // 构建前置校验：资源包须与所选变体匹配（cpu/cuda 需带数据包）
   assertAssetsReady(variant)
@@ -193,12 +205,14 @@ export default function electronBuilderConfig(): Configuration {
       artifactName: '${name}-${version}.${ext}'
     },
     linux: {
-      target: ['AppImage', 'snap', 'deb'],
+      // 图标：linux 需要 png（build/icon/icon.png），不能复用 win 的 ico
+      icon: 'build/icon/icon.png',
+      target: ['AppImage', 'deb'],
       maintainer: 'electronjs.org',
-      category: 'Utility'
-    },
-    appImage: {
-      artifactName: '${name}-${version}.${ext}'
+      category: 'Utility',
+      executableName: 'moechat',
+      // Linux 产物名显式带 linux 标识，避免与 Windows 同名产物混淆
+      artifactName: '${name}-${version}-linux.${ext}'
     },
     npmRebuild: false,
     publish: {
@@ -210,35 +224,61 @@ export default function electronBuilderConfig(): Configuration {
     }
   }
 
-  // 变体相关配置：lite 用 NSIS 安装包；cpu/cuda 用 zip 归档（NSIS/portable 均有 2GB 上限，装不下离线完整版）
+  // ── 变体 + 平台联合分支：────────────────────────────────────────────
+  // 产物格式规则（win/linux 各自独立）：
+  //   - lite 变体：Windows 用 NSIS 安装包；Linux 用 AppImage + deb。
+  //   - cpu/cuda 变体：体积 > 2GB，NSIS/AppImage/portable 均受 ~2GB 硬上限限制，
+  //     故 win 与 linux 都仅产出 zip 归档（zip64 无 2GB 限制），用户解压后直接运行。
   if (!isLite) {
-    return {
-      ...base,
-      // cpu/cuda 仅产出 zip；产物名内嵌变体后缀（cpu/cuda），避免三个变体相互覆盖同名产物。
-      // 其中 ${name}/${version}/${arch} 为 electron-builder 宏，${variant} 由本文件模板字面量插值。
-      win: {
-        ...base.win,
-        target: ['zip'],
-        artifactName: `\${name}-\${version}-${variant}-\${arch}.zip`
-      }
-    }
+    return isLinuxBuild
+      ? {
+          // Linux cpu/cuda：仅产出 zip（离线完整版 > 2GB，AppImage/deb 无法承载）
+          ...base,
+          linux: {
+            ...base.linux,
+            target: ['zip'],
+            // 产物名内嵌平台 + 变体 + 架构，避免与 Windows 同名产物混淆
+            artifactName: `\${name}-\${version}-linux-${variant}-\${arch}.zip`
+          }
+        }
+      : {
+          // Windows cpu/cuda：仅产出 zip
+          ...base,
+          win: {
+            ...base.win,
+            target: ['zip'],
+            // 产物名内嵌变体后缀（cpu/cuda），避免三个变体相互覆盖同名产物。
+            // 其中 ${name}/${version}/${arch} 为 electron-builder 宏，${variant} 由本文件模板字面量插值。
+            artifactName: `\${name}-\${version}-${variant}-\${arch}.zip`
+          }
+        }
   }
 
-  return {
-    ...base,
-    win: { ...base.win, target: ['nsis'] },
-    nsis: {
-      oneClick: false,
-      allowToChangeInstallationDirectory: true,
-      // 自定义 NSIS 脚本：升级/卸载时保留 exe 同级 appData/（模型数据），
-      // 支撑"便携完整版 + Lite 安装包就地升级"的升级路径
-      include: 'build/nsis/preserve-app-data.nsh',
-      artifactName: '${name}-${version}-setup.${ext}',
-      shortcutName: '${productName}',
-      uninstallDisplayName: '${productName}',
-      createDesktopShortcut: 'always',
-      createStartMenuShortcut: true,
-      installerIcon: 'build/icon/app.ico'
-    }
-  }
+  return isLinuxBuild
+    ? {
+        // Linux lite：AppImage + deb 安装包
+        ...base,
+        linux: {
+          ...base.linux,
+          target: ['AppImage', 'deb']
+        }
+      }
+    : {
+        // Windows lite：NSIS 安装包
+        ...base,
+        win: { ...base.win, target: ['nsis'] },
+        nsis: {
+          oneClick: false,
+          allowToChangeInstallationDirectory: true,
+          // 自定义 NSIS 脚本：升级/卸载时保留 exe 同级 appData/（模型数据），
+          // 支撑"便携完整版 + Lite 安装包就地升级"的升级路径
+          include: 'build/nsis/preserve-app-data.nsh',
+          artifactName: '${name}-${version}-setup.${ext}',
+          shortcutName: '${productName}',
+          uninstallDisplayName: '${productName}',
+          createDesktopShortcut: 'always',
+          createStartMenuShortcut: true,
+          installerIcon: 'build/icon/app.ico'
+        }
+      }
 }

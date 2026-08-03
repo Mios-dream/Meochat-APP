@@ -1,11 +1,20 @@
 /**
  * 前台应用监控
  *
- * 通过 koffi FFI 直接调用 Win32 API 获取当前前台窗口信息，
- * 替代原有的 PowerShell 子进程方案，提升性能和可靠性。
+ * 平台差异实现：
+ * - Windows：通过 koffi FFI 直接调用 Win32 API（GetForegroundWindow 等）
+ *   获取当前前台窗口信息，替代原有的 PowerShell 子进程方案，提升性能与可靠性。
+ * - Linux：通过 xdotool（X11 下的窗口操作工具）查询当前活跃窗口与所属进程，
+ *   无法获取（未安装 xdotool 或非 X11 会话）时降级返回 null。
  */
 
+import { exec } from 'child_process'
+import { promisify } from 'util'
+import fs from 'fs'
 import koffi from 'koffi'
+
+/** 将 exec 转为 Promise 形式，便于在 async 流程中调用 */
+const execAsync = promisify(exec)
 
 export interface ForegroundAppUsagePayload {
   // 进程名称，通常不带扩展名，例如 "chrome"、"notepad"
@@ -67,7 +76,7 @@ export class ForegroundAppMonitor {
   }
 
   async queryCurrentUsage(): Promise<ForegroundAppUsagePayload | null> {
-    const info = this.queryForegroundWindow()
+    const info = await this.queryForegroundWindow()
     if (!info) {
       return null
     }
@@ -174,10 +183,67 @@ export class ForegroundAppMonitor {
   }
 
   /**
+   * 通过 Linux xdotool + /proc 查询当前前台窗口的进程名称、窗口标题和 PID
+   *
+   * 实现要点：
+   * 1. 调用 `xdotool getactivewindow getwindowname getwindowpid` 一次性获取
+   *    当前活跃窗口的 ID、窗口标题和所属进程 PID（每行一个，顺序固定）；
+   * 2. 通过 /proc/<pid>/comm 读取进程名（取首行，去除换行符），
+   *    /proc 不可读时回退使用 "process" 占位名，避免整条查询失败。
+   * 3. 任一命令失败（xdotool 未安装 / Wayland 会话等）均返回 null 优雅降级。
+   */
+  private async queryForegroundWindowByXdotool(): Promise<ForegroundWindowInfo | null> {
+    try {
+      const { stdout } = await execAsync('xdotool getactivewindow getwindowname getwindowpid', {
+        timeout: 2000
+      })
+      // 输出三行：窗口ID / 窗口标题 / 进程PID；窗口标题可能包含换行，按行分割后取首行与末行
+      const lines = stdout.split('\n').map((line) => line.trim())
+      if (lines.length < 3) {
+        return null
+      }
+
+      // 首行为窗口 ID（int 字符串，本实现暂不使用），末行为 PID，中间为窗口标题
+      const pidStr = lines[lines.length - 1]
+      const windowTitle = lines
+        .slice(1, lines.length - 1)
+        .join(' ')
+        .trim()
+      const pid = parseInt(pidStr, 10)
+      if (Number.isNaN(pid) || pid <= 0) {
+        return null
+      }
+
+      // 通过 /proc/<pid>/comm 读取进程名（Linux 下进程名不超过 15 字符，首行即进程名）
+      let processName = 'process'
+      try {
+        const commPath = `/proc/${pid}/comm`
+        if (fs.existsSync(commPath)) {
+          const comm = fs.readFileSync(commPath, 'utf8').trim()
+          if (comm) {
+            processName = comm
+          }
+        }
+      } catch {
+        // /proc 读取失败使用占位名，不中断查询
+      }
+
+      return { processName, windowTitle, pid }
+    } catch {
+      // xdotool 缺失或调用失败，降级返回 null
+      return null
+    }
+  }
+
+  /**
    * 通过 Win32 API 查询当前前台窗口的进程名称、窗口标题和 PID
    * 使用 koffi FFI 直接调用 user32.dll / kernel32.dll，无需启动子进程
    */
-  private queryForegroundWindow(): ForegroundWindowInfo | null {
+  private async queryForegroundWindow(): Promise<ForegroundWindowInfo | null> {
+    if (process.platform === 'linux') {
+      return this.queryForegroundWindowByXdotool()
+    }
+
     if (!this.ensureFFI()) {
       return null
     }
@@ -205,10 +271,7 @@ export class ForegroundAppMonitor {
       // 获取窗口标题
       const titleBuf = new Uint16Array(1024)
       const titleLen = getWindowTextW(hwnd, titleBuf, 1024) as number
-      const windowTitle =
-        titleLen > 0
-          ? String.fromCharCode(...titleBuf.slice(0, titleLen))
-          : ''
+      const windowTitle = titleLen > 0 ? String.fromCharCode(...titleBuf.slice(0, titleLen)) : ''
 
       // 通过 PID 获取进程完整路径，提取进程名称
       let processName = ''
@@ -221,11 +284,12 @@ export class ForegroundAppMonitor {
         if (result) {
           const fullPath = String.fromCharCode(...pathBuf.slice(0, pathSize[0]))
           // 从路径中提取文件名，去掉 .exe 扩展名
-          processName = fullPath
-            .replace(/\\/g, '/')
-            .split('/')
-            .pop()
-            ?.replace(/\.exe$/i, '') || ''
+          processName =
+            fullPath
+              .replace(/\\/g, '/')
+              .split('/')
+              .pop()
+              ?.replace(/\.exe$/i, '') || ''
         }
         closeHandle(hProcess)
       }

@@ -97,7 +97,8 @@ export class SystemMonitor {
   }
 
   /**
-   * 检测是否有游戏运行 (通过进程名检测)
+   * 检测是否有游戏运行（通过进程名检测）
+   * Windows 使用 tasklist，Linux 使用 pgrep 查询进程名。
    */
   private async checkGameRunning(): Promise<boolean> {
     try {
@@ -131,6 +132,29 @@ export class SystemMonitor {
             if (gameProcesses.some((game) => processName.includes(game))) {
               return true
             }
+          }
+        }
+      } else if (process.platform === 'linux') {
+        // Linux 下通过 pgrep 匹配游戏进程名（不含 .exe 后缀）
+        const gameProcesses = [
+          'steam',
+          'csgo',
+          'cs2',
+          'dota2',
+          'overwatch',
+          'genshinimpact',
+          'honkaiimpact',
+          'minecraft',
+          'valheim',
+          'eldenring',
+          'cyberpunk2077'
+        ]
+
+        for (const game of gameProcesses) {
+          // pgrep -x 精确匹配进程名；返回 0 表示找到匹配进程
+          const { stdout } = await execAsync(`pgrep -x ${game}`, { timeout: 2000 })
+          if (stdout.trim()) {
+            return true
           }
         }
       }

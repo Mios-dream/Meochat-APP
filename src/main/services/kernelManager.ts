@@ -113,7 +113,9 @@ class KernelManager {
 
   /** 内嵌 uv 可执行文件路径（uv 自动管理 Python 版本） */
   get portableUvExe(): string {
-    return path.join(this.portableRuntimeDir, 'uv.exe')
+    // 可执行文件名随平台而异：Windows 为 uv.exe，Linux/macOS 为 uv
+    const uvBinaryName = process.platform === 'win32' ? 'uv.exe' : 'uv'
+    return path.join(this.portableRuntimeDir, uvBinaryName)
   }
 
   // ─── 状态管理 ───────────────────────────────────────
@@ -388,34 +390,44 @@ class KernelManager {
 
   /**
    * 解析安装包内置内核资产包（moechat-assets-*.zip）
+   * 资产包内嵌平台 + 变体标识（moechat-assets-v*-{win|linux}-{lite|cpu|cu130}.zip），
+   * 严格按当前平台过滤，避免跨平台误取（如 Windows wheels 错装到 Linux）。
    * 优先取名称排序最靠后的包（版本号在文件名中，字典序即版本序）；
    * 未找到时返回 null。
    */
   private resolveAssetsPackage(): string | null {
-    return this.resolveBundlePackage('moechat-assets-')
+    return this.resolveBundlePackage('moechat-assets-', true)
   }
 
   /**
    * 解析安装包内置数据包（moechat-data-*.zip）
+   * 数据包内容为平台/变体无关的通用数据（模型/资源/助手/motion），产物名不带任何后缀，
+   * 因此不做平台过滤，任意平台共用同一份数据包。
    * 精简版不含数据包，返回 null（模型由后端首次运行自动下载）。
    */
   private resolveDataPackage(): string | null {
-    return this.resolveBundlePackage('moechat-data-')
+    return this.resolveBundlePackage('moechat-data-', false)
   }
 
   /**
    * 在 kernel-assets 内置资源目录中查找指定前缀的 zip 包。
    * @param prefix 包名前缀（如 'moechat-assets-'、'moechat-data-'）
+   * @param requirePlatformMatch 是否按当前平台过滤（资产包 true；数据包 false）
    * @returns 匹配的 zip 绝对路径；无匹配返回 null
    */
-  private resolveBundlePackage(prefix: string): string | null {
+  private resolveBundlePackage(prefix: string, requirePlatformMatch: boolean): string | null {
     const bundleDir = this.portableKernelAssetsDir
     if (!fs.existsSync(bundleDir)) return null
+
+    // 当前平台标识：win32→win，darwin→mac，其余（linux 等）→linux
+    const platformTag =
+      process.platform === 'win32' ? 'win' : process.platform === 'darwin' ? 'mac' : 'linux'
 
     try {
       const zips = fs
         .readdirSync(bundleDir)
         .filter((name) => name.startsWith(prefix) && name.endsWith('.zip'))
+        .filter((name) => !requirePlatformMatch || this.matchesCurrentPlatform(name, platformTag))
       if (zips.length === 0) return null
       zips.sort()
       return path.join(bundleDir, zips[zips.length - 1])
@@ -423,6 +435,19 @@ class KernelManager {
       // 读取异常交由上层报错
       return null
     }
+  }
+
+  /**
+   * 判断 zip 包名是否属于当前平台。
+   * 包名必须内嵌与当前平台一致的标识（-win-/-win.zip、-linux-/-linux.zip、-mac-/-mac.zip）：
+   * 资产包形如 moechat-assets-v*-{win|linux}-{lite|cpu|cu130}.zip，
+   * 数据包形如 moechat-data-v*-{win|linux}.zip。不匹配当前平台的包一律忽略，
+   * 不兼容旧的无平台标识命名（未发布，无需兼容）。
+   * @param zipName zip 文件名
+   * @param platformTag 当前平台标识（win/linux/mac）
+   */
+  private matchesCurrentPlatform(zipName: string, platformTag: string): boolean {
+    return zipName.includes(`-${platformTag}-`) || zipName.endsWith(`-${platformTag}.zip`)
   }
 
   /**
@@ -781,6 +806,175 @@ class KernelServiceManager {
     return path.join(resolveLogDir(), 'core.log')
   }
 
+  /** 后端 PID 持久化文件路径（用于异常退出后下次启动时回收残留进程） */
+  private get backendPidFile(): string {
+    return path.join(this.kernelManager.kernelRoot, 'backend.pid')
+  }
+
+  /**
+   * 校验指定 PID 对应的进程是否存活。
+   * 使用 process.kill(pid, 0) 发送空信号探测，跨平台可用。
+   * @param pid 进程 PID
+   * @returns true 表示进程存在，false 表示已退出
+   */
+  private isProcessAlive(pid: number): boolean {
+    try {
+      process.kill(pid, 0)
+      return true
+    } catch (error) {
+      // EPERM: 进程存在但无权限发送信号；ESRCH: 进程不存在
+      return (error as NodeJS.ErrnoException).code === 'EPERM'
+    }
+  }
+
+  /**
+   * 校验指定 PID 是否为本应用启动的后端进程。
+   * 通过命令行特征（main_web.py / uv run）识别，避免 PID 被系统复用后误杀其他进程。
+   * @param pid 进程 PID
+   * @returns true 表示确认为本应用后端进程
+   */
+  private async isOurBackendProcess(pid: number): Promise<boolean> {
+    if (process.platform === 'win32') {
+      // Windows：通过 WMI 查询命令行
+      try {
+        const { stdout } = await execAsync(
+          `powershell -NoProfile -Command "(Get-CimInstance Win32_Process -Filter 'ProcessId=${pid}').CommandLine"`,
+          { timeout: 5000 }
+        )
+        return stdout.includes('main_web')
+      } catch {
+        return false
+      }
+    }
+    // Linux/macOS：读取 /proc/<pid>/cmdline（以空字符分隔，需替换后检索）
+    try {
+      const cmdline = fs.readFileSync(`/proc/${pid}/cmdline`, 'utf8').replace(/\0/g, ' ')
+      return cmdline.includes('main_web')
+    } catch {
+      return false
+    }
+  }
+
+  /**
+   * 强制终止指定进程的整棵进程树。
+   * - Windows：taskkill /T /F 递归终止
+   * - Linux/macOS：先按进程组强杀（node-pty 以 setsid 启动，进程组号即 PID），
+   *   再遍历 /proc 递归终止所有后代进程，兜底覆盖脱离进程组的场景
+   * @param pid 根进程 PID
+   */
+  private async killProcessTree(pid: number): Promise<void> {
+    if (process.platform === 'win32') {
+      await execAsync(`taskkill /PID ${pid} /T /F`, { timeout: 5000 }).catch(() => {
+        /* 进程可能已退出，忽略 */
+      })
+      return
+    }
+    // 先按进程组强杀（node-pty 的子进程组与 PID 相同）
+    try {
+      process.kill(-pid, 'SIGKILL')
+    } catch {
+      /* 进程组可能已不存在，继续走兜底 */
+    }
+    // 遍历 /proc 递归终止后代进程，覆盖 setpgid 脱离进程组的子进程
+    await this.killDescendants(pid)
+    // 最后直接终止目标进程（仅杀后代时目标可能仍存活）
+    try {
+      process.kill(pid, 'SIGKILL')
+    } catch {
+      /* 目标进程可能已退出 */
+    }
+  }
+
+  /**
+   * 遍历 /proc 构建父子进程映射，按广度优先递归终止指定进程的所有后代。
+   * 仅在 Linux 平台生效；读取失败时静默跳过。
+   * @param rootPid 根进程 PID
+   */
+  private async killDescendants(rootPid: number): Promise<void> {
+    if (process.platform !== 'linux') return
+    const childrenOf = new Map<number, number[]>()
+    let dirs: string[]
+    try {
+      dirs = fs.readdirSync('/proc')
+    } catch {
+      return
+    }
+    // 一次性读取 /proc 全部进程的父进程关系，避免多次 IO
+    for (const name of dirs) {
+      if (!/^\d+$/.test(name)) continue
+      try {
+        const stat = fs.readFileSync(`/proc/${name}/stat`, 'utf8')
+        const closeParen = stat.lastIndexOf(')')
+        const fields = stat
+          .slice(closeParen + 1)
+          .trim()
+          .split(/\s+/)
+        const ppid = parseInt(fields[1], 10)
+        if (Number.isInteger(ppid) && ppid > 0) {
+          const list = childrenOf.get(ppid) ?? []
+          list.push(parseInt(name, 10))
+          childrenOf.set(ppid, list)
+        }
+      } catch {
+        /* 进程可能已退出，跳过 */
+      }
+    }
+    // 广度优先遍历后代并逐个强杀
+    const queue = [rootPid]
+    const seen = new Set<number>()
+    while (queue.length > 0) {
+      const current = queue.shift()!
+      if (seen.has(current)) continue
+      seen.add(current)
+      for (const child of childrenOf.get(current) ?? []) {
+        try {
+          process.kill(child, 'SIGKILL')
+        } catch {
+          /* 子进程已退出 */
+        }
+        queue.push(child)
+      }
+    }
+  }
+
+  /**
+   * 回收上次异常退出遗留的孤儿后端进程。
+   * 读取持久化 PID 文件，校验进程存活且确认为本应用后端后，按进程树强制终止并清理文件。
+   * 该方法是幂等的：无 PID 文件或进程已退出时直接返回。
+   */
+  async reapStaleBackend(): Promise<void> {
+    const pidFile = this.backendPidFile
+    let stalePid = -1
+    try {
+      stalePid = parseInt(fs.readFileSync(pidFile, 'utf8').trim(), 10)
+    } catch {
+      // 无 PID 文件或内容无效，无需回收
+      return
+    }
+    if (!Number.isInteger(stalePid) || stalePid <= 0) {
+      fs.rmSync(pidFile, { force: true })
+      return
+    }
+    if (!this.isProcessAlive(stalePid)) {
+      fs.rmSync(pidFile, { force: true })
+      return
+    }
+    // 校验进程身份，避免 PID 复用后误杀无关进程
+    const isOurs = await this.isOurBackendProcess(stalePid)
+    if (!isOurs) {
+      log.warn(`[KernelManager] PID 文件中的进程 (${stalePid}) 非本应用后端，跳过回收`)
+      fs.rmSync(pidFile, { force: true })
+      return
+    }
+    log.info(`[KernelManager] 检测到上次异常退出遗留的后端进程 (PID: ${stalePid})，正在强制回收...`)
+    this.addSystemLog(
+      `[系统] 检测到上次异常退出的残留后端进程 (PID: ${stalePid})，正在强制清理...\r\n`
+    )
+    await this.killProcessTree(stalePid)
+    fs.rmSync(pidFile, { force: true })
+    this.addSystemLog('[系统] 残留后端进程已清理，端口已释放\r\n')
+  }
+
   /** 原始数据流广播，发送原始二进制数据给渲染进程 */
   private broadcastStream(data: Buffer): void {
     broadcastToAllWindows(CHANNELS.KERNEL_SERVICE_STREAM_EVENT, data)
@@ -790,9 +984,11 @@ class KernelServiceManager {
 
   private constructor() {
     this.kernelManager = KernelManager.getInstance()
+    // 启动时先回收上次异常退出遗留的孤儿后端进程，避免进程残留与端口占用
+    void this.reapStaleBackend()
     // 确保应用退出时正确关闭后端服务
-    app.on('before-quit', () => {
-      this.stopBackend()
+    app.on('before-quit', async () => {
+      await this.stopBackend()
     })
   }
 
@@ -918,12 +1114,17 @@ class KernelServiceManager {
 
   /**
    * 启动后端 Python 服务
-   * 使用 uv run 启动内核的 main.py
+   * 使用内核虚拟环境（.venv）中的 Python 直接启动 main_web.py，
+   * 绕开 uv run 包装层，保证 PID 即服务进程本身，终止更可靠；
+   * 依赖同步仍由 uv sync 在启动前完成
    */
   async startBackend(): Promise<{ success: boolean; error?: string }> {
     if (this.backendRunning) {
       return { success: true }
     }
+
+    // 启动前先回收上次异常退出遗留的孤儿进程，确保端口（如 8001）不被残留服务占用
+    await this.reapStaleBackend()
 
     const kernelPath = await this.kernelManager.getActiveKernelPath()
     if (!kernelPath) {
@@ -942,9 +1143,9 @@ class KernelServiceManager {
       return { success: false, error: `未找到启动脚本: ${scriptPath}` }
     }
 
-    log.info(`[KernelManager] 启动后端服务: uv run ${scriptPath} (cwd: ${kernelPath})`)
+    log.info(`[KernelManager] 启动后端服务: ${pythonPath} ${scriptPath} (cwd: ${kernelPath})`)
     this.addSystemLog(`[系统] 正在启动内核后端服务...\r\n`)
-    this.addSystemLog(`[系统] uv run ${scriptPath}\r\n`)
+    this.addSystemLog(`[系统] ${pythonPath} ${scriptPath}\r\n`)
     this.addSystemLog(`[系统] 工作目录: ${kernelPath}\r\n`)
 
     try {
@@ -982,8 +1183,10 @@ class KernelServiceManager {
         this.addSystemLog(`[系统] 依赖同步失败: ${syncMsg}，继续启动...\r\n`)
       }
 
-      // 使用 pty 启动后端（支持终端渲染与 ANSI 转义序列）
-      const backendTerm = pty.spawn(uvExe, ['run', scriptPath], {
+      // 使用 pty 直接启动后端虚拟环境的 Python（支持终端渲染与 ANSI 转义序列）
+      // 绕开 uv run 包装层，使 backendPid 即 FastAPI 服务进程本身，终止更直接可靠；
+      // 依赖已在启动前通过 uv sync 同步，直接运行 venv Python 不丢失环境一致性
+      const backendTerm = pty.spawn(pythonPath, [scriptPath], {
         cwd: kernelPath,
         name: 'xterm-256color',
         cols: 120,
@@ -1000,6 +1203,13 @@ class KernelServiceManager {
       this.backendPid = backendTerm.pid
       this.backendExitCode = null
 
+      // 持久化后端 PID，供异常退出后下次启动时回收残留进程
+      try {
+        fs.writeFileSync(this.backendPidFile, String(this.backendPid), 'utf8')
+      } catch (error) {
+        log.warn('[KernelManager] 持久化后端 PID 失败:', (error as Error).message)
+      }
+
       backendTerm.onData((data: string) => {
         const buf = Buffer.from(data, 'utf-8')
         this.broadcastStream(buf)
@@ -1011,6 +1221,8 @@ class KernelServiceManager {
         this.backendProcess = null
         this.backendPid = -1
         this.backendExitCode = exitCode
+        // 进程自然退出后清理持久化 PID 文件，避免残留失效记录
+        fs.rmSync(this.backendPidFile, { force: true })
         this.addSystemLog(`[系统] 后端服务已退出 (退出码: ${exitCode}, 信号: ${signal})`)
         this.notifyServiceState()
         log.info(`[KernelManager] 后端服务已退出 (code=${exitCode}, signal=${signal})`)
@@ -1047,22 +1259,11 @@ class KernelServiceManager {
     // 强制结束整个进程树（兜底保障，确保子进程也被清理）
     const pid = this.backendPid
     if (pid > 0) {
-      try {
-        if (process.platform === 'win32') {
-          await execAsync(`taskkill /PID ${pid} /T /F`, { timeout: 5000 }).catch(() => {
-            /* 忽略 taskkill 的返回结果 */
-          })
-        } else {
-          try {
-            process.kill(-pid, 'SIGKILL')
-          } catch {
-            process.kill(pid, 'SIGKILL')
-          }
-        }
-      } catch {
-        // process may already be dead
-      }
+      await this.killProcessTree(pid)
     }
+
+    // 清理持久化 PID 文件
+    fs.rmSync(this.backendPidFile, { force: true })
 
     // 重置状态
     this.backendProcess = null

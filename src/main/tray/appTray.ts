@@ -1,6 +1,10 @@
 import { Menu, Tray } from 'electron'
 import { createWindow, mainWindowConfig } from '../windows'
-import appIcon from '/resources/icon/app.ico?asset'
+// 托盘图标按平台选择：Windows 用 .ico；Linux/macOS 用 .png（Electron 在 Linux 无法解码 .ico）
+import appIconWin from '/resources/icon/app.ico?asset'
+import appIconLinux from '/resources/icon/app.png?asset'
+
+const appIcon = process.platform === 'win32' ? appIconWin : appIconLinux
 
 let tray: Tray
 

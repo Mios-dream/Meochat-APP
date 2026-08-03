@@ -8,10 +8,13 @@
     （uv sync从车轮构建.vev），实现自举。
 
     三种资产包形态（由后端 build-asset-bundle.ps1 产出）：
-    - 精简版（GitHub Release）：moechat-assets-*-lite.zip（仅源码，无 wheels/数据），
+    - 精简版（GitHub Release）：moechat-assets-*-{win|linux}-lite.zip（仅源码，无 wheels/数据），
       依赖与模型首次运行时在线安装。用 -Lite 选取。
-    - 完整版 CPU/CUDA（云盘）：moechat-assets-*-{cpu|cu130}.zip（源码+wheels）+
+    - 完整版 CPU/CUDA（云盘）：moechat-assets-*-{win|linux}-{cpu|cu130}.zip（源码+wheels）+
       moechat-data-*.zip 数据包；用 -Variant cpu|cu130 + -IncludeData 选取。
+
+    Linux 打包：需先执行 scripts/build-all-linux.ps1（或 prepare-kernel-assets.ps1
+    -Platform linux）拉取 linux wheels 资产包，再进行 electron-builder --linux。
 
 .PARAMETER KernelSource
     包含zip包的后端dist目录的路径
@@ -29,6 +32,9 @@
     cuda 为 cu130（CUDA 12.13 wheels）的别名，二者等价。
     当为空时自动选择最新匹配包。
     与 -Lite 互斥（精简版资产包不带变体后缀）。
+.PARAMETER Platform
+    目标平台："windows" | "linux"。默认取当前系统平台。
+    用于匹配资产包名中的平台标识（-win- / -linux-）。
 .PARAMETER Lite
     精简版模式：仅选取内核源码资产包（moechat-assets-*-lite.zip，无 wheels）。
     依赖与模型由首次运行在线安装。与 -Variant 互斥。
@@ -45,6 +51,9 @@
 .EXAMPLE
     # 完整版 CUDA：内核资产包（cu130 wheels）+ 数据包
     .\scripts\prepare-kernel-assets.ps1 -KernelSource D:\python\MoeChat\dist -Variant cu130 -IncludeData
+.EXAMPLE
+    # Linux CPU：选用 linux 平台资产包
+    .\scripts\prepare-kernel-assets.ps1 -KernelSource D:\python\MoeChat\dist -Variant cpu -IncludeData -Platform linux
 #>
 
 param(
@@ -53,6 +62,8 @@ param(
     [string]$AssetsPackage = "",
     [string]$DataPackage = "",
     [string]$Variant = "",
+    [ValidateSet("windows", "linux", "")]
+    [string]$Platform = "",
     [string]$OutputDir = "resources/kernel-assets",
     [switch]$IncludeData,
     [switch]$Lite
@@ -89,7 +100,13 @@ function Select-Package {
     }
     if ($VariantFilter) {
         $escaped = [regex]::Escape($VariantFilter)
-        $candidates = $candidates | Where-Object { $_.Name -match "-${escaped}\.zip$" }
+        # VariantFilter 形如 "-win-cpu" 或 "-win-"（平台前缀 + 可选变体）：
+        #   "-win-cpu" 精确匹配 moechat-assets-*-win-cpu.zip；
+        #   "-win-"    匹配该平台任意变体（lite/cpu/cu130）。
+        # 用 [a-z0-9]* 兼容两者（尾部变体段可为空）。
+        # 注意：VariantFilter 本身已含前导 '-'（如 "-win-cpu"），正则不能再叠加 '-'，
+        # 否则会拼出 "--win-cpu" 导致永远匹配不上单横线文件名。
+        $candidates = $candidates | Where-Object { $_.Name -match "${escaped}[a-z0-9]*\.zip$" }
         if ($candidates.Count -eq 0) {
             return $null
         }
@@ -149,13 +166,21 @@ if ($Variant -eq "cuda") {
     $Variant = "cu130"
 }
 
+# 解析目标平台：未显式指定时以当前系统为准（Windows 匹配 -win-，Linux 匹配 -linux-）
+if (-not $Platform) {
+    $Platform = if ($env:OS -match "Windows") { "windows" } else { "linux" }
+}
+$platformTag = if ($Platform -eq "windows") { "win" } else { "linux" }
+
 # 校验参数：-Lite 与 -Variant 互斥（精简版资产包不带变体后缀）
 if ($Lite -and $Variant) {
     Write-Error "参数冲突：-Lite 与 -Variant 不能同时指定（精简版为 moechat-assets-*-lite.zip，无变体后缀）"
     exit 1
 }
 
-# 确定资产包筛选器：-Lite 匹配 lite 包；-Variant 匹配 cpu/cu130；否则取最新版本
+# 确定资产包筛选器：-Lite 匹配 lite 包；-Variant 匹配 cpu/cu130；否则取最新版本。
+# 注意：资产包名内嵌平台标识（moechat-assets-*-{win|linux}-lite/cpu/cu130.zip），
+# 由 Select-Package 的 VariantFilter 匹配后缀，这里额外以 Platform 作为同名筛选。
 $assetFilter = ""
 if ($Lite) {
     $assetFilter = "lite"
@@ -163,10 +188,11 @@ if ($Lite) {
     $assetFilter = $Variant
 }
 
-# 选择资产包（内核源码 + wheels；精简版仅源码）
-$assets = Select-Package -Dir $KernelSource -Prefix "moechat-assets" -Exact $AssetsPackage -VariantFilter $assetFilter
+# 选择资产包（内核源码 + wheels；精简版仅源码），VariantFilter 附加平台标识后缀匹配
+$platformSuffix = "-${platformTag}-${assetFilter}"
+$assets = Select-Package -Dir $KernelSource -Prefix "moechat-assets" -Exact $AssetsPackage -VariantFilter $platformSuffix
 if (-not $assets) {
-    $hint = if ($Lite) { "精简版内核资产包 (moechat-assets-*-lite.zip)" } else { "内核资产包 (moechat-assets-*.zip，筛选: '$assetFilter')" }
+    $hint = if ($Lite) { "精简版内核资产包 (moechat-assets-*-${platformTag}-lite.zip)" } else { "内核资产包 (moechat-assets-*.zip，筛选: '$platformSuffix')" }
     Write-Error "未找到${hint}: $KernelSource"
     exit 1
 }
@@ -174,13 +200,14 @@ if (-not $assets) {
 # 未指定筛选且 dist 中存在多个变体包时提示，避免静默选错
 if (-not $AssetsPackage -and -not $Lite -and -not $Variant) {
     $variantCount = @(Get-ChildItem -LiteralPath $KernelSource -Filter "moechat-assets-*.zip" -File -ErrorAction SilentlyContinue |
-        Where-Object { $_.Name -match '-(lite|cpu|cu130)\.zip$' }).Count
+        Where-Object { $_.Name -match "-${platformTag}-(lite|cpu|cu130)\.zip$" }).Count
     if ($variantCount -gt 1) {
         Write-Host "提示：未指定 -Lite / -Variant，将选取最新版本资产包 $($assets.Name)。建议显式指定变体。" -ForegroundColor DarkYellow
     }
 }
 
 # 选择数据包（仅完整版）
+# 数据包内容为平台无关的通用数据，产物名不带平台/变体后缀，因此不按平台过滤。
 $data = $null
 if ($IncludeData) {
     $data = Select-Package -Dir $KernelSource -Prefix "moechat-data" -Exact $DataPackage -VariantFilter ""

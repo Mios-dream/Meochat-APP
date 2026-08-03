@@ -97,7 +97,7 @@ https://github.com/user-attachments/assets/3878b0fc-fefb-49b6-b987-5f663cce9b48
 | -------- | --------- | ------------------- |
 | Node.js  | ≥ 22.19.0 | JavaScript 运行环境 |
 | npm/yarn | 最新      | 包管理工具          |
-| 操作系统 | Windows   | 仅支持windows       |
+| 操作系统 | Windows / Linux | Windows 在本机构建；Linux 版需在 Linux 或 WSL2 环境构建（原生模块与 AppImage/deb 工具链仅在 Linux 可用） |
 
 ### 💻 安装与运行
 
@@ -134,10 +134,11 @@ https://github.com/user-attachments/assets/3878b0fc-fefb-49b6-b987-5f663cce9b48
 4. **构建应用**
 
    ```bash
-   # 通用构建
+   # 通用编译（typecheck + electron-vite build）
    npm run build
 
-   # Windows 一键构建全部三个变体（lite / cpu / cuda），直接运行 PowerShell 脚本
+   # ── Windows ─────────────────────────────────────────────
+   # 一键构建全部三个变体（lite / cpu / cuda），直接运行 PowerShell 脚本
    .\scripts\build-all.ps1 -KernelSource D:\python\MoeChat\dist
 
    # 只构建指定变体（跳过其余）：可自由组合 -Lite / -Cpu / -Cuda
@@ -147,21 +148,40 @@ https://github.com/user-attachments/assets/3878b0fc-fefb-49b6-b987-5f663cce9b48
    npm run build:win         # 精简版 lite：NSIS 安装包
    npm run build:win:cpu     # cpu 版：zip（离线可用）
    npm run build:win:cuda    # cuda 版：zip（离线可用）
+
+   # ── Linux ──────────────────────────────────────────────
+   # 需在 Linux（或 WSL2）执行：原生模块（node-pty/robotjs/uiohook 等）按平台编译，
+   # AppImage/deb 工具链也仅在 Linux 可用
+   pwsh ./scripts/build-all-linux.ps1 -KernelSource D:\python\MoeChat\dist
+
+   # 只构建指定变体
+   pwsh ./scripts/build-all-linux.ps1 -KernelSource D:\python\MoeChat\dist -Cpu -Cuda
+
+   # 单独构建某个变体
+   npm run build:linux         # Linux lite：AppImage + deb
+   npm run build:linux:cpu     # Linux cpu 版：zip（离线可用）
+   npm run build:linux:cuda    # Linux cuda 版：zip（离线可用）
    ```
 
-   说明：`build-all.ps1` 省略 `-KernelSource` 时 PowerShell 会交互式提示输入；省略全部
-   变体开关时默认构建三个变体。
+   说明：`build-all.ps1` / `build-all-linux.ps1` 省略 `-KernelSource` 时 PowerShell 会交互式
+   提示输入；省略全部变体开关时默认构建三个变体。
 
    三种变体说明：
 
-   - **lite（精简版）**：仅含内核源码资产包，依赖与模型首次运行在线安装，NSIS 安装包，体积 < 2GB。
-   - **cpu（完整版 CPU）**：CPU wheels + 数据包，离线开箱即用，zip 压缩包（含数据后体积 > 2GB，超出 NSIS 上限）。
+   - **lite（精简版）**：仅含内核源码资产包，依赖与模型首次运行在线安装；Windows 为 NSIS 安装包，Linux 为 AppImage + deb，体积 < 2GB。
+   - **cpu（完整版 CPU）**：CPU wheels + 数据包，离线开箱即用，zip 压缩包（含数据后体积 > 2GB，超出 NSIS/AppImage 上限）。
    - **cuda（完整版 CUDA）**：CUDA 12.13 wheels + 数据包，离线开箱即用，zip 压缩包。
 
-   各变体的内核资产包均来自后端 dist 目录，由 `scripts/prepare-kernel-assets.ps1` 挑选拷贝：
-   - lite：`moechat-assets-*-lite.zip`
-   - cpu：`moechat-assets-*-cpu.zip` + `moechat-data-*.zip`
-   - cuda：`moechat-assets-*-cu130.zip` + `moechat-data-*.zip`
+   资产包与数据包命名（由后端 `build-asset-bundle.ps1` / `build-data-bundle.ps1` 产出，
+   `scripts/prepare-kernel-assets.ps1` 按平台/变体挑选拷贝到 `resources/kernel-assets`）：
+   - 资产包（区分平台 + 变体）：`moechat-assets-v{ver}-{win|linux}-{lite|cpu|cu130}.zip`
+   - 数据包（平台/变体无关的通用数据）：`moechat-data-v{ver}.zip`
+   - lite 变体仅含资产包；cpu/cuda 变体 = 对应资产包 + 数据包
+
+   Linux 构建前置要求：
+   - 后端需产出 Linux 资产包：`build-asset-bundle.ps1 -Platform linux`（在 Windows 上亦可执行，仅下载 manylinux 轮子）
+   - 准备 Linux 版 uv：`scripts\build-python-runtime.ps1 -Platform linux`
+   - 目标发行版需 glibc ≥ 2.28（Ubuntu 18.04+ / Debian 10+），torch 2.7+ 仅发布 manylinux_2_28 轮子
 
 ## 📂 项目结构
 
