@@ -22,23 +22,41 @@ const execAsync = promisify(exec)
 
 const KERNEL_DIR_NAME = 'kernel'
 const CURRENT_KERNEL_DIR = 'current'
-const VERSION_FILE_NAME = 'version.txt'
+const MANIFEST_FILE_NAME = 'manifest.json'
 
-/**
- * 比较两个点分版本号（如 1.7.0 / 1.10.1）。
- * 逐段按数值比较，避免字符串字典序导致的 1.10 < 1.7 误判。
- * @returns a 比 b 新返回正数，旧返回负数，相等返回 0
- */
-function compareVersion(a: string, b: string): number {
-  const partsA = a.split('.').map((n) => parseInt(n, 10) || 0)
-  const partsB = b.split('.').map((n) => parseInt(n, 10) || 0)
-  const length = Math.max(partsA.length, partsB.length)
-  for (let i = 0; i < length; i++) {
-    const numA = partsA[i] ?? 0
-    const numB = partsB[i] ?? 0
-    if (numA !== numB) return numA - numB
+/** 内核资产包信息（从 kernel-assets/manifest.json 权威声明解析） */
+interface AssetBundleInfo {
+  /** 资产包文件名（如 moechat-assets-v1.7.0-win-lite.zip） */
+  file: string
+  /** 内核版本号（如 1.7.0） */
+  version: string
+  /** 构建唯一标识：同一版本不同内容时不同，用于同版本内容变更检测 */
+  buildId: string
+  /** 变体类型（lite / cpu / cuda） */
+  type: string
+  /** 目标平台（windows / linux） */
+  platform: string
+}
+
+/** 已安装内核的版本指纹（从 kernelDir/manifest.json 读取） */
+interface InstalledKernelFingerprint {
+  version: string
+  buildId: string
+}
+
+/** kernel-assets/manifest.json 权威声明的原始结构 */
+interface KernelAssetsDeclaration {
+  assets?: {
+    file: string
+    version: string
+    build_id: string
+    type: string
+    platform: string
   }
-  return 0
+  data?: {
+    file: string
+    version: string
+  }
 }
 
 /** 向所有窗口广播原始数据流 */
@@ -61,7 +79,7 @@ class KernelManager {
     error: null
   }
 
-  /** 操作日志（uv sync、模型下载等，存储原始 Buffer，保留 ANSI 转义序列） */
+  /** 操作日志（uv sync 依赖安装等，存储原始 Buffer，保留 ANSI 转义序列） */
   private operationLogs: Buffer[] = []
   private readonly maxOperationLogs = 200
 
@@ -96,11 +114,6 @@ class KernelManager {
     return dir
   }
 
-  /** 版本文件路径 */
-  private get versionFilePath(): string {
-    return path.join(this.kernelDir, VERSION_FILE_NAME)
-  }
-
   // ─── 便携 uv 运行时路径 ───────────────────────
 
   /** 内嵌便携 uv 运行时根目录 */
@@ -121,24 +134,17 @@ class KernelManager {
   // ─── 状态管理 ───────────────────────────────────────
 
   private loadState(): void {
-    try {
-      const versionPath = this.versionFilePath
-      const version = fs.readFileSync(versionPath, 'utf8').trim()
-      this.state.currentVersion = version
-      log.info(`当前内核版本: v${version}`)
-    } catch (error: unknown) {
-      const err = error as NodeJS.ErrnoException
-      if (err.code === 'ENOENT') {
-        log.info('未检测到已安装的内核，需要下载')
-        this.state.currentVersion = null
-      } else {
-        log.error('加载内核状态失败:', err.message)
-        this.state.currentVersion = null
-      }
+    const installed = this.readInstalledFingerprint()
+    if (installed) {
+      this.state.currentVersion = installed.version
+      log.info(`当前内核版本: v${installed.version}`)
+    } else {
+      log.info('未检测到已安装的内核，需要下载')
+      this.state.currentVersion = null
     }
   }
 
-  // 通知所有窗口内核状态更新
+  /** 向所有窗口广播内核更新状态 */
   private notifyState(): void {
     BrowserWindow.getAllWindows().forEach((win) => {
       if (!win.isDestroyed()) {
@@ -147,7 +153,7 @@ class KernelManager {
     })
   }
 
-  // 更新操作状态和文本
+  /** 更新操作状态与文本（同时清空 error 字段） */
   private setOperation(status: KernelUpdateState['operationStatus'], text: string): void {
     this.state.operationStatus = status
     this.state.statusText = text
@@ -278,13 +284,9 @@ class KernelManager {
   }
 
   /**
-   * 自举初始化内核运行环境（安装包内置 zip 资源 → appData）
-   * 1. 校验便携 uv 运行时完整性
-   * 2. 解析内置资产包版本并与已装内核版本比对，决定：
-   *    - 全新安装：解压资产包（源码 + wheels），完整版额外解压数据包（data/ 模型）
-   *    - 就地升级：保留 data/（模型），仅替换内核源码与 wheels，随后重跑 uv sync
-   * 3. 虚拟环境未就绪时，运行 uv sync 安装依赖（使用内置 wheels）
-   * 任一环节失败即返回错误，由调用方停止运行
+   * 自举初始化内核运行环境：
+   * 校验便携 uv → 解析内置资产包并与已装内核比对（全新安装/就地升级）→ 虚拟环境未就绪时运行 uv sync。
+   * 任一环节失败即返回错误，由调用方停止运行。
    */
   async bootstrapKernel(): Promise<{ success: boolean; error?: string }> {
     try {
@@ -296,39 +298,34 @@ class KernelManager {
         }
       }
 
-      // 2. 恢复就地升级中断时残留的数据备份（防止模型数据遗弃）
-      this.restoreDataUpgradeBackup()
-
-      // 3. 解析安装包内置资产包（缺失则无法自举/升级）
-      const assetsPackage = this.resolveAssetsPackage()
-      if (!assetsPackage) {
+      // 2. 解析安装包内置资产包（权威声明缺失或指向文件缺失 → 安装错误）
+      const assetsInfo = this.resolveAssetsPackage()
+      if (!assetsInfo) {
         return { success: false, error: '安装包缺少内核资产包，请重新下载安装包。' }
       }
+      const assetsPackage = path.join(this.portableKernelAssetsDir, assetsInfo.file)
 
-      // 3.1 版本比对：内置资产包版本高于已装内核版本 → 就地升级
+      // 3.1 内容比对：未安装或 buildId 与内置包不一致 → 就地替换源码
       const kernelExists = fs.existsSync(path.join(this.kernelDir, 'pyproject.toml'))
-      const installedVersion = this.readInstalledVersion()
-      const bundledVersion = this.parseBundleVersion(assetsPackage)
-      const needUpgrade =
-        kernelExists &&
-        installedVersion != null &&
-        bundledVersion != null &&
-        compareVersion(bundledVersion, installedVersion) > 0
+      const installedFingerprint = this.readInstalledFingerprint()
+      const needReplace = !kernelExists || this.needKernelReplace(assetsInfo, installedFingerprint)
 
-      if (!kernelExists || needUpgrade) {
+      if (needReplace) {
         this.setOperation(
           'installing',
-          needUpgrade ? '正在升级内核（保留模型数据）...' : '正在解压内核资源包...'
+          kernelExists ? '正在升级内核（保留依赖环境）...' : '正在解压内核资源包...'
         )
         this.state.progress = 0
         this.notifyState()
         log.info(
-          `[KernelManager] 内核自举开始: 已装版本=${installedVersion ?? '无'} 内置版本=${bundledVersion ?? '未知'} 就地升级=${needUpgrade}`
+          `[KernelManager] 内核自举开始: 已装版本=${installedFingerprint?.version ?? '无'} ` +
+            `内置版本=${assetsInfo.version} 构建标识=${assetsInfo.buildId} 就地替换=${kernelExists && needReplace}`
         )
 
-        if (needUpgrade) {
-          // 就地升级：保留 data/（模型），替换内核源码与 wheels
-          await this.replaceKernelKeepingData(assetsPackage, (ratio) => {
+        if (kernelExists) {
+          // 就地升级：保留 .venv；wheels/data 按新包是否携带决定去留
+          const dataPackage = this.resolveDataPackage()
+          await this.replaceKernelKeepingData(assetsPackage, dataPackage, (ratio) => {
             this.state.progress = Math.round(ratio * 90)
             this.notifyState()
           })
@@ -353,27 +350,30 @@ class KernelManager {
 
         this.state.progress = 90
         this.notifyState()
-        log.info(`[KernelManager] 内核资源就绪，来源: ${assetsPackage}`)
+        log.info(`[KernelManager] 内核资源就绪，来源: ${assetsInfo.file}`)
       }
 
       // 刷新内核版本号（setupKernelEnvironment 依赖 currentVersion）
-      this.state.currentVersion = this.readInstalledVersion()
+      this.state.currentVersion = this.readInstalledFingerprint()?.version ?? null
       if (this.state.currentVersion) {
         this.notifyState()
       }
 
       // 4. 虚拟环境未就绪时，运行 uv sync（内置 wheels 离线安装）
-      const venvReady = this.isVenvReady()
-      if (!venvReady) {
+      if (!this.isVenvReady()) {
         log.info('[KernelManager] 虚拟环境未就绪，开始安装 Python 依赖')
         const setup = await this.setupKernelEnvironment()
         if (!setup.success) return setup
+      } else {
+        // 依赖已就绪，直接进入完成态，避免状态停留在 installing
+        this.setOperation('done', '内核环境已就绪')
+        this.state.progress = 100
+        this.notifyState()
       }
 
       return { success: true }
     } catch (error) {
       const msg = (error as Error).message
-      this.state.error = msg
       this.setOperation('error', `初始化失败: ${msg}`)
       return { success: false, error: msg }
     }
@@ -389,168 +389,142 @@ class KernelManager {
   }
 
   /**
-   * 解析安装包内置内核资产包（moechat-assets-*.zip）
-   * 资产包内嵌平台 + 变体标识（moechat-assets-v*-{win|linux}-{lite|cpu|cu130}.zip），
-   * 严格按当前平台过滤，避免跨平台误取（如 Windows wheels 错装到 Linux）。
-   * 优先取名称排序最靠后的包（版本号在文件名中，字典序即版本序）；
-   * 未找到时返回 null。
+   * 解析安装包内置内核资产包（moechat-assets-*.zip）。
+   * 以 kernel-assets/manifest.json 权威声明为准，声明缺失或文件缺失返回 null（由调用方判定安装错误）。
    */
-  private resolveAssetsPackage(): string | null {
-    return this.resolveBundlePackage('moechat-assets-', true)
+  private resolveAssetsPackage(): AssetBundleInfo | null {
+    const declaration = this.readKernelAssetsDeclaration()
+    if (!declaration?.assets) return null
+    const assets = declaration.assets
+    const assetsDir = this.portableKernelAssetsDir
+    const filePath = path.join(assetsDir, assets.file)
+    if (!fs.existsSync(filePath)) {
+      log.error(`[KernelManager] 权威声明指向的资产包缺失: ${assets.file}`)
+      return null
+    }
+    return {
+      file: assets.file,
+      version: assets.version,
+      buildId: assets.build_id,
+      type: assets.type,
+      platform: assets.platform
+    }
   }
 
   /**
-   * 解析安装包内置数据包（moechat-data-*.zip）
-   * 数据包内容为平台/变体无关的通用数据（模型/资源/助手/motion），产物名不带任何后缀，
-   * 因此不做平台过滤，任意平台共用同一份数据包。
-   * 精简版不含数据包，返回 null（模型由后端首次运行自动下载）。
+   * 解析安装包内置数据包（moechat-data-*.zip，仅 cpu/cuda 完整版携带，内容为通用数据）。
+   * lite 变体不含数据包，模型由后端首次运行自动下载。
+   * @returns 数据包 zip 绝对路径；无数据包或声明无效时返回 null
    */
   private resolveDataPackage(): string | null {
-    return this.resolveBundlePackage('moechat-data-', false)
+    const declaration = this.readKernelAssetsDeclaration()
+    if (!declaration?.data) return null
+    const filePath = path.join(this.portableKernelAssetsDir, declaration.data.file)
+    if (!fs.existsSync(filePath)) {
+      log.warn(`[KernelManager] 权威声明指向的数据包缺失: ${declaration.data.file}`)
+      return null
+    }
+    return filePath
   }
 
   /**
-   * 在 kernel-assets 内置资源目录中查找指定前缀的 zip 包。
-   * @param prefix 包名前缀（如 'moechat-assets-'、'moechat-data-'）
-   * @param requirePlatformMatch 是否按当前平台过滤（资产包 true；数据包 false）
-   * @returns 匹配的 zip 绝对路径；无匹配返回 null
+   * 读取安装包内置 kernel-assets/manifest.json 权威声明（由构建脚本打包时生成，
+   * 记录实际放入的资产包与数据包，运行时以它为准）。不存在或解析失败返回 null。
    */
-  private resolveBundlePackage(prefix: string, requirePlatformMatch: boolean): string | null {
-    const bundleDir = this.portableKernelAssetsDir
-    if (!fs.existsSync(bundleDir)) return null
-
-    // 当前平台标识：win32→win，darwin→mac，其余（linux 等）→linux
-    const platformTag =
-      process.platform === 'win32' ? 'win' : process.platform === 'darwin' ? 'mac' : 'linux'
-
+  private readKernelAssetsDeclaration(): KernelAssetsDeclaration | null {
+    const manifestPath = path.join(this.portableKernelAssetsDir, MANIFEST_FILE_NAME)
+    if (!fs.existsSync(manifestPath)) return null
     try {
-      const zips = fs
-        .readdirSync(bundleDir)
-        .filter((name) => name.startsWith(prefix) && name.endsWith('.zip'))
-        .filter((name) => !requirePlatformMatch || this.matchesCurrentPlatform(name, platformTag))
-      if (zips.length === 0) return null
-      zips.sort()
-      return path.join(bundleDir, zips[zips.length - 1])
-    } catch {
-      // 读取异常交由上层报错
+      return JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as KernelAssetsDeclaration
+    } catch (error) {
+      log.error('[KernelManager] 解析 kernel-assets/manifest.json 失败:', (error as Error).message)
       return null
     }
   }
 
   /**
-   * 判断 zip 包名是否属于当前平台。
-   * 包名必须内嵌与当前平台一致的标识（-win-/-win.zip、-linux-/-linux.zip、-mac-/-mac.zip）：
-   * 资产包形如 moechat-assets-v*-{win|linux}-{lite|cpu|cu130}.zip，
-   * 数据包形如 moechat-data-v*-{win|linux}.zip。不匹配当前平台的包一律忽略，
-   * 不兼容旧的无平台标识命名（未发布，无需兼容）。
-   * @param zipName zip 文件名
-   * @param platformTag 当前平台标识（win/linux/mac）
+   * 读取已安装内核的版本指纹（kernelDir/manifest.json，由资产包解压时保留），
+   * 用于与内置资产包比对，判断是否需要替换源码（含同版本内容变更场景）。
+   * @returns 已安装版本指纹；缺失或解析失败返回 null
    */
-  private matchesCurrentPlatform(zipName: string, platformTag: string): boolean {
-    return zipName.includes(`-${platformTag}-`) || zipName.endsWith(`-${platformTag}.zip`)
-  }
-
-  /**
-   * 读取已安装内核版本（kernelDir/version.txt），缺失或读取失败返回 null。
-   * version.txt 由资产包解压时写入内核根目录。
-   */
-  private readInstalledVersion(): string | null {
+  private readInstalledFingerprint(): InstalledKernelFingerprint | null {
+    const manifestPath = path.join(this.kernelDir, MANIFEST_FILE_NAME)
+    if (!fs.existsSync(manifestPath)) return null
     try {
-      const versionPath = this.versionFilePath
-      if (!fs.existsSync(versionPath)) return null
-      const version = fs.readFileSync(versionPath, 'utf8').trim()
-      return version || null
-    } catch {
+      const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'))
+      const version = manifest.version
+      const buildId = manifest.build_id
+      if (!version) return null
+      return { version, buildId: buildId || '' }
+    } catch (error) {
+      log.warn('[KernelManager] 读取已安装内核指纹失败:', (error as Error).message)
       return null
     }
   }
 
   /**
-   * 从资产包文件名解析版本号（如 moechat-assets-v1.7.0-cpu.zip → 1.7.0）。
-   * 解析失败返回 null。
+   * 判断是否需要替换已安装内核源码。
+   * 以 buildId（每次构建唯一，毫秒级时间戳）为指纹：未安装或 buildId 不一致
+   * （版本升级、同版本内容变更均体现为 buildId 变化）→ 需要替换；完全一致则无需。
+   * @param bundled 内置资产包信息
+   * @param installed 已安装版本指纹
    */
-  private parseBundleVersion(zipPath: string): string | null {
-    const match = path.basename(zipPath).match(/moechat-assets-v(\d+\.\d+\.\d+)/)
-    return match ? match[1] : null
-  }
-
-  /** 就地升级时内核数据（data/）的临时备份目录，与 kernelDir 同盘保证原子 rename */
-  private get dataUpgradeBackupDir(): string {
-    return path.join(this.kernelRoot, '.data-upgrade-backup')
+  private needKernelReplace(
+    bundled: AssetBundleInfo,
+    installed: InstalledKernelFingerprint | null
+  ): boolean {
+    return !installed || installed.buildId !== bundled.buildId
   }
 
   /**
-   * 就地升级内核：备份并保留 data/（模型），清空重建 kernelDir 后解压新资产包，再恢复 data/。
-   * 解压失败时回滚：尽力恢复旧 data/，避免模型数据丢失。
-   *
+   * 就地升级内核：仅删除旧源码，保留 .venv（依赖环境）、wheels（依赖缓存）、data（模型），
+   * 新资产包直接解压覆盖。保留 .venv 使 uv sync 增量同步，避免 torch 等大依赖重装；
+   * 新包未携带 wheels/data（lite）时复用旧缓存，携带时由解压覆盖。
    * @param assetsPackage 内置资产包绝对路径
+   * @param dataPackage 内置数据包绝对路径（lite 为 null）
    * @param onProgress 进度回调（解压阶段 0-1 比值）
    */
   private async replaceKernelKeepingData(
     assetsPackage: string,
+    dataPackage: string | null,
+
     onProgress: (ratio: number) => void
   ): Promise<void> {
-    const dataDir = path.join(this.kernelDir, 'data')
-    const backupDir = this.dataUpgradeBackupDir
-    let hasData = false
+    // 保留目录集合：.venv 永远保留；lite 升级时 wheels/data 也保留（新包不携带）
+    const keepDirs = new Set<string>(['.venv', 'wheels', 'data'])
 
-    // 1. 将现有 data/（模型）原子移动到备份目录（同盘 rename 瞬时完成）
-    if (fs.existsSync(dataDir)) {
-      fs.rmSync(backupDir, { recursive: true, force: true })
-      fs.renameSync(dataDir, backupDir)
-      hasData = true
+    // 1. 删除旧内核目录中除保留目录外的全部内容（旧源码、旧 assets、非保留的 wheels/data）
+    if (fs.existsSync(this.kernelDir)) {
+      for (const entry of fs.readdirSync(this.kernelDir)) {
+        if (!keepDirs.has(entry)) {
+          fs.rmSync(path.join(this.kernelDir, entry), { recursive: true, force: true })
+        }
+      }
+    } else {
+      fs.mkdirSync(this.kernelDir, { recursive: true })
     }
 
     try {
-      // 2. 清空旧内核目录（旧源码、wheels、.venv 一并移除，随后重跑 uv sync）
-      fs.rmSync(this.kernelDir, { recursive: true, force: true })
-      fs.mkdirSync(this.kernelDir, { recursive: true })
-
-      // 3. 解压新资产包到全新 kernelDir
+      // 2. 解压新资产包源码（及完整版自带 wheels）到 kernelDir
       await this.extractBundlePackage(assetsPackage, this.kernelDir, '', onProgress)
-    } catch (error) {
-      // 解压失败：回滚 data/，保留旧内核目录（可能残留部分文件，交由下次自举重建）
-      if (hasData && !fs.existsSync(dataDir)) {
-        fs.mkdirSync(path.dirname(dataDir), { recursive: true })
-        fs.renameSync(backupDir, dataDir)
+
+      // 3. 完整版（cpu/cuda）携带数据包时，解压 data 到 kernelDir/data
+      if (dataPackage) {
+        await this.extractBundlePackage(dataPackage, this.kernelDir, 'data', onProgress)
       }
+    } catch (error) {
+      // 解压失败：保留目录未受影响，仅源码可能残留部分文件，交由下次自举重建
+      log.error('[KernelManager] 就地升级解压失败:', (error as Error).message)
       throw error
     }
-
-    // 4. 恢复 data/ 到新内核目录
-    if (hasData) {
-      fs.mkdirSync(dataDir, { recursive: true })
-      fs.renameSync(backupDir, dataDir)
-    }
   }
 
   /**
-   * 恢复就地升级中断时残留的数据备份。
-   * data/ 曾被移动到备份目录但未完成恢复（进程崩溃/断电等），在每次自举开始时检测并还原，
-   * 防止模型数据被遗弃在备份目录而内核目录缺失 data/。
-   */
-  private restoreDataUpgradeBackup(): void {
-    const dataDir = path.join(this.kernelDir, 'data')
-    const backupDir = this.dataUpgradeBackupDir
-    if (fs.existsSync(backupDir) && !fs.existsSync(dataDir)) {
-      try {
-        fs.mkdirSync(path.dirname(dataDir), { recursive: true })
-        fs.renameSync(backupDir, dataDir)
-        log.info('[KernelManager] 已恢复升级中断时的模型数据备份')
-      } catch (error) {
-        log.error('[KernelManager] 恢复数据备份失败:', error)
-      }
-    }
-  }
-
-  /**
-   * 使用 Worker 线程解压内置 zip 包到目标目录，实时上报进度。
-   * 保留源 zip（不删除），供后续运行重复自举。
-   *
-   * @param zipPath 内置 zip 包的绝对路径
+   * 使用 Worker 线程解压内置 zip 到目标目录，实时上报进度（保留源 zip 供重复自举）。
+   * @param zipPath zip 绝对路径
    * @param targetDir 解压目标目录（如 kernelDir）
-   * @param subDir 可选的子目录前缀（如 'data' 表示解压到 {targetDir}/data 下）
-   * @param onProgress 进度回调，参数为 0-1 的比值
+   * @param subDir 子目录前缀（如 'data' 表示解压到 {targetDir}/data 下）
+   * @param onProgress 进度回调（0-1 比值）
    */
   private extractBundlePackage(
     zipPath: string,
@@ -644,7 +618,6 @@ class KernelManager {
       return { success: true }
     } catch (error) {
       const msg = (error as Error).message
-      this.state.error = msg
       this.setOperation('error', `环境安装失败: ${msg}`)
       return { success: false, error: msg }
     }
@@ -653,10 +626,8 @@ class KernelManager {
   // ─── 依赖安装 ─────────────────────────────────────
 
   /**
-   * 安装环境依赖：uv sync 下载全部依赖，实时转发进度到终端
-   * CPU/CUDA 版本由打包阶段决定，运行时不再升级 CUDA。
-   *
-   * 不依赖 `uv run`，避免 uv run 隐式 sync 吞掉进度条输出。
+   * 安装环境依赖：uv sync 下载全部依赖并实时上报进度。
+   * CPU/CUDA 版本由打包阶段决定；不使用 `uv run`，避免其隐式 sync 吞掉进度条输出。
    */
   private setupEnvironment(onProgress: (progress: number) => void): Promise<void> {
     const kernelDir = this.kernelDir
@@ -711,12 +682,9 @@ class KernelManager {
   }
 
   /**
-   * 通过伪终端 (PTY) 执行 uv sync，使 uv 认为连接的是真实终端，
-   * 进而输出 ANSI 进度条动画（含百分比和下载速度）。
-   *
-   * 通过 node-pty 在 Windows 上使用 ConPTY，在 macOS/Linux 上使用
-   * 标准 PTY。原始 ANSI 数据直接转发给前端的 xterm 组件渲染，
-   * 同时解析其中的百分比用于更新 UI 进度条。
+   * 通过伪终端（node-pty：Windows 用 ConPTY，macOS/Linux 用标准 PTY）执行 uv sync，
+   * 使 uv 输出 ANSI 进度条动画。原始 ANSI 数据转发给前端 xterm 渲染，
+   * 同时解析其中的百分比更新 UI 进度条。
    */
   private async runSyncWithProgress(
     kernelDir: string,
@@ -1183,9 +1151,8 @@ class KernelServiceManager {
         this.addSystemLog(`[系统] 依赖同步失败: ${syncMsg}，继续启动...\r\n`)
       }
 
-      // 使用 pty 直接启动后端虚拟环境的 Python（支持终端渲染与 ANSI 转义序列）
-      // 绕开 uv run 包装层，使 backendPid 即 FastAPI 服务进程本身，终止更直接可靠；
-      // 依赖已在启动前通过 uv sync 同步，直接运行 venv Python 不丢失环境一致性
+      // 直接运行 venv Python（绕开 uv run），使 backendPid 即服务进程本身，终止更可靠；
+      // 以 pty 启动以支持终端渲染与 ANSI 转义序列，依赖已在启动前同步
       const backendTerm = pty.spawn(pythonPath, [scriptPath], {
         cwd: kernelPath,
         name: 'xterm-256color',
@@ -1312,7 +1279,6 @@ class KernelServiceManager {
           timeout: 3000
         })
         if (response.status === 200) {
-          // this.addSystemLog(`[系统] 后端服务健康检查通过 (端口 ${port})`)
           return { healthy: true }
         }
       } catch {

@@ -544,11 +544,8 @@ const statusText = computed(() => {
   if (isOperating.value) {
     const map: Record<string, string> = {
       idle: '运行中...',
-      checking: '感知中',
-      downloading: '下载中',
       installing: '安装中',
       settingUpEnv: '共鸣中',
-      restarting: '重启中',
       done: '完成',
       error: '错误！'
     }
@@ -815,24 +812,8 @@ onMounted(async () => {
     if (newStatus !== oldStatus) {
       lastOperationStatus.value = newStatus
 
-      // 检查更新开始
-      if (newStatus === 'checking') {
-        notificationService.info({
-          title: '内核更新',
-          message: '正在检查内核更新...',
-          key: 'kernel-update'
-        })
-      }
-      // 下载开始
-      else if (newStatus === 'downloading' && oldStatus !== 'downloading') {
-        notificationService.info({
-          title: '内核更新',
-          message: '开始下载内核更新...',
-          key: 'kernel-update'
-        })
-      }
       // 安装中
-      else if (newStatus === 'installing' && oldStatus !== 'installing') {
+      if (newStatus === 'installing' && oldStatus !== 'installing') {
         notificationService.info({
           title: '内核更新',
           message: '正在安装内核...',
@@ -863,16 +844,6 @@ onMounted(async () => {
           key: 'kernel-update'
         })
       }
-    }
-
-    // 下载进度通知（使用key避免频繁弹出新通知）
-    if (newStatus === 'downloading' && state.progress > 0) {
-      notificationService.info({
-        title: '内核下载中',
-        message: `下载进度: ${state.progress}%`,
-        key: 'kernel-download-progress',
-        duration: 2000
-      })
     }
   })
 

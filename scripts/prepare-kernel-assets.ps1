@@ -265,6 +265,42 @@ if ($data) {
     Write-Host "[2/2] 精简版：跳过数据包（模型由后端首次运行自动下载）" -ForegroundColor DarkYellow
 }
 
+# 读取 zip 包内的 manifest.json（条目名固定为 manifest.json，与后端打包脚本约定一致）
+function Read-ZipManifest {
+    param([string]$ZipPath)
+    Add-Type -AssemblyName System.IO.Compression
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $zip = [System.IO.Compression.ZipFile]::OpenRead($ZipPath)
+    try {
+        $entry = $zip.GetEntry("manifest.json")
+        if (-not $entry) { return $null }
+        $reader = New-Object System.IO.StreamReader($entry.Open(), [System.Text.Encoding]::UTF8)
+        try { return ($reader.ReadToEnd() | ConvertFrom-Json) } finally { $reader.Dispose() }
+    } finally { $zip.Dispose() }
+}
+
+# 生成 kernel-assets/manifest.json 权威声明：记录本次打包实际放入的包（名称/版本/构建标识/变体）。
+# 桌面端运行时以该声明为准选择资产包，缺失即判定安装错误，不再扫描文件名猜测。
+$assetsManifest = Read-ZipManifest -ZipPath (Join-Path $OutputDir $assets.Name)
+$declaration = @{
+    assets = @{
+        file     = $assets.Name
+        version  = $assetsManifest.version
+        build_id = $assetsManifest.build_id
+        type     = $assetsManifest.type
+        platform = $Platform
+    }
+}
+if ($data) {
+    $dataManifest = Read-ZipManifest -ZipPath (Join-Path $OutputDir $data.Name)
+    $declaration.data = @{
+        file    = $data.Name
+        version = $dataManifest.version
+    }
+}
+$declaration | ConvertTo-Json -Depth 4 | Out-File -FilePath (Join-Path $OutputDir "manifest.json") -Encoding utf8
+Write-Host "[3/3] 生成内核资产声明: manifest.json" -ForegroundColor Green
+
 $totalSize = [math]::Round(((Get-ChildItem -LiteralPath $OutputDir -Recurse -File | Measure-Object -Property Length -Sum).Sum) / 1MB, 1)
 Write-Host ""
 Write-Host "============================================" -ForegroundColor Green

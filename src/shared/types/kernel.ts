@@ -6,15 +6,7 @@ export interface KernelUpdateState {
   // 内核版本
   currentVersion: string | null
   // 内核状态
-  operationStatus:
-    | 'idle'
-    | 'checking'
-    | 'downloading'
-    | 'installing'
-    | 'settingUpEnv'
-    | 'restarting'
-    | 'done'
-    | 'error'
+  operationStatus: 'idle' | 'installing' | 'settingUpEnv' | 'done' | 'error'
   // 进度
   progress: number
   // 状态文本
