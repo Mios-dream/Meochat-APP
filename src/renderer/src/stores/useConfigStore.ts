@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import type { AppConfig } from '@shared/types/appConfig'
+import { setBaseUrl } from '@shared/api/request'
 
 export const useConfigStore = defineStore('config', () => {
   const config = ref<AppConfig>({
@@ -27,6 +28,7 @@ export const useConfigStore = defineStore('config', () => {
   async function loadConfig(): Promise<void> {
     const data = (await window.api.config.get()) as AppConfig
     config.value = data
+    setBaseUrl(data.baseUrl)
   }
 
   async function updateConfig<K extends keyof AppConfig>(
@@ -35,11 +37,13 @@ export const useConfigStore = defineStore('config', () => {
   ): Promise<void> {
     await window.api.config.set(key, value)
     config.value[key] = value
+    if (key === 'baseUrl') setBaseUrl(value as string)
   }
 
   function listenForChanges(): void {
     window.api.config.onChange((newConfig) => {
       config.value = newConfig
+      setBaseUrl(newConfig.baseUrl)
     })
   }
 

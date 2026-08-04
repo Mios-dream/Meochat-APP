@@ -20,6 +20,10 @@ export const assistantChannels = {
   ASSISTANT_SHOW: defineSend('assistant:show'),
   /** 开始拖拽助手窗口 */
   ASSISTANT_START_DRAG: defineSend('assistant:start-drag'),
+  /** 结束拖拽助手窗口（Linux 手动拖拽时由渲染进程在 mouseup 时通知） */
+  ASSISTANT_DRAG_END: defineSend('assistant:drag-end'),
+  /** 获取鼠标全局屏幕坐标（用于穿透自检等不依赖窗口事件的场景） */
+  ASSISTANT_GET_CURSOR_SCREEN_POINT: defineInvoke('assistant:get-cursor-screen-point'),
   /** 设置助手窗口穿透鼠标 */
   ASSISTANT_SET_IGNORE_MOUSE: defineSend('assistant:set-ignore-mouse'),
   /** 调整助手窗口尺寸 */

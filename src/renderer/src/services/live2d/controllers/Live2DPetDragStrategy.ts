@@ -1,8 +1,6 @@
 import type { Application } from 'pixi.js'
 import type { Live2DModel } from 'untitled-pixi-live2d-engine'
 import type { Live2DPointerPorts } from '../types'
-import { isPixelTransparentFromEvent } from '../tools/transparentPixel'
-import throttle from '../../../utils/Throttle'
 import type { DragBounds, DragStrategy } from './Live2DDragStrategy'
 
 /**
@@ -12,7 +10,6 @@ import type { DragBounds, DragStrategy } from './Live2DDragStrategy'
  * 2. 窗口拖拽滞后偏移 — 原生窗口拖拽时模型向反方向偏移，制造"惯性"感。
  * 3. 释放后回正 — 鼠标释放后模型平滑回到画布中心。
  * 4. IPC 全局鼠标追踪 — 基于主进程上报的全局坐标更新模型注视。
- * 5. 透明像素鼠标穿透 — 模型透明区域不拦截鼠标事件。
  */
 export class PetDragStrategy implements DragStrategy {
   /** 策略内部鼠标按下状态，用于轮询守卫（原生拖拽时 DOM mouseup 不触发） */
@@ -29,11 +26,6 @@ export class PetDragStrategy implements DragStrategy {
   private readonly PET_SMOOTH = 0.05
   private readonly PET_SETTLE = 1.5
   private readonly PET_POLL_INTERVAL = 33
-
-  /* ========== 透明像素鼠标穿透 ========== */
-  private ignoreState = false
-  private restoreTimer: ReturnType<typeof setTimeout> | null = null
-  private readonly TRANSPARENT_RESTORE_MS = 1000
 
   /* ========== 点击驱动的全局注视会话 ========== */
   /** 注视会话是否激活：点击鼠标触发，超过 GAZE_TIMEOUT_MS 无后续点击自动结束 */
@@ -79,7 +71,7 @@ export class PetDragStrategy implements DragStrategy {
     this.startPetPolling(model, onRequestAnim)
   }
 
-  onDragEnd(_ports: Live2DPointerPorts, _model: Live2DModel): boolean {
+  onDragEnd(): boolean {
     this.mousePressed = false
     this.stopPetPolling()
     if (this.petBaseSet) {
@@ -179,16 +171,17 @@ export class PetDragStrategy implements DragStrategy {
     return needsContinue
   }
 
+  /**
+   * 鼠标离开画布。
+   * 穿透状态由控制器侧的定时自检统一维护，此处无需处理（空实现满足接口约定）。
+   */
   onMouseLeave(): void {
-    this.ignoreState = false
-    window.api.setIgnoreMouse(false)
-    this.clearRestoreTimer()
+    /* no-op */
   }
 
   destroy(): void {
     this.stopPetPolling()
     this.resetPetLagState()
-    this.clearRestoreTimer()
     this.clearGazeSession()
   }
 
@@ -312,37 +305,6 @@ export class PetDragStrategy implements DragStrategy {
     if (this.gazeTimeout) {
       clearTimeout(this.gazeTimeout)
       this.gazeTimeout = null
-    }
-  }
-
-  /* ========== 透明像素鼠标穿透 ========== */
-
-  createTransparentPixelHandler(app: Application | null): (event: MouseEvent) => void {
-    return throttle((event: MouseEvent) => {
-      const shouldIgnore = isPixelTransparentFromEvent(app, event)
-      if (shouldIgnore === this.ignoreState) return
-
-      this.ignoreState = shouldIgnore
-      window.api.setIgnoreMouse(this.ignoreState)
-
-      if (this.ignoreState) {
-        this.clearRestoreTimer()
-        this.restoreTimer = setTimeout(() => {
-          this.ignoreState = false
-          window.api.setIgnoreMouse(false)
-          this.restoreTimer = null
-        }, this.TRANSPARENT_RESTORE_MS)
-        return
-      }
-
-      this.clearRestoreTimer()
-    }, 200)
-  }
-
-  private clearRestoreTimer(): void {
-    if (this.restoreTimer) {
-      window.clearTimeout(this.restoreTimer)
-      this.restoreTimer = null
     }
   }
 }

@@ -26,6 +26,7 @@ export function buildAssistantWindowApi(): AssistantWindowApi {
     openAssistantSettings: () => ipcRenderer.send(CHANNELS.ASSISTANT_SETTINGS_OPEN),
     closeAssistantSettings: () => ipcRenderer.send(CHANNELS.ASSISTANT_SETTINGS_CLOSE),
     isAssistantVisible: () => ipcRenderer.invoke(CHANNELS.ASSISTANT_CHECK_VISIBLE),
+    getCursorScreenPoint: () => ipcRenderer.invoke(CHANNELS.ASSISTANT_GET_CURSOR_SCREEN_POINT),
 
     onAssistantSwitched: (callback: (data: AssistantInfo | null) => void) =>
       ipc.on(CHANNELS.ASSISTANT_SWITCHED_EVENT, callback),

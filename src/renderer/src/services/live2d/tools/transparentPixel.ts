@@ -1,11 +1,15 @@
 import type { Application, WebGLRenderer } from 'pixi.js'
 
 /**
- * 从点击的位置判断像素是否透明。
+ * 判断画布上指定 CSS 坐标处的像素是否透明。
  * 由于 WebGL 上下文未开启 preserveDrawingBuffer，每次读取前先强制渲染一帧，
  * 确保帧缓冲区内容为最新渲染结果。
+ * @param app Pixi 应用实例。
+ * @param cssX 相对画布左上角的 CSS 横坐标。
+ * @param cssY 相对画布左上角的 CSS 纵坐标。
+ * @returns 像素是否透明；超出画布边界视为透明。
  */
-export function isPixelTransparentFromEvent(app: Application | null, event: MouseEvent): boolean {
+export function isPixelTransparent(app: Application | null, cssX: number, cssY: number): boolean {
   if (!app || !app.renderer) return false
 
   // 强制同步渲染一次，确保帧缓冲区有效
@@ -14,10 +18,6 @@ export function isPixelTransparentFromEvent(app: Application | null, event: Mous
   const gl = (app.renderer as WebGLRenderer).gl
   const canvas = app.canvas as HTMLCanvasElement
   const rect = canvas.getBoundingClientRect()
-
-  // 计算相对于canvas的CSS坐标
-  const cssX = event.clientX - rect.left
-  const cssY = event.clientY - rect.top
 
   // 使用真实画布像素尺寸进行映射，避免 autoDensity / DPI 场景下命中偏移
   const scaleX = rect.width > 0 ? canvas.width / rect.width : 1

@@ -163,6 +163,16 @@ function closeAssistant(): void {
 function handleMouseDown(event: MouseEvent): void {
   if (event.button !== 0 || contextMenuVisible.value || isLocked.value) return
   window.api.startDrag()
+  // Linux 手动拖拽时，松开鼠标需通知主进程结束拖拽轮询；
+  // Windows/macOS 走原生拖拽，此通知为主进程的无操作，无副作用。
+  window.addEventListener('mouseup', handleDragEnd, { once: true })
+}
+
+/**
+ * 松开鼠标时通知主进程结束手动拖拽。
+ */
+function handleDragEnd(): void {
+  window.api.endDrag()
 }
 
 function showContextMenu(event: MouseEvent): void {

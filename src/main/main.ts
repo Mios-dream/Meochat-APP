@@ -27,6 +27,16 @@ import { dispatchCenter } from './dispatch/DispatchCenter'
 import { CHANNELS } from '@shared/ipc/channels'
 import log from './utils/logger'
 
+// Linux 下强制使用 X11 (XWayland) 后端：
+// 1. 原生 Wayland 下 getNativeWindowHandle() 返回的不是 X11 Window id，
+//    electron-click-drag-plugin 的 X11 拖拽逻辑会因 BadWindow 直接崩溃；
+// 2. 助手窗口依赖 alwaysOnTop / transparent / skipTaskbar / focusable:false 等能力，
+//    这些在原生 Wayland 上并不生效，X11 后端才能保证行为与 Windows 一致。
+// 必须在 app ready 之前调用，否则不生效。
+if (process.platform === 'linux') {
+  app.commandLine.appendSwitch('ozone-platform', 'x11')
+}
+
 try {
   // 初始化 IPC
   setupMainIPC()

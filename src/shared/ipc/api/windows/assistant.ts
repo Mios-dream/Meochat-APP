@@ -16,6 +16,8 @@ export interface AssistantWindowApi extends CommonApi, PetInteractionApi {
   openAssistantSettings: () => void
   closeAssistantSettings: () => void
   isAssistantVisible: () => Promise<boolean>
+  /** 获取鼠标全局屏幕坐标（DIP），用于穿透自检等不依赖窗口鼠标事件的场景 */
+  getCursorScreenPoint: () => Promise<{ x: number; y: number }>
 
   onAssistantSwitched: (callback: (data: AssistantInfo | null) => void) => () => void
   onDownloadProgress: (

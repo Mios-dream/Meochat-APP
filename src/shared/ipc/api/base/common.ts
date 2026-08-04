@@ -61,4 +61,6 @@ export interface CommonApi {
     sound?: string
   }) => void
   startDrag: () => void
+  /** 结束助手窗口拖拽（Linux 手动拖拽时由渲染进程在 mouseup 时调用，Windows/macOS 下为无操作） */
+  endDrag: () => void
 }

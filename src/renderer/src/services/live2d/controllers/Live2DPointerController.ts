@@ -2,9 +2,8 @@ import { Point, type Application } from 'pixi.js'
 import type { Live2DModel } from 'untitled-pixi-live2d-engine'
 import type { InternalModel } from 'untitled-pixi-live2d-engine'
 import type { Live2DPartName, Live2DPointerPorts } from '../types'
-import throttle from '../../../utils/Throttle'
 import { getBodyPartAtPosition, isPositionOnModelHead } from '../tools/interactionGeometry'
-import { isPixelTransparentFromEvent } from '../tools/transparentPixel'
+import { isPixelTransparent } from '../tools/transparentPixel'
 import type { DragStrategy } from './Live2DDragStrategy'
 import { FreeDragStrategy } from './Live2DDragStrategy'
 import { PetDragStrategy } from './Live2DPetDragStrategy'
@@ -144,6 +143,12 @@ export class Live2DPointerController {
   /** 缩放停止阈值 */
   private readonly ZOOM_THRESHOLD = 0.001
 
+  /* ========== 透明像素鼠标穿透自检 ========== */
+  /** 穿透自检周期（毫秒）：越小恢复越灵敏，开销也越高 */
+  private readonly TRANSPARENT_CHECK_MS = 150
+  /** 穿透自检定时器清理函数，destroy 时调用以停止自检 */
+  private transparentCheckCleanup: (() => void) | null = null
+
   /**
    * 绑定画布指针事件。
    * @param ports 指针交互所需的最小能力集合。
@@ -191,6 +196,9 @@ export class Live2DPointerController {
     }
 
     if (options.isPetMode) {
+      // 先停止上一次穿透自检（重新绑定时避免定时器泄漏），再启动新的
+      this.transparentCheckCleanup?.()
+      this.transparentCheckCleanup = this.createTransparentPixelChecker(app)
       this.dragStrategy.bindIpc!(ports, model, app, {
         onRequestAnim: () => model && this.startAnim(model, ports),
         onPetMouseRelease: () => {
@@ -199,7 +207,6 @@ export class Live2DPointerController {
           if (model) this.startAnim(model, ports)
         }
       })
-      canvas.addEventListener('mousemove', this.createTransparentPixelHandler(app), { signal })
     }
   }
 
@@ -213,6 +220,9 @@ export class Live2DPointerController {
     this.resetInteractionState()
     this.clearMousePressTimer()
     this.clearFocusTimeout()
+    // 停止穿透自检定时器
+    this.transparentCheckCleanup?.()
+    this.transparentCheckCleanup = null
     this.dragStrategy.destroy()
   }
 
@@ -455,37 +465,54 @@ export class Live2DPointerController {
   }
 
   /**
-   * 创建桌宠模式下的鼠标穿透检测处理器。
-   * 透明像素会通知主进程忽略鼠标，非透明像素会恢复窗口可交互状态。
+   * 创建桌宠模式下的鼠标穿透自检器。
+   *
+   * 恢复可点击不能依赖 mousemove 事件：Linux（含 WSLg）下 setIgnoreMouseEvents 的
+   * forward 选项不被支持，窗口进入穿透后收不到任何鼠标事件，mousemove 处理器失效。
+   * 因此改为定时自检：周期获取光标屏幕坐标并读取该点像素，透明则穿透、非透明则恢复。
+   * 渲染进程的定时器与 IPC 在穿透状态下依然运行，故该方案跨平台（Windows/X11/WSLg）可靠。
    * @param app Pixi 应用实例。
-   * @returns 节流后的鼠标移动处理函数。
+   * @returns 清理函数，用于停止自检定时器。
    */
-  private createTransparentPixelHandler(app: Application | null): (event: MouseEvent) => void {
+  private createTransparentPixelChecker(app: Application | null): () => void {
     let ignoreState = false
-    let restoreTimer: ReturnType<typeof setTimeout> | null = null
+    let stopped = false
 
-    return throttle((event: MouseEvent) => {
-      const shouldIgnore = isPixelTransparentFromEvent(app, event)
-      if (shouldIgnore === ignoreState) return
-
-      ignoreState = shouldIgnore
-      window.api.setIgnoreMouse(ignoreState)
-
-      if (ignoreState) {
-        if (restoreTimer) clearTimeout(restoreTimer)
-        restoreTimer = setTimeout(() => {
-          ignoreState = false
-          window.api.setIgnoreMouse(false)
-          restoreTimer = null
-        }, 1000)
-        return
+    const schedule = async (): Promise<void> => {
+      if (stopped) return
+      try {
+        const shouldIgnore = await this.readTransparencyAtCursor(app)
+        if (shouldIgnore !== ignoreState) {
+          ignoreState = shouldIgnore
+          window.api.setIgnoreMouse(shouldIgnore)
+        }
+      } catch (error) {
+        console.error('穿透自检失败:', error)
       }
+      // 采用 setTimeout 链而非 setInterval，避免上一次异步检测未完成时的并发重叠
+      if (!stopped) setTimeout(schedule, this.TRANSPARENT_CHECK_MS)
+    }
 
-      if (restoreTimer) {
-        clearTimeout(restoreTimer)
-        restoreTimer = null
-      }
-    }, 200)
+    void schedule()
+    return () => {
+      stopped = true
+    }
+  }
+
+  /**
+   * 读取光标所在像素是否透明。
+   * 将光标屏幕坐标换算为画布局部 CSS 坐标，再交由像素检测判断。
+   * @param app Pixi 应用实例。
+   * @returns 光标处像素是否透明；无法获取时返回 false（保持可交互，避免误穿透）。
+   */
+  private async readTransparencyAtCursor(app: Application | null): Promise<boolean> {
+    if (!app || !app.renderer) return false
+    const { x, y } = await window.api.getCursorScreenPoint()
+    const canvas = app.canvas as HTMLCanvasElement
+    const rect = canvas.getBoundingClientRect()
+    const cssX = x - window.screenX - rect.left
+    const cssY = y - window.screenY - rect.top
+    return isPixelTransparent(app, cssX, cssY)
   }
 
   /**

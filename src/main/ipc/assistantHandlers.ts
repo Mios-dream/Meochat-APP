@@ -55,6 +55,79 @@ function cleanupMouseTracking(): void {
   }
 }
 
+// 手动拖拽（Linux/WSL）状态：
+// 背景：electron-click-drag-plugin 依赖 _NET_WM_MOVERESIZE，由窗口管理器执行交互式移动，
+// 但 WSLg 的 weston 等极简 XWM 并不支持该协议，导致拖拽失效；
+// 因此在 Linux 上改为主进程轮询光标 + setPosition 直接定位窗口，绕开窗口管理器。
+let manualDragTimer: ReturnType<typeof setInterval> | null = null
+// 手动拖拽起始基准：窗口坐标与光标坐标（均为主进程 DIP 坐标）
+let dragOrigin: { winX: number; winY: number; cursorX: number; cursorY: number } | null = null
+// 最近一次光标移动时间戳，用于 mouseup 事件丢失时的自动结束兜底
+let lastDragMoveAt = 0
+// 上一次轮询到的光标位置，用于判断光标是否仍在移动
+let lastDragCursorX = 0
+let lastDragCursorY = 0
+
+/**
+ * 停止手动拖拽，清理轮询定时器与基准数据。
+ */
+function stopManualDrag(): void {
+  if (manualDragTimer) {
+    clearInterval(manualDragTimer)
+    manualDragTimer = null
+  }
+  dragOrigin = null
+}
+
+/**
+ * 开始手动拖拽（仅 Linux 使用）。
+ *
+ * 原理：记录按下瞬间的窗口位置与光标位置作为基准，然后以约 60Hz 轮询光标位置，
+ * 通过 setPosition 将窗口跟随光标移动，完全绕开依赖窗口管理器的
+ * _NET_WM_MOVERESIZE 交互式移动协议。当光标停止移动超过阈值时自动结束，
+ * 作为 mouseup 事件丢失（如窗口未被聚焦）时的兜底。
+ */
+function startManualDrag(): void {
+  const assistantWin = windowRegistry.getWindowByType('assistant')
+  if (!assistantWin || assistantWin.isDestroyed()) return
+  stopManualDrag()
+
+  const [winX, winY] = assistantWin.getPosition()
+  const cursor = screen.getCursorScreenPoint()
+  dragOrigin = { winX, winY, cursorX: cursor.x, cursorY: cursor.y }
+  lastDragCursorX = cursor.x
+  lastDragCursorY = cursor.y
+  lastDragMoveAt = Date.now()
+
+  manualDragTimer = setInterval(() => {
+    try {
+      if (!dragOrigin || assistantWin.isDestroyed()) {
+        stopManualDrag()
+        return
+      }
+      const pos = screen.getCursorScreenPoint()
+      const moved = pos.x !== lastDragCursorX || pos.y !== lastDragCursorY
+      lastDragCursorX = pos.x
+      lastDragCursorY = pos.y
+      if (!moved) {
+        // 光标静止超过阈值视为拖拽结束
+        if (Date.now() - lastDragMoveAt > 250) {
+          stopManualDrag()
+        }
+        return
+      }
+      lastDragMoveAt = Date.now()
+      assistantWin.setPosition(
+        dragOrigin.winX + pos.x - dragOrigin.cursorX,
+        dragOrigin.winY + pos.y - dragOrigin.cursorY
+      )
+    } catch (error) {
+      log.error('手动拖拽助手窗口失败:', error)
+      stopManualDrag()
+    }
+  }, 16)
+}
+
 // 初始化 uiohook 监听器
 function initUiohook(): void {
   if (isUiohookStarted) return
@@ -269,16 +342,28 @@ function setupAssistantIPC(): void {
 
   registerOn(CHANNELS.ASSISTANT_START_DRAG, () => {
     try {
+      // Linux（含 WSL）走主进程手动拖拽：绕开对窗口管理器的依赖，
+      // 规避 WSLg weston 等极简 XWM 不支持 _NET_WM_MOVERESIZE 的问题
+      if (process.platform === 'linux') {
+        startManualDrag()
+        return
+      }
       const assistantWin = windowRegistry.getWindowByType('assistant')
       if (!assistantWin) return
-      const hwndBuffer = assistantWin.getNativeWindowHandle()
-      // Linux: extract X11 Window ID from the buffer (first 4 bytes, little-endian)
-      // macOS/Windows: pass Buffer directly
-      const windowId = process.platform === 'linux' ? hwndBuffer.readUInt32LE(0) : hwndBuffer
-      dragAddon.startDrag(windowId)
+      dragAddon.startDrag(assistantWin.getNativeWindowHandle())
     } catch (error) {
       log.error(error)
     }
+  })
+
+  // 结束手动拖拽（Linux 渲染进程在 mouseup 时通知主进程停止轮询）
+  registerOn(CHANNELS.ASSISTANT_DRAG_END, () => {
+    stopManualDrag()
+  })
+
+  // 获取鼠标全局屏幕坐标（DIP），供渲染进程在穿透自检等无窗口鼠标事件的场景使用
+  registerHandle(CHANNELS.ASSISTANT_GET_CURSOR_SCREEN_POINT, () => {
+    return screen.getCursorScreenPoint()
   })
 
   // 开始鼠标轨迹监控 - 使用 uiohook 检测鼠标按下状态

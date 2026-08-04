@@ -67,5 +67,6 @@ export const commonApi: CommonApi = {
     sound?: string
   }) => ipcRenderer.send(CHANNELS.TOOL_NOTIFY, data),
 
-  startDrag: () => ipcRenderer.send(CHANNELS.ASSISTANT_START_DRAG)
+  startDrag: () => ipcRenderer.send(CHANNELS.ASSISTANT_START_DRAG),
+  endDrag: () => ipcRenderer.send(CHANNELS.ASSISTANT_DRAG_END)
 }
