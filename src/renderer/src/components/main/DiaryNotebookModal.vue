@@ -66,10 +66,7 @@
             </template>
           </template>
 
-          <div
-            class="book-spine"
-            :class="{ 'spine-hidden': isCoverCentered }"
-          />
+          <div class="book-spine" :class="{ 'spine-hidden': isCoverCentered }" />
 
           <div
             v-if="phase === 'flipping' && direction"
@@ -186,7 +183,8 @@ const MAX_THICKNESS = 14
 
 function thickAt(spread: number, side: 'left' | 'right'): number {
   if (spread <= 0) return 0
-  const ratio = side === 'left' ? spread / maxSpread.value : (maxSpread.value - spread) / maxSpread.value
+  const ratio =
+    side === 'left' ? spread / maxSpread.value : (maxSpread.value - spread) / maxSpread.value
   return Math.round(ratio * MAX_THICKNESS)
 }
 
@@ -195,10 +193,18 @@ const leftThickness = computed(() => thickAt(displaySpread.value, 'left'))
 const rightThickness = computed(() => thickAt(displaySpread.value, 'right'))
 
 /** 翻页状态厚度辅助 */
-function flipRightThickness(): number { return thickAt(flipToSpread.value, 'right') }
-function flipLeftThickness(): number { return thickAt(flipToSpread.value, 'left') }
-function flipFromLeftThickness(): number { return thickAt(flipFromSpread.value, 'left') }
-function flipFromRightThickness(): number { return thickAt(flipFromSpread.value, 'right') }
+function flipRightThickness(): number {
+  return thickAt(flipToSpread.value, 'right')
+}
+function flipLeftThickness(): number {
+  return thickAt(flipToSpread.value, 'left')
+}
+function flipFromLeftThickness(): number {
+  return thickAt(flipFromSpread.value, 'left')
+}
+function flipFromRightThickness(): number {
+  return thickAt(flipFromSpread.value, 'right')
+}
 
 // ==================== 构建页面 ====================
 function buildPageHTML(page: DiaryPage): string {

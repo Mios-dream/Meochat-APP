@@ -372,7 +372,7 @@ const assistantName = computed(() => currentAssistant.value?.name ?? '助手')
 const currentLove = computed(() =>
   Math.max(0, Math.min(100, currentAssistant.value?.userState.love ?? 0))
 )
-const canViewDiary = computed(() => currentLove.value > 100)
+const canViewDiary = computed(() => currentLove.value > 30)
 
 // 将任意数值限制在0到1之间
 function clampVolume(value: number): number {
