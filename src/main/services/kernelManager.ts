@@ -285,7 +285,8 @@ class KernelManager {
 
   /**
    * 自举初始化内核运行环境：
-   * 校验便携 uv → 解析内置资产包并与已装内核比对（全新安装/就地升级）→ 虚拟环境未就绪时运行 uv sync。
+   * 校验便携 uv → 解析内置资产包并与已装内核比对（全新安装/就地升级）→ 运行 uv sync 对齐依赖
+   * （无论虚拟环境是否就绪，确保依赖与当前源码/ wheels 缓存一致，覆盖安装/升级场景不会依赖不同步）。
    * 任一环节失败即返回错误，由调用方停止运行。
    */
   async bootstrapKernel(): Promise<{ success: boolean; error?: string }> {
@@ -351,6 +352,12 @@ class KernelManager {
         this.state.progress = 90
         this.notifyState()
         log.info(`[KernelManager] 内核资源就绪，来源: ${assetsInfo.file}`)
+      } else {
+        // 已安装内核与内置资产包完全一致（version + buildId 相同），无需替换源码
+        log.info(
+          `[KernelManager] 内核已是最新: v${installedFingerprint?.version ?? '未知'}` +
+            ` (buildId=${installedFingerprint?.buildId ?? '未知'})`
+        )
       }
 
       // 刷新内核版本号（setupKernelEnvironment 依赖 currentVersion）
@@ -359,17 +366,12 @@ class KernelManager {
         this.notifyState()
       }
 
-      // 4. 虚拟环境未就绪时，运行 uv sync（内置 wheels 离线安装）
-      if (!this.isVenvReady()) {
-        log.info('[KernelManager] 虚拟环境未就绪，开始安装 Python 依赖')
-        const setup = await this.setupKernelEnvironment()
-        if (!setup.success) return setup
-      } else {
-        // 依赖已就绪，直接进入完成态，避免状态停留在 installing
-        this.setOperation('done', '内核环境已就绪')
-        this.state.progress = 100
-        this.notifyState()
-      }
+      // 4. 无论虚拟环境是否就绪，启动前都运行 uv sync 对齐依赖：
+      //    覆盖安装 / 升级可能替换源码或 wheels 缓存，必须重新同步 .venv
+      //    （内置 wheels 存在时走 --find-links 离线安装，避免回退 PyPI）
+      log.info('[KernelManager] 启动前执行 uv sync 对齐依赖')
+      const setup = await this.setupKernelEnvironment()
+      if (!setup.success) return setup
 
       return { success: true }
     } catch (error) {
@@ -377,15 +379,6 @@ class KernelManager {
       this.setOperation('error', `初始化失败: ${msg}`)
       return { success: false, error: msg }
     }
-  }
-
-  /** 判断虚拟环境是否已就绪 */
-  private isVenvReady(): boolean {
-    const venvPythonPath =
-      process.platform === 'win32'
-        ? path.join(this.kernelDir, '.venv', 'Scripts', 'python.exe')
-        : path.join(this.kernelDir, '.venv', 'bin', 'python')
-    return fs.existsSync(venvPythonPath)
   }
 
   /**
@@ -481,9 +474,9 @@ class KernelManager {
   }
 
   /**
-   * 就地升级内核：仅删除旧源码，保留 .venv（依赖环境）、wheels（依赖缓存）、data（模型），
-   * 新资产包直接解压覆盖。保留 .venv 使 uv sync 增量同步，避免 torch 等大依赖重装；
-   * 新包未携带 wheels/data（lite）时复用旧缓存，携带时由解压覆盖。
+   * 就地升级内核：仅删除旧源码，保留 .venv（依赖环境）、wheels（依赖缓存）、data（模型）、
+   * config.yaml（用户配置），新资产包直接解压覆盖。保留 .venv 使 uv sync 增量同步，
+   * 避免 torch 等大依赖重装；新包未携带 wheels/data（lite）时复用旧缓存，携带时由解压覆盖。
    * @param assetsPackage 内置资产包绝对路径
    * @param dataPackage 内置数据包绝对路径（lite 为 null）
    * @param onProgress 进度回调（解压阶段 0-1 比值）
@@ -494,13 +487,14 @@ class KernelManager {
 
     onProgress: (ratio: number) => void
   ): Promise<void> {
-    // 保留目录集合：.venv 永远保留；lite 升级时 wheels/data 也保留（新包不携带）
-    const keepDirs = new Set<string>(['.venv', 'wheels', 'data'])
+    // 保留条目集合：.venv 永远保留；lite 升级时 wheels/data 也保留（新包不携带）；
+    // config.yaml 为用户配置文件，删除旧源码时一并保留，避免覆盖安装/升级丢失个性化配置
+    const keepEntries = new Set<string>(['.venv', 'wheels', 'data', 'config.yaml'])
 
-    // 1. 删除旧内核目录中除保留目录外的全部内容（旧源码、旧 assets、非保留的 wheels/data）
+    // 1. 删除旧内核目录中除保留条目外的全部内容（旧源码、旧 assets、非保留的 wheels/data）
     if (fs.existsSync(this.kernelDir)) {
       for (const entry of fs.readdirSync(this.kernelDir)) {
-        if (!keepDirs.has(entry)) {
+        if (!keepEntries.has(entry)) {
           fs.rmSync(path.join(this.kernelDir, entry), { recursive: true, force: true })
         }
       }

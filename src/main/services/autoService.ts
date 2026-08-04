@@ -99,18 +99,30 @@ async function autoCreateWidget(): Promise<void> {
 
 /**
  * 确保内核后端服务已启动
- * 如果内核已安装且有虚拟环境，自动启动后端服务
+ * 启动后端前先执行内核自举（bootstrapKernel）：比对安装包内置资产包与已装内核的
+ * build_id，不一致（覆盖安装 / 升级 / 同版本内容变更）时就地替换后端源码，保证
+ * appData 中运行的是与当前安装包一致的代码。自举幂等：build_id 一致或虚拟环境
+ * 已就绪时开销极小；后端已在运行时跳过，避免打断正在运行的服务。
+ * 若自举失败（资产包缺失 / 解压异常），停止启动，避免用残留或不完整的源码拉起后端。
  */
 async function ensureKernelBackendStarted(): Promise<void> {
-  const currentVersion = kernelManager.getCurrentVersion()
-  if (!currentVersion) {
-    log.info('[autoService] 未安装内核，跳过自动启动后端服务')
-    return
-  }
-
   const status = kernelServiceManager.getBackendStatus()
   if (status.running) {
     log.info('[autoService] 内核后端服务已在运行')
+    return
+  }
+
+  // 启动前自举校验：幂等，仅在内置资产包与已装内核不一致时解压替换源码
+  log.info('[autoService] 启动前检查内核更新（自举）...')
+  const bootstrapResult = await kernelManager.bootstrapKernel()
+  if (!bootstrapResult.success) {
+    log.error(`[autoService] 内核自举失败，跳过自动启动后端服务: ${bootstrapResult.error}`)
+    return
+  }
+
+  const currentVersion = kernelManager.getCurrentVersion()
+  if (!currentVersion) {
+    log.info('[autoService] 未安装内核，跳过自动启动后端服务')
     return
   }
 
