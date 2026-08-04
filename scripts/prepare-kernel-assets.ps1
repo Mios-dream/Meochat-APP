@@ -298,7 +298,13 @@ if ($data) {
         version = $dataManifest.version
     }
 }
-$declaration | ConvertTo-Json -Depth 4 | Out-File -FilePath (Join-Path $OutputDir "manifest.json") -Encoding utf8
+# 以无 BOM 的 UTF-8 写入（Out-File -Encoding utf8 在 PowerShell 5.1 下会写 BOM，导致 JSON.parse 失败）
+$declarationJson = $declaration | ConvertTo-Json -Depth 4
+[System.IO.File]::WriteAllText(
+    (Join-Path $OutputDir "manifest.json"),
+    $declarationJson,
+    (New-Object System.Text.UTF8Encoding($false))
+)
 Write-Host "[3/3] 生成内核资产声明: manifest.json" -ForegroundColor Green
 
 $totalSize = [math]::Round(((Get-ChildItem -LiteralPath $OutputDir -Recurse -File | Measure-Object -Property Length -Sum).Sum) / 1MB, 1)

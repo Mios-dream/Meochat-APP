@@ -52,12 +52,32 @@ export interface ToolCall {
   }
 }
 
-/** 兼容 OpenAI ChatCompletionMessageParam 的聊天消息 */
+/** 展示消息类别：由后端 kind 投影派生，前端据此分组渲染 */
+export type ChatMessageKind =
+  | 'user'
+  | 'chat'
+  | 'interaction'
+  | 'tool_call'
+  | 'tool_result'
+
+/**
+ * 后端展示历史返回的私有消息结构（kind 驱动）
+ *
+ * 不再使用 OpenAI 的 role/content 扁平格式：类别语义由 kind 承载，
+ * 前端按 kind 分组（user 开用户回合 / interaction 开自动回复回合）、
+ * 聚合工具调用（tool_call + tool_result）、识别自动回复（interaction）。
+ */
 export interface ChatMessage {
-  role: 'user' | 'assistant' | 'tool'
-  content: string | ContentPart[] | null
+  /** 消息类别：user 用户 / chat 对话回复 / interaction 自动回复 / tool_call 工具调用 / tool_result 工具结果 */
+  kind: ChatMessageKind
+  /** 文本内容（user/chat/interaction/tool_result）；tool_call 无此字段 */
+  content?: string | ContentPart[] | null
+  /** 工具调用列表（tool_call 专属） */
   tool_calls?: ToolCall[]
+  /** 工具调用 ID（tool_result 专属，用于与 tool_call 聚合） */
   tool_call_id?: string
+  /** 消息创建时间（ISO 字符串），由后端展示历史提供 */
+  timestamp?: string
 }
 
 /** 存储操作结果类型 */

@@ -435,7 +435,9 @@ class KernelManager {
     const manifestPath = path.join(this.portableKernelAssetsDir, MANIFEST_FILE_NAME)
     if (!fs.existsSync(manifestPath)) return null
     try {
-      return JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as KernelAssetsDeclaration
+      // 去除 UTF-8 BOM（构建脚本以 PowerShell 生成，可能带 BOM 导致 JSON.parse 失败）
+      const content = fs.readFileSync(manifestPath, 'utf8').replace(/^\uFEFF/, '')
+      return JSON.parse(content) as KernelAssetsDeclaration
     } catch (error) {
       log.error('[KernelManager] 解析 kernel-assets/manifest.json 失败:', (error as Error).message)
       return null
@@ -451,7 +453,9 @@ class KernelManager {
     const manifestPath = path.join(this.kernelDir, MANIFEST_FILE_NAME)
     if (!fs.existsSync(manifestPath)) return null
     try {
-      const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'))
+      // 去除 UTF-8 BOM（资产包内 manifest 与内置声明同源，可能带 BOM）
+      const content = fs.readFileSync(manifestPath, 'utf8').replace(/^\uFEFF/, '')
+      const manifest = JSON.parse(content)
       const version = manifest.version
       const buildId = manifest.build_id
       if (!version) return null

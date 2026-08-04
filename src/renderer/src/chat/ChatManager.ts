@@ -72,6 +72,16 @@ class ChatManager {
   public isChatting: boolean = false
   /** 当前交互事件的图标配置，用于在台词板末尾显示对应图标。 */
   private currentInteractionIcon?: { path: string }
+  /**
+   * 当前轮次的消息类别标记：chat() 置为 'chat'，interactionChat() 置为 'interaction'。
+   * 渲染进程同一时刻只发起一轮对话（交互在 isChatting / 播放中被拦截），
+   * 因此单标志足够；写入历史的所有消息均带上该类别（kind），供前端回合分组。
+   */
+  private currentKind: 'chat' | 'interaction' = 'chat'
+  /** 本轮对话中已记录到聊天历史的工具调用 ID，用于跨消息通道去重，避免同一工具调用被重复记录。 */
+  private recordedToolCallIds = new Set<string>()
+  /** 本轮对话中已记录到聊天历史的工具执行结果 ID，用于跨消息通道去重。 */
+  private recordedToolResultIds = new Set<string>()
   /** 当前聊天请求的 resolve 函数，chat:done 时调用。 */
   private chatDoneResolve: ((value: boolean) => void) | null = null
   /** 当前聊天请求的 reject 函数，chat:error 或中断时调用。 */
@@ -96,7 +106,7 @@ class ChatManager {
         }
         this.playbackController.enqueue(segment)
       },
-      (finalText) => this.handleStreamComplete(finalText),
+      () => this.handleStreamComplete(),
       (errorData) => {
         console.error('[Chat] WS 服务端错误:', errorData.error_code, errorData.data)
       }
@@ -214,6 +224,8 @@ class ChatManager {
 
     this.interruptCurrentPlayback()
     this.isChatting = true
+    // 标记本轮为普通用户对话，写入历史的助手/工具消息携带该类别
+    this.currentKind = 'chat'
 
     // 清理上一轮未 resolve/reject 的 Promise
     if (this.chatDoneResolve) {
@@ -258,7 +270,7 @@ class ChatManager {
         // 同步用户消息到主进程存储（fire-and-forget）
         const displayContent = message || `发送了 ${attachments?.length ?? 0} 个文件`
         window.api.chat
-          .appendMessage({ role: 'user', content: displayContent })
+          .appendMessage({ kind: 'user', content: displayContent })
           .catch((err) => console.error('[Chat] 保存用户消息失败:', err))
 
         // 在 chat:done 时 resolve 当前 Promise，并清理回调引用
@@ -315,6 +327,8 @@ class ChatManager {
     // 清除上一轮交互残留的台词板显示内容，防止文本堆积
     this.interruptCurrentPlayback()
     this.isChatting = true
+    // 标记本轮为自动交互回复，写入历史的助手/工具消息携带该类别
+    this.currentKind = 'interaction'
 
     this.currentInteractionIcon = payload.icon
 
@@ -404,6 +418,10 @@ class ChatManager {
     this.playbackController.resetDisplayText()
     this.currentInteractionIcon = undefined
 
+    // 本轮结束，清理工具调用/结果的去重记录，避免残留导致后续轮次的工具调用被误跳过
+    this.recordedToolCallIds.clear()
+    this.recordedToolResultIds.clear()
+
     this.ws.send({ type: 'chat:cancel' })
 
     // 拒绝当前聊天 Promise
@@ -438,25 +456,34 @@ class ChatManager {
 
       // 工具执行结果：保存 role: tool 消息到聊天历史
       if (msg.role === 'tool' && msg.tool_call_id) {
-        window.api.chat
-          .appendMessage({
-            role: 'tool',
-            content: msg.content ?? '',
-            tool_call_id: msg.tool_call_id
-          })
-          .catch((err) => console.error('[Chat] 保存工具结果消息失败:', err))
+        this.recordToolResult(msg.tool_call_id, msg.content ?? '')
         return
       }
 
-      // 工具调用：保存助手消息（含 tool_calls）到聊天历史
+      // 工具调用：保存工具调用消息到聊天历史，并登记 ID 供去重
       if (msg.tool_calls && msg.tool_calls.length > 0) {
+        // 过滤掉已在其他通道（流式 tool_call / tool:call）记录过的调用，避免同一工具调用重复成组
+        const newCalls = msg.tool_calls.filter((tc) => !this.recordedToolCallIds.has(tc.id))
+        newCalls.forEach((tc) => this.recordedToolCallIds.add(tc.id))
+        if (newCalls.length > 0) {
+          window.api.chat
+            .appendMessage({
+              kind: 'tool_call',
+              tool_calls: newCalls
+            })
+            .catch((err) => console.error('[Chat] 保存工具调用消息失败:', err))
+        }
+      }
+
+      // 文本回复：按句子保存为独立的历史消息，供聊天记录按句展示、与工具调用记录穿插。
+      // 不再依赖 chat:done 时拼接整轮文本（done 仅作为聊天完成标记）。
+      if (msg.content !== null && msg.content.trim() !== '') {
         window.api.chat
           .appendMessage({
-            role: 'assistant',
-            content: null,
-            tool_calls: msg.tool_calls
+            kind: this.currentKind,
+            content: msg.content
           })
-          .catch((err) => console.error('[Chat] 保存工具调用消息失败:', err))
+          .catch((err) => console.error('[Chat] 保存助手消息失败:', err))
       }
 
       // 文本 + 可选 extras（音频/动作）：交给流处理器解析播放段
@@ -487,38 +514,22 @@ class ChatManager {
     this.ws.on('tool_call', (msg: ToolCallEvent) => {
       if (!this.isChatting) return
       console.log('[ToolCall]', msg.tool_name, msg.arguments)
-      window.api.chat
-        .appendMessage({
-          role: 'tool',
-          content: `正在调用工具: ${msg.tool_name}`,
-          tool_call_id: msg.call_id
-        })
-        .catch((err) => console.error('[Chat] 保存工具调用消息失败:', err))
+      // 以助手消息形式记录（含合成 tool_calls），使聊天记录能将工具调用与其结果聚合为工具组展示
+      this.recordToolCall(msg.call_id, msg.tool_name, msg.arguments)
     })
 
     this.ws.on('tool_result', (msg: ToolResultEvent) => {
       if (!this.isChatting) return
       console.log('[ToolResult]', msg.tool_name, msg.success, `${msg.duration_ms}ms`)
 
-      window.api.chat
-        .appendMessage({
-          role: 'tool',
-          content: msg.result,
-          tool_call_id: msg.tool_call_id
-        })
-        .catch((err) => console.error('[Chat] 保存工具结果失败:', err))
+      this.recordToolResult(msg.tool_call_id, msg.result)
     })
 
     // ---- WS 工具协议 ----
     this.ws.on('tool:call', (msg) => {
       if (!this.isChatting) return
-      window.api.chat
-        .appendMessage({
-          role: 'tool',
-          content: `正在调用工具: ${msg.tool_name}`,
-          tool_call_id: msg.call_id
-        })
-        .catch((err) => console.error('[Chat] 保存工具调用消息失败:', err))
+      // 以助手消息形式记录（含合成 tool_calls），使聊天记录能将工具调用与其结果聚合为工具组展示
+      this.recordToolCall(msg.call_id, msg.tool_name, JSON.stringify(msg.arguments))
       void this.toolSystem.handleToolCall(msg)
     })
 
@@ -528,13 +539,7 @@ class ChatManager {
 
     this.ws.on('tool:async_result', (msg) => {
       console.log('[ToolAsyncResult]', msg.call_id, msg.result)
-      window.api.chat
-        .appendMessage({
-          role: 'tool',
-          content: msg.result,
-          tool_call_id: msg.call_id
-        })
-        .catch((err) => console.error('[Chat] 保存工具结果失败:', err))
+      this.recordToolResult(msg.call_id, msg.result)
     })
 
     // ---- 客户端工具协商 ----
@@ -554,6 +559,56 @@ class ChatManager {
     this.ws.onDisconnect(() => {
       this.interruptCurrentPlayback()
     })
+  }
+
+  /**
+   * 以助手消息形式记录一次工具调用（合成 OpenAI tool_calls 结构）。
+   *
+   * 聊天记录聚合逻辑（ChatBoxView 的 displayItems）以「含 tool_calls 的助手消息」
+   * 为锚点，将后续同 call_id 的工具结果聚合为工具组展示。
+   * 流式 tool_call / tool:call 事件与 chat:result 通道可能重复推送同一工具调用，
+   * 通过 recordedToolCallIds 去重，避免生成重复的工具组。
+   *
+   * @param callId - 工具调用唯一 ID
+   * @param toolName - 工具名称
+   * @param args - 工具调用参数（JSON 字符串）
+   */
+  private recordToolCall(callId: string, toolName: string, args: string): void {
+    if (this.recordedToolCallIds.has(callId)) return
+    this.recordedToolCallIds.add(callId)
+    window.api.chat
+      .appendMessage({
+        kind: 'tool_call',
+        tool_calls: [
+          {
+            id: callId,
+            type: 'function',
+            function: { name: toolName, arguments: args }
+          }
+        ]
+      })
+      .catch((err) => console.error('[Chat] 保存工具调用消息失败:', err))
+  }
+
+  /**
+   * 以工具消息形式记录一次工具执行结果，供聊天记录聚合到对应的工具调用组。
+   *
+   * 多个通道（chat:result role='tool'、tool_result、tool:async_result）可能重复
+   * 推送同一 call_id 的结果，通过 recordedToolResultIds 去重。
+   *
+   * @param callId - 工具调用 ID，需与 recordToolCall 记录的工具调用对应
+   * @param result - 工具执行结果文本
+   */
+  private recordToolResult(callId: string, result: string): void {
+    if (this.recordedToolResultIds.has(callId)) return
+    this.recordedToolResultIds.add(callId)
+    window.api.chat
+      .appendMessage({
+        kind: 'tool_result',
+        content: result,
+        tool_call_id: callId
+      })
+      .catch((err) => console.error('[Chat] 保存工具结果失败:', err))
   }
 
   /**
@@ -587,28 +642,26 @@ class ChatManager {
     }
   }
 
-  /** 流式回复完成后保存助手回复到主进程存储。 */
-  private handleStreamComplete(finalText?: string): void {
-    const textToSave = (finalText || this.getCurrentDisplayText()).trim()
-    if (textToSave) {
-      window.api.chat
-        .appendMessage({
-          role: 'assistant',
-          content: textToSave
-        })
-        .catch((err) => console.error('[Chat] 保存助手回复失败:', err))
-    }
+  /**
+   * 流式回复完成回调（chat:done 时触发）。
+   *
+   * 历史保存已改为按句子实时写入（chat:result content 到达即保存），
+   * 因此 done 仅作为聊天完成标记，不再在此拼接整轮文本保存。
+   */
+  private handleStreamComplete(): void {
+    // 无操作：历史按句子保存，见 chat:result 处理逻辑
   }
 }
 
-/** 标准化后端聊天历史返回值，保留所有 OpenAI 兼容字段。 */
+/** 标准化后端聊天历史返回值，保留所有私有展示字段（kind 驱动）。 */
 function normalizeChatHistory(rawMessages?: ChatHistoryApiResponse['data']): ChatMessage[] {
   if (!Array.isArray(rawMessages)) return []
   return rawMessages.map((item) => ({
-    role: item.role === 'assistant' ? 'assistant' : item.role === 'tool' ? 'tool' : 'user',
+    kind: item.kind,
     content: normalizeContent(item.content),
     ...(item.tool_calls ? { tool_calls: item.tool_calls } : {}),
-    ...(item.tool_call_id ? { tool_call_id: item.tool_call_id } : {})
+    ...(item.tool_call_id ? { tool_call_id: item.tool_call_id } : {}),
+    ...(item.timestamp ? { timestamp: item.timestamp } : {})
   }))
 }
 

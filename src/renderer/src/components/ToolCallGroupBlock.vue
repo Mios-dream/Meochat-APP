@@ -39,19 +39,10 @@
 
 <script setup lang="ts">
 import { reactive, watch } from 'vue'
+import type { MergedTool } from '../chat/toolGrouping'
 
-/**
- * 合并后的工具条目：含调用参数、执行结果。
- * result === undefined 表示工具仍在执行中。
- */
-export interface MergedTool {
-  id: string
-  name: string
-  /** 调用参数（JSON 字符串） */
-  args?: string
-  /** 执行结果文本，undefined 表示尚未返回 */
-  result?: string
-}
+// 向后兼容导出：MergedTool 类型统一收敛到 chat/toolGrouping，这里仅做再导出
+export type { MergedTool }
 
 interface Props {
   tools: MergedTool[]

@@ -42,6 +42,22 @@ export function buildAssistantWindowApi(): AssistantWindowApi {
       hideTips: () => ipcRenderer.send(CHANNELS.TIPS_HIDE)
     },
 
+    // 小组件动作控制：与主窗口一致，用于执行服务端下发的客户端小组件工具（如 get_todos）
+    widgetAction: {
+      exec: (
+        widgetType: string,
+        action: string,
+        params: Record<string, unknown>,
+        timeoutMs?: number
+      ) =>
+        ipcRenderer.invoke(CHANNELS.WIDGET_ACTION_EXEC, {
+          widget_type: widgetType,
+          action,
+          params,
+          timeout_ms: timeoutMs
+        })
+    },
+
     assistant: assistantApi,
     chat: chatApi,
     system: systemApi,

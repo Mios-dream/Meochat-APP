@@ -76,26 +76,13 @@
               <div v-else-if="historyError" class="no-history">{{ historyError }}</div>
               <div v-else-if="chatHistory.length === 0" class="no-history">暂无聊天历史</div>
               <div v-else class="history-list">
-                <template v-for="(disp, index) in historyDisplayItems" :key="index">
-                  <ChatMessageItem
-                    v-if="disp.kind === 'message'"
-                    :role="disp.item.role"
-                    :content="disp.item.content"
-                    :tool-calls="disp.item.tool_calls"
-                    :tool-call-id="disp.item.tool_call_id"
+                <template v-for="(turn, index) in historyDisplayItems" :key="index">
+                  <ChatTurnItem
+                    :turn="turn"
                     :avatar-url="avatarUrl"
                     :assistant-name="assistantName"
-                    :timestamp="disp.item.timestamp"
                     :avatar-size="45"
-                  />
-                  <ChatMessageItem
-                    v-else
-                    role="assistant"
-                    :tools="disp.tools"
-                    :reply-content="disp.reply?.content"
-                    :avatar-url="avatarUrl"
-                    :assistant-name="assistantName"
-                    :timestamp="disp.timestamp"
+                    :show-timestamp="true"
                   />
                 </template>
               </div>
@@ -273,14 +260,14 @@ import { useConfigStore } from '../stores/useConfigStore'
 import { storeToRefs } from 'pinia'
 import { AssistantInfo, AssistantManager } from '../services/assistantManager'
 import ChatBox from '../components/ChatBox.vue'
-import ChatMessageItem from '../components/ChatMessageItem.vue'
-import type { MergedTool } from '../components/ToolCallGroupBlock.vue'
+import ChatTurnItem from '../components/ChatTurnItem.vue'
 import DiaryNotebookModal from '../components/main/DiaryNotebookModal.vue'
 import { InteractionSystem } from '@renderer/core/interaction/InteractionSystem'
 import { DiarySystem } from '@renderer/services/DiarySystem'
 import { VoicePipelineService } from '../services/VoicePipelineService'
-import type { ChatMessage, ContentPart, ToolCall } from '@shared/types/chat'
+import type { ChatMessage, ChatMessageKind, ContentPart, ToolCall } from '@shared/types/chat'
 import { normalizeContent } from '../chat/contentNormalizer'
+import { groupChatTurns } from '../chat/toolGrouping'
 
 const configStore = useConfigStore()
 const { config } = storeToRefs(configStore)
@@ -309,9 +296,9 @@ const volume = ref(80)
 // 模型设置
 const isLocked = ref(true)
 
-/** 聊天历史单项类型 */
+/** 聊天历史单项类型（展示层：时间戳解析为本地 Date） */
 interface HistoryItem {
-  role: 'user' | 'assistant' | 'tool'
+  kind: ChatMessageKind
   content: string | ContentPart[] | null
   timestamp: Date | null
   tool_calls?: ToolCall[]
@@ -322,78 +309,8 @@ interface HistoryItem {
 const showHistoryModal = ref(false)
 const chatHistory = ref<HistoryItem[]>([])
 
-/** 展示项：普通消息或合并后的工具组 */
-interface DisplayHistoryItem {
-  kind: 'message'
-  item: HistoryItem
-}
-
-interface DisplayHistoryToolGroup {
-  kind: 'tool_group'
-  tools: MergedTool[]
-  /** 原始工具调用消息的时间戳 */
-  timestamp: Date | null
-  /** 工具调用后的助手文字回复 */
-  reply?: HistoryItem
-}
-
-type HistoryDisplayItem = DisplayHistoryItem | DisplayHistoryToolGroup
-
-/** 从各种格式的消息 content 中提取纯文本 */
-function getTextContent(content: string | ContentPart[] | null): string {
-  if (!content) return ''
-  if (typeof content === 'string') return content
-  if (Array.isArray(content)) {
-    return content
-      .filter((p): p is ContentPart & { type: 'text' } => p.type === 'text')
-      .map((p) => p.text)
-      .join('')
-  }
-  return ''
-}
-
-/** 预处理：将工具调用及其结果合并为工具组 */
-const historyDisplayItems = computed<HistoryDisplayItem[]>(() => {
-  const items: HistoryDisplayItem[] = []
-  const skip = new Set<number>()
-  const list = chatHistory.value
-
-  for (let i = 0; i < list.length; i++) {
-    if (skip.has(i)) continue
-    const item = list[i]
-
-    if (item.role === 'assistant' && item.tool_calls && item.tool_calls.length > 0) {
-      const tools: MergedTool[] = item.tool_calls.map((tc) => {
-        for (let j = i + 1; j < list.length; j++) {
-          if (list[j].role === 'tool' && list[j].tool_call_id === tc.id) {
-            skip.add(j)
-            return {
-              id: tc.id,
-              name: tc.function.name,
-              args: tc.function.arguments,
-              result: getTextContent(list[j].content)
-            }
-          }
-        }
-        return { id: tc.id, name: tc.function.name, args: tc.function.arguments }
-      })
-      // 查找后续的助手文字回复，合并到同一块
-      let reply: HistoryItem | undefined
-      for (let j = i + 1; j < list.length; j++) {
-        if (skip.has(j)) continue
-        if (list[j].role === 'assistant') {
-          reply = list[j]
-          skip.add(j)
-          break
-        }
-      }
-      items.push({ kind: 'tool_group', tools, timestamp: item.timestamp, reply })
-    } else {
-      items.push({ kind: 'message', item })
-    }
-  }
-  return items
-})
+/** 预处理：按对话回合分组（工具调用与逐句回复收拢到同一回合），规则与工具栏窗口保持一致 */
+const historyDisplayItems = computed(() => groupChatTurns(chatHistory.value))
 const historyLoading = ref(false)
 const historyError = ref('')
 
@@ -920,19 +837,15 @@ function formatDiaryTimestamp(timestamp: string): string {
   })
 }
 
-function buildHistoryItems(messages: ChatMessage[]): Array<{
-  role: 'user' | 'assistant' | 'tool'
-  content: string | ContentPart[] | null
-  timestamp: Date | null
-  tool_calls?: ToolCall[]
-  tool_call_id?: string
-}> {
+function buildHistoryItems(messages: ChatMessage[]): HistoryItem[] {
   let lastTimestamp: Date | null = null
 
   return messages.map((item) => {
-    const parsedTimestamp = parseTimestampFromContent(item.content ?? '')
-    let content: string | ContentPart[] | null = item.content
-    if (item.role === 'user' && typeof item.content === 'string') {
+    // 优先使用后端展示历史提供的时间戳，缺失时从内容中的「当前时间」解析
+    const explicitTimestamp = parseIsoTimestamp(item.timestamp)
+    const parsedTimestamp = explicitTimestamp ?? parseTimestampFromContent(item.content ?? '')
+    let content: string | ContentPart[] | null = item.content ?? null
+    if (item.kind === 'user' && typeof item.content === 'string') {
       // 移除旧版后端前缀
       let cleanText = (
         item.content.match(/用户对话内容或动作:\s*([\s\S]*?)$/)?.[1] || item.content
@@ -950,13 +863,21 @@ function buildHistoryItems(messages: ChatMessage[]): Array<{
     }
 
     return {
-      role: item.role,
+      kind: item.kind,
       content,
       timestamp: parsedTimestamp || lastTimestamp,
       ...(item.tool_calls ? { tool_calls: item.tool_calls } : {}),
       ...(item.tool_call_id ? { tool_call_id: item.tool_call_id } : {})
     }
   })
+}
+
+/** 解析后端 ISO 时间戳字符串，非法或缺失时返回 null */
+function parseIsoTimestamp(raw: string | undefined): Date | null {
+  if (!raw) return null
+  const normalized = raw.replace(' ', 'T')
+  const parsed = new Date(normalized)
+  return Number.isNaN(parsed.getTime()) ? null : parsed
 }
 
 //格式化日期
@@ -1576,7 +1497,7 @@ watch(
   gap: 15px;
 }
 
-/* 消息渲染由 ChatMessageItem 组件接管 */
+/* 消息渲染由 ChatTurnItem 回合容器接管 */
 
 /* 淡入淡出动画 */
 .modal-fade-enter-active {

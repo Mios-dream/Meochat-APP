@@ -26,23 +26,10 @@
           <span class="loading-dot" />
           <span class="history-loading-text">加载历史记录...</span>
         </div>
-        <template v-else-if="displayItems.length > 0">
-          <template v-for="(item, idx) in displayItems" :key="idx">
-            <ChatMessageItem
-              v-if="item.kind === 'message'"
-              :role="item.msg.role"
-              :content="item.msg.content"
-              :tool-calls="item.msg.tool_calls"
-              :tool-call-id="item.msg.tool_call_id"
-              :avatar-url="avatarUrl"
-              :assistant-name="assistantName"
-              :avatar-size="35"
-            />
-            <ChatMessageItem
-              v-else
-              role="assistant"
-              :tools="item.tools"
-              :reply-content="item.reply?.content"
+        <template v-else-if="displayTurns.length > 0">
+          <template v-for="(turn, idx) in displayTurns" :key="idx">
+            <ChatTurnItem
+              :turn="turn"
               :avatar-url="avatarUrl"
               :assistant-name="assistantName"
               :avatar-size="35"
@@ -120,9 +107,9 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick, Ref } from 'vue'
-import ChatMessageItem from '../components/ChatMessageItem.vue'
-import type { MergedTool } from '../components/ToolCallGroupBlock.vue'
+import ChatTurnItem from '../components/ChatTurnItem.vue'
 import { normalizeContent } from '../chat/contentNormalizer'
+import { groupChatTurns } from '../chat/toolGrouping'
 import type { ChatMessage } from '../chat/ChatManager'
 import type { ContentPart } from '@shared/types/chat'
 import { AssistantInfo } from '@shared/types/assistantTypes.js'
@@ -153,33 +140,7 @@ function normalizeMessages(raw: ChatMessage[]): ChatMessage[] {
   }))
 }
 
-/** 展示项：普通消息或合并后的工具组 */
-interface DisplayMessage {
-  kind: 'message'
-  msg: ChatMessage
-}
-
-interface DisplayAssistantWithTools {
-  kind: 'assistant_with_tools'
-  tools: MergedTool[]
-  /** 工具调用后的助手文字回复 */
-  reply?: ChatMessage
-}
-
-type DisplayItem = DisplayMessage | DisplayAssistantWithTools
-
-/** 从各种格式的消息 content 中提取纯文本 */
-function getTextContent(content: ChatMessage['content']): string {
-  if (!content) return ''
-  if (typeof content === 'string') return content
-  if (Array.isArray(content)) {
-    return content
-      .filter((p): p is Extract<typeof p, { type: 'text' }> => p.type === 'text')
-      .map((p) => p.text)
-      .join('')
-  }
-  return ''
-}
+/** 展示项：普通消息或合并后的工具组（分组规则统一由 chat/toolGrouping 提供） */
 
 const avatarUrl = computed(() => {
   if (currentAssistant.value?.avatar) {
@@ -190,50 +151,8 @@ const avatarUrl = computed(() => {
 
 const assistantName = computed(() => currentAssistant.value?.name ?? '助手')
 
-/** 预处理消息列表：将工具调用及其结果合并为工具组 */
-const displayItems = computed<DisplayItem[]>(() => {
-  const items: DisplayItem[] = []
-  const skip = new Set<number>()
-  const msgs = messages.value
-
-  for (let i = 0; i < msgs.length; i++) {
-    if (skip.has(i)) continue
-    const msg = msgs[i]
-
-    if (msg.role === 'assistant' && msg.tool_calls && msg.tool_calls.length > 0) {
-      // 合并工具调用 + 后续匹配的工具结果
-      const tools: MergedTool[] = msg.tool_calls.map((tc) => {
-        for (let j = i + 1; j < msgs.length; j++) {
-          if (msgs[j].role === 'tool' && msgs[j].tool_call_id === tc.id) {
-            skip.add(j)
-            return {
-              id: tc.id,
-              name: tc.function.name,
-              args: tc.function.arguments,
-              result: getTextContent(msgs[j].content)
-            }
-          }
-        }
-        return { id: tc.id, name: tc.function.name, args: tc.function.arguments }
-      })
-      // 查找后续的助手文字回复，合并到同一块
-      let reply: ChatMessage | undefined
-      for (let j = i + 1; j < msgs.length; j++) {
-        if (skip.has(j)) continue
-        if (msgs[j].role === 'assistant') {
-          reply = msgs[j]
-          skip.add(j)
-          break
-        }
-      }
-      items.push({ kind: 'assistant_with_tools', tools, reply })
-    } else {
-      // 未匹配到 tool_calls 的孤立 tool 消息也照常渲染
-      items.push({ kind: 'message', msg })
-    }
-  }
-  return items
-})
+/** 预处理消息列表：按对话回合分组（工具调用与逐句回复收拢到同一回合），规则与助手空间保持一致 */
+const displayTurns = computed(() => groupChatTurns(messages.value))
 
 /** 根据文件名获取对应的 FontAwesome 图标 */
 function getFileIcon(fileName: string): string {
@@ -286,7 +205,7 @@ async function handleSend(): Promise<void> {
   }
 
   // 乐观更新：立即显示用户消息
-  messages.value.push({ role: 'user', content })
+  messages.value.push({ kind: 'user', content })
   inputText.value = ''
   selectedFiles.value = []
   scrollToBottom()
@@ -656,7 +575,7 @@ onUnmounted(() => {
   }
 }
 
-/* 消息渲染由 ChatMessageItem 组件接管 */
+/* 消息渲染由 ChatTurnItem 回合容器接管 */
 
 /* ───── 历史加载中 ───── */
 .history-loading {

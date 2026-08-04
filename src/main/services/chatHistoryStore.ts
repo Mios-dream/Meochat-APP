@@ -9,7 +9,8 @@
 import type { ChatMessage, ChatHistoryApiResponse, StoreResult } from '@shared/types/chat'
 import { AssistantService } from './assistant/assistantService'
 
-const MAX_HISTORY_LENGTH = 20
+// 本地缓存上限：与后端 HistoryManager.MAX_RECORDS(100) 对齐，避免双源裁剪差异造成漂移
+const MAX_HISTORY_LENGTH = 100
 
 /** 裁剪聊天历史至最大长度 */
 function trimChatHistory(messages: ChatMessage[], maxLength: number): ChatMessage[] {

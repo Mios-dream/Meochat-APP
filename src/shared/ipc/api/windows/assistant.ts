@@ -30,6 +30,22 @@ export interface AssistantWindowApi extends CommonApi, PetInteractionApi {
     hideTips: () => void
   }
 
+  /**
+   * 小组件动作控制（LLM 客户端工具 → 遥控小组件窗口）。
+   *
+   * 助手窗口会接收并执行服务端下发的 tool:call（客户端工具），
+   * 必须与主窗口一样具备 widgetAction 能力，否则 get_todos 等
+   * 客户端小组件工具在聊天框发起对话时无法执行。
+   */
+  widgetAction: {
+    exec: (
+      widgetType: string,
+      action: string,
+      params: Record<string, unknown>,
+      timeoutMs?: number
+    ) => Promise<{ success: boolean; data?: Record<string, unknown>; error?: string }>
+  }
+
   assistant: AssistantApi
   chat: ChatApi
   system: SystemApi

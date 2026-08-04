@@ -1,6 +1,6 @@
 <template>
-  <div :class="['cmi-item', { 'cmi-user-item ': role === 'user' }]">
-    <!-- 头像（助手消息/工具组专属） -->
+  <div :class="['cmi-item', { 'cmi-user-item ': displayRole === 'user' }]">
+    <!-- 头像（助手消息专属） -->
     <div
       v-if="showAvatar"
       class="cmi-avatar"
@@ -13,119 +13,92 @@
     />
 
     <div class="cmi-body">
-      <!-- 信息栏（助手消息/工具组专属） -->
+      <!-- 信息栏（助手消息专属） -->
       <div v-if="showAvatar && assistantName" class="cmi-info">
         <span class="cmi-name">{{ assistantName }}</span>
         <span class="cmi-time">{{ displayTime }}</span>
       </div>
 
-      <!-- 工具组模式：合并的工具调用 + 结果 + 可选回复 -->
-      <template v-if="tools && tools.length > 0">
-        <ToolCallGroupBlock :tools="tools" />
-        <div v-if="replyContent != null" class="cmi-tool-reply">
-          <div class="cmi-text cmi-assistant">
-            <template v-if="Array.isArray(replyContent)">
-              <template v-for="(part, idx) in replyContent" :key="idx">
-                <span v-if="part.type === 'text'">{{ part.text }}</span>
-              </template>
-            </template>
-            <template v-else>
-              <span v-for="(seg, idx) in replyParsedSegments" :key="idx" :class="seg.class">
-                {{ seg.text }}
-              </span>
-            </template>
-          </div>
-          <div v-if="replyAttachments.length > 0" class="cmi-attach">
-            <div v-for="(att, aidx) in replyAttachments" :key="aidx" class="cmi-chip">
-              <font-awesome-icon :icon="getAttachIcon(att)" class="cmi-chip-icon" />
-              <span class="cmi-chip-name">{{ getAttachName(att) }}</span>
+      <div :class="['cmi-text', `cmi-${displayRole}`]">
+        <!-- 孤立工具调用（kind: tool_call，未与结果聚合为工具组） -->
+        <template v-if="toolCalls && toolCalls.length > 0">
+          <div class="tc-panel">
+            <div class="tc-header">
+              <font-awesome-icon icon="wrench" class="tc-header-icon" />
+              <span>调用工具</span>
             </div>
-          </div>
-        </div>
-      </template>
-
-      <!-- 普通消息模式 -->
-      <template v-else>
-        <div :class="['cmi-text', `cmi-${role}`]">
-          <!-- 工具调用（assistant 消息 content=null + tool_calls） -->
-          <template v-if="toolCalls && toolCalls.length > 0">
-            <div class="tc-panel">
-              <div class="tc-header">
-                <font-awesome-icon icon="wrench" class="tc-header-icon" />
-                <span>调用工具</span>
-              </div>
-              <div class="tc-list">
-                <div v-for="tc in toolCalls" :key="tc.id" class="tc-item">
-                  <span class="tc-bullet">○</span>
-                  <span class="tc-name">{{ tc.function.name }}</span>
-                </div>
+            <div class="tc-list">
+              <div v-for="tc in toolCalls" :key="tc.id" class="tc-item">
+                <span class="tc-bullet">○</span>
+                <span class="tc-name">{{ tc.function.name }}</span>
               </div>
             </div>
-          </template>
-          <!-- 工具结果（tool 角色） -->
-          <template v-else-if="role === 'tool'">
-            <div class="tool-result-content">{{ toolStringContent }}</div>
-          </template>
-          <!-- 结构化内容 -->
-          <template v-else-if="Array.isArray(content)">
-            <template v-for="(part, idx) in content" :key="idx">
-              <span v-if="part.type === 'text'">{{ part.text }}</span>
-            </template>
-          </template>
-          <!-- 纯文本内容 -->
-          <template v-else>
-            <span v-for="(seg, idx) in parsedSegments" :key="idx" :class="seg.class">
-              {{ seg.text }}
-            </span>
-          </template>
-        </div>
-        <div
-          v-if="msgAttachments.length > 0"
-          :class="['cmi-attach', { 'cmi-attach-right': role === 'user' || role === 'tool' }]"
-        >
-          <div v-for="(att, aidx) in msgAttachments" :key="aidx" class="cmi-chip">
-            <font-awesome-icon :icon="getAttachIcon(att)" class="cmi-chip-icon" />
-            <span class="cmi-chip-name">{{ getAttachName(att) }}</span>
           </div>
+        </template>
+        <!-- 结构化内容 -->
+        <template v-else-if="Array.isArray(content)">
+          <template v-for="(part, idx) in content" :key="idx">
+            <span v-if="part.type === 'text'">{{ part.text }}</span>
+          </template>
+        </template>
+        <!-- 纯文本内容 -->
+        <template v-else>
+          <span v-for="(seg, idx) in parsedSegments" :key="idx" :class="seg.class">
+            {{ seg.text }}
+          </span>
+        </template>
+      </div>
+      <div
+        v-if="msgAttachments.length > 0"
+        :class="['cmi-attach', { 'cmi-attach-right': displayRole === 'user' || displayRole === 'tool' }]"
+      >
+        <div v-for="(att, aidx) in msgAttachments" :key="aidx" class="cmi-chip">
+          <font-awesome-icon :icon="getAttachIcon(att)" class="cmi-chip-icon" />
+          <span class="cmi-chip-name">{{ getAttachName(att) }}</span>
         </div>
-      </template>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import ToolCallGroupBlock from './ToolCallGroupBlock.vue'
-import type { MergedTool } from './ToolCallGroupBlock.vue'
 import { getAttachments } from '../chat/contentNormalizer'
-import type { ContentPart, ToolCall } from '@shared/types/chat'
+import type { ChatMessageKind, ContentPart, ToolCall } from '@shared/types/chat'
 
 interface Props {
-  role: 'user' | 'assistant' | 'tool'
+  /** 消息类别（后端展示 schema 的 kind），据此推导展示角色与样式 */
+  kind: ChatMessageKind
   content?: string | ContentPart[] | null
   toolCalls?: ToolCall[]
   toolCallId?: string
-
-  /** 工具组模式：提供此数组则进入工具组渲染 */
-  tools?: MergedTool[]
-  /** 工具组后续的助手文字回复 */
-  replyContent?: string | ContentPart[] | null
 
   /** 显示定制 */
   avatarUrl?: string
   assistantName?: string
   timestamp?: Date | null
   avatarSize?: number
+  /**
+   * 是否显示头像与信息头（助手消息）。回合容器中用于单头像 + 连续气泡场景：
+   * 仅首个单元开启，后续单元传 false 以紧凑堆叠。
+   */
+  showHeader?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
   avatarUrl: '../assets/images/assistant_avatar_small.png',
-  avatarSize: 50
+  avatarSize: 50,
+  showHeader: true
 })
 
-const showAvatar = computed(
-  () => props.role === 'assistant' || (props.tools && props.tools.length > 0)
-)
+/** 展示角色：由 kind 推导（user→用户、tool_result→工具、其余→助手） */
+const displayRole = computed<'user' | 'assistant' | 'tool'>(() => {
+  if (props.kind === 'user') return 'user'
+  if (props.kind === 'tool_result') return 'tool'
+  return 'assistant'
+})
+
+const showAvatar = computed(() => props.showHeader && displayRole.value === 'assistant')
 
 const displayTime = computed(() => {
   if (!props.timestamp) return ''
@@ -144,29 +117,11 @@ const msgAttachments = computed(() => {
   return getAttachments(props.content)
 })
 
-/** 工具组回复中的附件列表 */
-const replyAttachments = computed(() => {
-  if (props.replyContent == null) return []
-  return getAttachments(props.replyContent)
-})
-
 /** 文本分段 */
 interface TextSegment {
   text: string
   class?: string
 }
-
-/** 从 content 中提取纯文本（用于 tool 角色） */
-const toolStringContent = computed(() => {
-  if (typeof props.content === 'string') return props.content
-  if (Array.isArray(props.content)) {
-    return props.content
-      .filter((p): p is ContentPart & { type: 'text' } => p.type === 'text')
-      .map((p) => p.text)
-      .join('')
-  }
-  return ''
-})
 
 /** 将纯文本解析为带样式的分段（括号内容 dim） */
 function parseTextSegments(raw: string): TextSegment[] {
@@ -194,12 +149,6 @@ function parseTextSegments(raw: string): TextSegment[] {
 /** 主内容的分段解析 */
 const parsedSegments = computed<TextSegment[]>(() => {
   const raw = typeof props.content === 'string' ? props.content : ''
-  return parseTextSegments(raw)
-})
-
-/** 工具组回复的分段解析 */
-const replyParsedSegments = computed<TextSegment[]>(() => {
-  const raw = typeof props.replyContent === 'string' ? props.replyContent : ''
   return parseTextSegments(raw)
 })
 
@@ -312,11 +261,6 @@ function getAttachName(att: ContentPart): string {
   align-self: flex-start;
 }
 
-/* ─── 工具组回复 ─── */
-.cmi-tool-reply {
-  margin-top: 8px;
-}
-
 /* ─── 附件栏 ─── */
 .cmi-attach {
   display: flex;
@@ -359,14 +303,6 @@ function getAttachName(att: ContentPart): string {
 /* ─── 消息内容内联样式（原 MessageContent 组件） ─── */
 .msg-dim {
   opacity: 0.45;
-}
-
-.tool-result-content {
-  font-size: 12px;
-  color: #7a5a8a;
-  line-height: 1.5;
-  white-space: pre-wrap;
-  word-break: break-word;
 }
 
 .tc-panel {
