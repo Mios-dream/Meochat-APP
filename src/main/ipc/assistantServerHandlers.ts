@@ -11,6 +11,7 @@ import { resolveAppDataDir } from '../utils/pathResolve'
  *
  * 助手服务IPC方法清单：
  * - assistant:load-data          加载助手数据（初始化）
+ * - assistant:refresh           强制刷新助手数据（云端同步 + 资源检查）
  * - assistant:register-chat-shortcut  注册聊天框快捷键
  * - assistant:add-assistant      添加助手
  * - assistant:update-assistant   更新助手信息
@@ -41,6 +42,19 @@ export function setupAssistantServerIPC(): void {
    */
   registerHandle(CHANNELS.ASSISTANT_LOAD_DATA, async (event) => {
     return await assistantService.loadAssistants((assistantName, progress) => {
+      event.sender.send(CHANNELS.ASSISTANT_DOWNLOAD_PROGRESS_EVENT, { assistantName, progress })
+    })
+  })
+
+  /**
+   * 强制刷新助手数据（云端同步 + 资源完整性检查与补齐）
+   *
+   * 用于渲染进程显式触发的场景（如进入助手管理页时）：
+   * 以云端为准重新同步助手数据并广播数据更新事件，
+   * 随后在后台检查并下载缺失资源（下载进度通过事件推送）。
+   */
+  registerHandle(CHANNELS.ASSISTANT_REFRESH, async (event) => {
+    return await assistantService.refreshAssistants((assistantName, progress) => {
       event.sender.send(CHANNELS.ASSISTANT_DOWNLOAD_PROGRESS_EVENT, { assistantName, progress })
     })
   })

@@ -199,6 +199,36 @@ class AssistantService {
   }
 
   /**
+   * 强制刷新助手数据（云端同步 + 资源完整性检查与补齐）。
+   *
+   * 用于渲染进程显式触发的场景（如进入助手管理页时），与 loadAssistants 的区别：
+   * - 不重读本地磁盘缓存，直接以云端为准同步，保证好感度等云端数据及时回流；
+   * - 同步完成后执行后台资源完整性检查与缺失资源下载（不阻塞返回）。
+   *
+   * 并发控制：
+   * - 云端同步受 syncing 标志防重入，进行中的同步直接跳过（该同步完成后仍会广播）；
+   * - 资源检查通过 downloadingAssets 集合防止同一助手重复下载。
+   *
+   * @param onProgress - 可选的进度回调，用于向渲染进程报告资产下载进度
+   *   回调参数：(assistantName: 当前处理的助手名, progress: 0-100 的进度百分比)
+   * @returns 包含 success（是否成功）与可选 error
+   */
+  public async refreshAssistants(
+    onProgress?: (assistantName: string, progress: number) => void
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      // 云端同步（成功后会广播 assistant:data-updated）
+      await this.requestSync()
+      // 资源完整性检查与补齐（后台执行，不阻塞返回）
+      this.assets.checkAndDownloadAllAssistantsAssets(onProgress)
+      return { success: true }
+    } catch (error) {
+      log.error('刷新助手数据失败:', error)
+      return { success: false, error: (error as Error).message }
+    }
+  }
+
+  /**
    * 以云端为准后台同步助手数据（仅在显式时机触发）。
    *
    * 数据语义（云端权威，本地为只读缓存）：

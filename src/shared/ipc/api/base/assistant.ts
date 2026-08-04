@@ -12,6 +12,7 @@ import type {
 export interface AssistantApi {
   getAssistantStatus: () => Promise<boolean>
   loadAssistantData: () => Promise<{ success: boolean; error?: string }>
+  refreshAssistantData: () => Promise<{ success: boolean; error?: string }>
   getAllAssistants: () => Promise<{ success: boolean; data?: AssistantInfo[]; error?: string }>
   getCurrentAssistant: () => Promise<
     { success: true; data: AssistantInfo } | { success: false; error: string }

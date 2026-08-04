@@ -41,6 +41,8 @@ export const assistantChannels = {
 
   /** 加载助手数据 */
   ASSISTANT_LOAD_DATA: defineInvoke('assistant:load-data'),
+  /** 强制刷新助手数据（云端同步 + 资源完整性检查） */
+  ASSISTANT_REFRESH: defineInvoke('assistant:refresh'),
   /** 获取所有助手列表 */
   ASSISTANT_GET_ALL: defineInvoke('assistant:get-all'),
   /** 获取当前助手 */

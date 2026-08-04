@@ -599,6 +599,8 @@ onMounted(() => {
     isAssistantOpen.value = status
   })
 
+  // 进入页面即强制刷新：云端同步 + 资源完整性检查（完成后广播 data-updated 事件自动更新列表）
+  assistantManager.refreshAssistantData()
   getAssistants()
 
   // 监听助手资源上传进度事件（添加/编辑助手时上传资产）

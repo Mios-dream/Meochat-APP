@@ -19,6 +19,7 @@ export const assistantApi: AssistantApi = {
   hideAssistant: () => ipcRenderer.send(CHANNELS.ASSISTANT_HIDE),
   showAssistant: () => ipcRenderer.send(CHANNELS.ASSISTANT_SHOW),
   loadAssistantData: () => ipcRenderer.invoke(CHANNELS.ASSISTANT_LOAD_DATA),
+  refreshAssistantData: () => ipcRenderer.invoke(CHANNELS.ASSISTANT_REFRESH),
   getAllAssistants: () => ipcRenderer.invoke(CHANNELS.ASSISTANT_GET_ALL),
   registerChatShortcut: (shortcut: string) =>
     ipcRenderer.invoke(CHANNELS.ASSISTANT_REGISTER_CHAT_SHORTCUT, shortcut),

@@ -117,6 +117,25 @@ class AssistantManager {
   }
 
   /**
+   * 强制刷新助手数据（云端同步 + 资源完整性检查）
+   *
+   * 触发主进程以云端为准重新同步全部助手数据（好感度等云端字段会随之回流），
+   * 并在后台检查、下载缺失的助手资源。同步完成后主进程会广播
+   * assistant:data-updated 事件，前端页面据此被动更新列表。
+   *
+   * @returns 是否成功发起刷新流程
+   */
+  public async refreshAssistantData(): Promise<boolean> {
+    const result = await window.api.assistant.refreshAssistantData()
+    if (result.success) {
+      return true
+    } else {
+      console.error('刷新助手数据失败:', result.error)
+      return false
+    }
+  }
+
+  /**
    * 获取当前助手的资产配置
    * @returns 助手资产配置，没有则返回 null
    */
