@@ -5,7 +5,7 @@
       <p class="page-title-description"></p>
 
       <div class="setting-container">
-        <div class="setting-title">基础设置</div>
+        <div class="setting-title">全局设置</div>
         <div class="setting-item">
           <form class="setting-form">
             <div class="title">

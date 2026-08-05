@@ -6,48 +6,42 @@ import path from 'path'
 import { CHANNELS } from '@shared/ipc/channels'
 import { registerHandle } from '../utils/registerIpcHandler'
 
-import { AppConfig } from '@shared/types/appConfig'
+import { AppConfig, AppSettings, AssistantConfigSettings } from '@shared/types/appConfig'
 import { resolveAppDataDir } from '../utils/pathResolve'
 import { setBaseUrl } from '@shared/api/request'
 
-// 配置项的默认值
-const schema: Schema<AppConfig> = {
-  // 基础配置
+// 配置项的默认值按命名空间分组定义，最后再合并为扁平 schema：
+// 存储仍保持扁平单对象（electron-store 单一 JSON），分组仅是代码组织方式，
+// 与 appConfig.ts 中 AppSettings / AssistantSettings 的分组一一对应。
+const appSchema: Schema<AppSettings> = {
   baseUrl: { type: 'string', default: 'http://127.0.0.1:8001' },
-  // 核心运行模式：'local' = 本地模式，'api' = API模式
   kernelMode: { type: 'string', default: 'local', enum: ['local', 'api'] },
-  // 是否开机自启
   autoStartOnBoot: { type: 'boolean', default: false },
-  // 是否自动更新
   autoUpdate: { type: 'boolean', default: true },
-  // 是否开启调试模式
   debugMode: { type: 'boolean', default: false },
-  // 是否启用静默模式
   silentMode: { type: 'boolean', default: false },
-  // 助手配置
+  themeColor: { type: 'string', default: '#fb7299' }
+}
+
+const assistantSchema: Schema<AssistantConfigSettings> = {
   volume: { type: 'number', default: 0.5 },
-  // 是否启用助手语音唤醒服务
   autoChat: { type: 'boolean', default: false },
-  // 待机事件
   idleEvent: { type: 'boolean', default: true },
-  // 安静模式
   quietMode: { type: 'boolean', default: false },
-  // 是否启用桌面台词板
   desktopSpeechBoard: { type: 'boolean', default: true },
-  // 是否启用应用内台词板
   appSpeechBoard: { type: 'boolean', default: true },
-  // 助手是否开启
   assistantEnabled: { type: 'boolean', default: false },
-  // 当前助手
   currentAssistant: { type: 'string', default: '' },
-  // 主题色
-  themeColor: { type: 'string', default: '#fb7299' },
-  // 聊天快捷键
   chatShortcut: { type: 'string', default: 'Alt+A' },
-  // 是否处于睡眠模式
   sleepMode: { type: 'boolean', default: false },
-  // 主动等级
-  initiativeLevel: { type: 'string', default: 'low', enum: ['low', 'medium', 'high'] }
+  initiativeLevel: { type: 'string', default: 'low', enum: ['low', 'medium', 'high'] },
+  renderFps: { type: 'number', default: 60, enum: [30, 60, 120] }
+}
+
+// 合并分组 schema 为完整配置 schema（键无重叠，分组边界由 AppConfig 扩展保证）
+const schema: Schema<AppConfig> = {
+  ...appSchema,
+  ...assistantSchema
 }
 
 const appDataDir = resolveAppDataDir()

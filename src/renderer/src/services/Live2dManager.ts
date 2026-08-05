@@ -322,6 +322,10 @@ export class Live2DManager {
    */
   public resetModelTransform(): void {
     this.transformController.resetModelTransform(this.model, this.app)
+    // 同步指针控制器的缩放平滑目标到当前实际缩放。
+    // 窗口 resize 后 currentScale 已按新尺寸重新适配，若不同步，
+    // 下一次拖拽触发缩放平滑时会把模型拉回旧（默认）尺寸而超出窗口视口。
+    this.pointerController.syncZoomTarget(this.getModelScale())
   }
 
   /**

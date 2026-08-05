@@ -63,6 +63,17 @@
             <span class="scale-value">{{ petSizePercent }}%</span>
           </div>
         </form>
+        <div class="divider"></div>
+        <form class="setting-row">
+          <div class="label-group">
+            <label>渲染帧率</label>
+            <div class="description">调整助手渲染帧率，建议60帧</div>
+          </div>
+          <FpsSelector
+            :model-value="config.renderFps"
+            @update:model-value="(v) => updateConfig('renderFps', v)"
+          />
+        </form>
       </div>
       <div class="section-title">互动设置</div>
       <div class="setting-item">
@@ -136,6 +147,7 @@
 <script setup lang="ts">
 import { ref, onMounted, watch } from 'vue'
 import ToggleSwitch from '../components/ToggleSwitch.vue'
+import FpsSelector from '../components/FpsSelector.vue'
 import { useConfigStore } from '../stores/useConfigStore'
 import { storeToRefs } from 'pinia'
 import { AssistantManager, type AssistantInfo } from '../services/assistantManager'

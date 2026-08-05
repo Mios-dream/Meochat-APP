@@ -239,6 +239,17 @@
               @click="startCaptureShortcut"
             />
           </form>
+          <div class="divider"></div>
+          <form class="setting-from">
+            <div class="title">
+              <label for="render-fps">渲染帧率</label>
+              <div class="description">调整助手渲染帧率，帧率越高越流畅</div>
+            </div>
+            <FpsSelector
+              :model-value="config.renderFps"
+              @update:model-value="(v) => change('renderFps', v)"
+            />
+          </form>
         </div>
       </div>
     </BlurModal>
@@ -256,6 +267,7 @@ import BlurModal from '../components/BlurModal.vue'
 import ToggleSwitch from '../components/ToggleSwitch.vue'
 import VolumeSlider from '../components/VolumeSlider.vue'
 import RoundedButton from '../components/RoundedButton.vue'
+import FpsSelector from '../components/FpsSelector.vue'
 import { useConfigStore } from '../stores/useConfigStore'
 import { storeToRefs } from 'pinia'
 import { AssistantInfo, AssistantManager } from '../services/assistantManager'
@@ -412,6 +424,9 @@ async function loadLive2DModel(): Promise<boolean> {
   try {
     // 重载前销毁上一次的模型与渲染器实例，避免重复初始化同一画布
     live2DManager.destroy()
+
+    // 应用配置中的渲染帧率，init 内部会以当前 this.fps 设置 ticker
+    live2DManager.setFPS(config.value.renderFps)
 
     const assistantAssets = await assistantManager.getAssistantAssets()
 
@@ -1040,6 +1055,14 @@ watch(
   () => [config.value.autoChat, config.value.baseUrl],
   () => {
     syncVoiceState()
+  }
+)
+
+// 监听渲染帧率变化，运行时实时调整 Live2D ticker
+watch(
+  () => config.value.renderFps,
+  (fps) => {
+    live2DManager.setFPS(fps)
   }
 )
 </script>

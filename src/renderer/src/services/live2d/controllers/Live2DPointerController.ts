@@ -135,7 +135,7 @@ export class Live2DPointerController {
   private dragMoveHandler: ((event: MouseEvent) => void) | null = null
   private dragEndHandler: ((event: MouseEvent) => void) | null = null
   /** 指数平滑速率（60fps 基准），值越小滞后越大 */
-  private readonly SMOOTH_RATE = 0.1
+  private readonly SMOOTH_RATE = 0.15
   /** 位置收敛阈值（px），低于此值直接 snap */
   private readonly POS_SETTLE = 2
   /** 缩放平滑系数 */
@@ -224,6 +224,20 @@ export class Live2DPointerController {
     this.transparentCheckCleanup?.()
     this.transparentCheckCleanup = null
     this.dragStrategy.destroy()
+  }
+
+  /**
+   * 将缩放平滑目标同步到当前实际缩放值。
+   *
+   * zoomTargetScale 在 bind() 时初始化为模型加载时的缩放，此后窗口 resize
+   * 会通过 resetModelTransform 重新计算 currentScale，若不在此处同步，
+   * 下一次拖拽触发 startAnim 时，缩放平滑会按旧目标把模型拉回默认尺寸，
+   * 导致模型恢复默认大小并超出窗口视口。
+   *
+   * @param scale 当前模型的实际缩放值。
+   */
+  syncZoomTarget(scale: number): void {
+    this.zoomTargetScale = scale
   }
 
   /**
@@ -623,8 +637,9 @@ export class Live2DPointerController {
         }
       }
 
-      // 清理
-      this.stopAnim()
+      // 清理：仅卸载拖拽监听与交互状态，不停止平滑动画。
+      // 若释放时模型仍在追赶 dragTarget，startAnim 会继续滑行到目标点后自行收敛，
+      // 过早 stopAnim 会把模型冻结在移动中途，造成迟滞手感。
       this.uninstallDragListeners()
       this.resetInteractionState()
       this.clearMousePressTimer()
@@ -658,8 +673,11 @@ export class Live2DPointerController {
   /**
    * 启动帧率无关的平滑追逐 + 缩放动画。
    *
-   * 位置更新使用指数平滑，alpha 根据实际帧时间校正，保证任何帧率下
-   * 模型滞后时间恒定（SMOOTH_RATE = 0.08 ≈ 208ms 滞后）。
+   * 位置与缩放均使用真正的指数平滑：alpha = 1 - Math.pow(1 - rate, dt)，
+   * 其中 dt 为以 60fps 为基准的归一化帧时长，保证任意刷新率（60/120/144Hz）
+   * 下模型滞后时间恒定（SMOOTH_RATE = 0.15 ≈ 103ms 滞后）。
+   * 旧实现仅对 dt>=2 的低于 60fps 场景逐段补偿，高刷屏上收敛速度被成倍缩短，
+   * 导致平滑拖拽与缩放几乎变为 1:1 直移，体感消失。
    *
    * 位置约束由当前 DragStrategy.getBounds() 提供：
    * - 桌宠模式下约束到画布可视范围，防止模型越界。
@@ -680,6 +698,7 @@ export class Live2DPointerController {
       let needsContinue = false
       const now = performance.now()
       const frameDeltaMs = now - this.lastFrameTime
+      // dt 以 60fps 为基准归一化，并钳制上限，避免掉帧造成跳变
       const dt = Math.min(frameDeltaMs / 16.667, 4)
       this.lastFrameTime = now
 
@@ -695,12 +714,7 @@ export class Live2DPointerController {
         const diffY = this.dragTargetY - model.y
 
         if (Math.abs(diffX) > this.POS_SETTLE || Math.abs(diffY) > this.POS_SETTLE) {
-          const decay = 1 - this.SMOOTH_RATE
-          let pow = decay
-          if (dt >= 2) pow *= decay
-          if (dt >= 3) pow *= decay
-          if (dt >= 4) pow *= decay
-          const alpha = 1 - pow
+          const alpha = 1 - Math.pow(1 - this.SMOOTH_RATE, dt)
           model.x += diffX * alpha
           model.y += diffY * alpha
           needsContinue = true
@@ -729,10 +743,11 @@ export class Live2DPointerController {
         needsContinue = true
       }
 
-      /* ---- 缩放平滑 ---- */
+      /* ---- 缩放平滑：帧率无关指数平滑 ---- */
       const currentScale = ports.getModelScale()
       if (Math.abs(currentScale - this.zoomTargetScale) > this.ZOOM_THRESHOLD) {
-        const newScale = currentScale + (this.zoomTargetScale - currentScale) * this.ZOOM_LERP
+        const zoomAlpha = 1 - Math.pow(1 - this.ZOOM_LERP, dt)
+        const newScale = currentScale + (this.zoomTargetScale - currentScale) * zoomAlpha
         ports.setModelScale(newScale)
         needsContinue = true
       }

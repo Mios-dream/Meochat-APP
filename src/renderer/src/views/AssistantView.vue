@@ -275,6 +275,8 @@ async function initAssistantModel(): Promise<void> {
     }
 
     const assetsResponse = await window.api.assistant.getAssistantAssets(currentAssistantName)
+    // 应用配置中的渲染帧率，init 内部会以当前 this.fps 设置 ticker
+    live2DManager.setFPS(config.value.renderFps)
     // 销毁当前模型
     live2DManager.destroy()
     if (assetsResponse.success && assetsResponse.data && assetsResponse.data.live2d.modelJsonPath) {
@@ -528,6 +530,14 @@ watch(
     } catch (error) {
       console.error('配置变更后同步语音管线状态失败:', error)
     }
+  }
+)
+
+// 监听渲染帧率变化，运行时实时调整 Live2D ticker
+watch(
+  () => config.value.renderFps,
+  (fps) => {
+    live2DManager.setFPS(fps)
   }
 )
 </script>

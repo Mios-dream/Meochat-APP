@@ -17,14 +17,18 @@ export class Live2DTransformController {
    *
    * 使用 getLocalBounds 计算模型实际内容区域，再设置 pivot 使内容视觉中心对齐画布中心。
    *
+   * 尺寸必须使用 app.screen（CSS 像素坐标空间），与模型舞台坐标保持一致：
+   * 若使用 app.renderer.width/height（物理像素，已乘 devicePixelRatio），
+   * 在高 DPI 屏幕上适配缩放会按 DPR 放大，导致模型超出窗口视口。
+   *
    * @param model 当前 Live2D 模型。
    * @param app   Pixi 应用实例，用于读取舞台尺寸。
    */
   resetModelTransform(model: Live2DModel | null, app: Application | null): void {
     if (!model || !app) return
 
-    const displayWidth = app.renderer.width
-    const displayHeight = app.renderer.height
+    const displayWidth = app.screen.width
+    const displayHeight = app.screen.height
 
     // 先重置缩放到 1，获取准确的原始尺寸
     model.scale.set(1)

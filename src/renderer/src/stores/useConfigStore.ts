@@ -1,28 +1,40 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import type { AppConfig } from '@shared/types/appConfig'
+import type { AppConfig, AppSettings, AssistantConfigSettings } from '@shared/types/appConfig'
 import { setBaseUrl } from '@shared/api/request'
 
+// 全局/系统配置默认值（与 configManager.ts 中 appSchema 的默认值保持一致）
+const appDefaultConfig: AppSettings = {
+  baseUrl: 'http://127.0.0.1:8001',
+  kernelMode: 'local',
+  autoStartOnBoot: false,
+  autoUpdate: true,
+  debugMode: false,
+  silentMode: false,
+  themeColor: '#fb7299'
+}
+
+// 助手相关配置默认值（与 configManager.ts 中 assistantSchema 的默认值保持一致）
+const assistantDefaultConfig: AssistantConfigSettings = {
+  volume: 0.5,
+  autoChat: false,
+  idleEvent: true,
+  quietMode: false,
+  desktopSpeechBoard: true,
+  appSpeechBoard: true,
+  assistantEnabled: false,
+  currentAssistant: '',
+  chatShortcut: 'Alt+A',
+  sleepMode: false,
+  initiativeLevel: 'low',
+  renderFps: 60
+}
+
 export const useConfigStore = defineStore('config', () => {
+  // 初始默认值按分组展开组合，loadConfig 完成后会被真实配置整体覆盖
   const config = ref<AppConfig>({
-    baseUrl: 'http://127.0.0.1:8001',
-    volume: 0.5,
-    autoStartOnBoot: false,
-    autoUpdate: true,
-    autoChat: false,
-    debugMode: false,
-    silentMode: false,
-    idleEvent: true,
-    quietMode: false,
-    desktopSpeechBoard: true,
-    appSpeechBoard: true,
-    assistantEnabled: false,
-    currentAssistant: '',
-    themeColor: '#fb7299',
-    chatShortcut: 'Alt+A',
-    sleepMode: false,
-    kernelMode: 'local',
-    initiativeLevel: 'medium'
+    ...appDefaultConfig,
+    ...assistantDefaultConfig
   })
 
   async function loadConfig(): Promise<void> {
