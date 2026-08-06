@@ -16,3 +16,5 @@ tsconfig.web.tsbuildinfo
 resources/python-runtime
 resources/kernel-assets
 tsconfig.node.tsbuildinfo
+*opencode*
+doc/plan/*

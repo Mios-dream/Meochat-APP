@@ -8,11 +8,13 @@
       </Transition>
     </router-view>
     <Notification />
+    <ClickEffectLayer />
   </div>
 </template>
 
 <script setup lang="ts">
 import Notification from './components/Notification.vue'
+import ClickEffectLayer from './components/ClickEffectLayer.vue'
 </script>
 
 <style scoped>
