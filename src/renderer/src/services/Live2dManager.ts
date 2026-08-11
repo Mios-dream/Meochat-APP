@@ -124,7 +124,7 @@ export class Live2DManager {
     this.app = new Application()
     await this.app.init({
       preference: 'webgl',
-      view: this.canvasElement,
+      canvas: this.canvasElement,
       backgroundAlpha: 0,
       autoStart: true,
       // 不在 WebGL 上下文中保留帧缓冲区，减少显存占用
@@ -212,7 +212,10 @@ export class Live2DManager {
 
     // 销毁渲染器
     if (this.app) {
-      this.app.destroy(true)
+      // 注意：不得传入 true（等价于 releaseGlobalResources），否则 Pixi 会清空
+      // 全局共享的 Batch 池，破坏同时存在的其他 Pixi 应用（如全局背景 BackgroundScene）
+      // 的渲染，触发 "Cannot read properties of null (reading 'ids')"。
+      this.app.destroy({ removeView: true })
       this.app = null
       this.canvasElement = null
     }

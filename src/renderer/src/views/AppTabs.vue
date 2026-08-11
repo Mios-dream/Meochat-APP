@@ -1,5 +1,10 @@
 <template>
   <div id="container">
+    <!-- 动态背景：Pixi 分层渲染（视差 + 发丝飘动 + 耳朵晃动） -->
+    <AnimatedBackground />
+    <!-- 背景提亮遮罩，维持原整体图的白色柔和观感 -->
+    <div class="bg-overlay" aria-hidden="true"></div>
+
     <aside class="titlebar">
       <div class="titlebar-icons">
         <div
@@ -61,6 +66,7 @@ import AssistantSpaceView from './AssistantSpaceView.vue'
 import SettingView from './SettingView.vue'
 
 import { NotificationService } from '../services/NotificationService'
+import AnimatedBackground from '../components/AnimatedBackground.vue'
 
 const notificationService = NotificationService.getInstance()
 const route = useRoute()
@@ -212,6 +218,8 @@ body {
 main {
   width: 100%;
   height: 100%;
+  position: relative;
+  z-index: 2;
   transition: backdrop-filter 0.6s ease;
   will-change: backdrop-filter;
 }
@@ -220,10 +228,17 @@ main {
   width: 100vw;
   height: 100vh;
   display: flex;
+  position: relative;
   overflow: hidden;
-  background:
-    linear-gradient(rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0.3)),
-    url('../assets/images/app_background.png') center / cover;
+  background: transparent;
+}
+
+.bg-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: linear-gradient(rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0.3));
 }
 </style>
 
