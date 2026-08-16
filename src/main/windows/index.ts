@@ -27,7 +27,7 @@ export type {
 
 // 核心模块
 export { windowRegistry } from './registry'
-export { createWindow, createSingletonWindow, createMultiInstanceWindow } from './factory'
+export { createWindow } from './factory'
 export { loadWindowContent, getWindowUrl, getPreloadPath, isDevelopment } from './urlResolver'
 
 // 窗口配置
@@ -36,9 +36,9 @@ export {
   getWindowConfig,
   mainWindowConfig,
   widgetWindowConfig,
+  widgetHostWindowConfig,
   assistantWindowConfig,
   chatBoxWindowConfig,
   tipsWindowConfig,
-  assistantSettingsWindowConfig,
-  createWidgetOptions
+  assistantSettingsWindowConfig
 } from './configs'

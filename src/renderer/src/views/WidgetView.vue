@@ -1,7 +1,12 @@
 <template>
   <div class="widget-view" :class="{ 'is-transparent': isTransparent }">
-    <!-- 小组件内容区域 -->
-    <div class="widget-wrapper" @mouseenter="showControls" @mouseleave="hideControls">
+    <!-- 小组件内容区域：宿主模式（无 widgetId）下渲染为空 -->
+    <div
+      v-if="widgetId"
+      class="widget-wrapper"
+      @mouseenter="showControls"
+      @mouseleave="hideControls"
+    >
       <!-- 拖拽区域 -->
       <div class="drag-region" :class="{ 'drag-region--locked': isPinned }" />
 
@@ -115,6 +120,10 @@ onMounted(() => {
   instanceId.value = urlParams.get('instanceId') || ''
 
   console.log('WidgetView mounted:', { widgetId: widgetId.value, instanceId: instanceId.value })
+
+  // 宿主模式：无 widgetId / instanceId（隐藏宿主窗口），仅作为 window.open 的 opener，
+  // 不注册小组件、不监听任何实例数据，保持零业务开销
+  if (!widgetId.value || !instanceId.value) return
 
   // 注册小组件
   widgetManager.registerWidgets([

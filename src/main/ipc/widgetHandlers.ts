@@ -7,12 +7,8 @@ import { ipcMain, BrowserWindow } from 'electron'
 import { CHANNELS } from '@shared/ipc/channels'
 import { registerHandle } from '../utils/registerIpcHandler'
 import { WidgetService } from '../services/widgetService'
-import {
-  createMultiInstanceWindow,
-  windowRegistry,
-  widgetWindowConfig,
-  createWidgetOptions
-} from '../windows'
+import { windowRegistry } from '../windows'
+import { widgetWindowService } from '../services/widgetWindowService'
 import log from '../utils/logger'
 
 import type {
@@ -106,7 +102,7 @@ export function setupWidgetIPC(): void {
   })
 
   // 创建小组件独立窗口
-  registerHandle(CHANNELS.WIDGET_WINDOW_CREATE, (_, instanceId) => {
+  registerHandle(CHANNELS.WIDGET_WINDOW_CREATE, async (_, instanceId) => {
     try {
       log.info(`收到创建小组件窗口请求: ${instanceId}`)
       const instance = widgetService.getInstance(instanceId)
@@ -117,18 +113,8 @@ export function setupWidgetIPC(): void {
       log.info(
         `创建小组件窗口: ${instance.widgetId}, 位置: ${JSON.stringify(instance.position)}, 大小: ${JSON.stringify(instance.size)}`
       )
-      const options = createWidgetOptions(
-        instance.id,
-        instance.widgetId,
-        instance.position,
-        instance.size
-      )
-      createMultiInstanceWindow(
-        widgetWindowConfig,
-        instance.id,
-        options.query as Record<string, string>,
-        options.overrides
-      )
+      // 通过宿主窗口 window.open 创建，多个小组件共享同一渲染进程
+      await widgetWindowService.createWidgetWindow(instance)
       return { success: true }
     } catch (error) {
       log.error('创建小组件窗口失败:', error)

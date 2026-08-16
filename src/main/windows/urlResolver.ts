@@ -10,7 +10,7 @@
 
 import { app } from 'electron'
 import path from 'path'
-import { fileURLToPath } from 'url'
+import { fileURLToPath, pathToFileURL } from 'url'
 import type { WindowConfig, QueryParams } from './types'
 
 /** 开发环境 Vite 开发服务器地址 */
@@ -169,6 +169,32 @@ export function getWindowUrl(config: WindowConfig, query?: QueryParams): string 
 export function getPreloadPath(preloadName: string): string {
   // 使用 fileURLToPath 将 URL 转换为正确的文件路径
   return fileURLToPath(new URL(`../preload/${preloadName}.mjs`, import.meta.url))
+}
+
+/**
+ * 构建用于 window.open 的子窗口 URL。
+ *
+ * 与 loadFile/loadURL 不同，window.open 需要一个完整的可加载 URL：
+ * - 开发环境：http://localhost:5173/{htmlFile}?{query}
+ * - 生产环境：file://{绝对路径}/{htmlFile}?{query}
+ *
+ * 使用场景：小组件宿主窗口通过 window.open 打开同源子窗口，
+ * 共享宿主渲染进程（同源 window.open 子窗口与父窗口同进程）。
+ *
+ * @param htmlFile HTML 文件名
+ * @param query 查询参数
+ * @returns 可直接传给 window.open 的完整 URL
+ */
+export function resolveWindowOpenUrl(htmlFile: string, query?: QueryParams): string {
+  const queryString = buildQueryString(query)
+  const suffix = queryString ? `?${queryString}` : ''
+
+  if (isDevelopment()) {
+    return `${DEV_SERVER_URL}/${htmlFile}${suffix}`
+  }
+
+  const fileUrl = pathToFileURL(getProductionPath(htmlFile)).href
+  return `${fileUrl}${suffix}`
 }
 
 export { isDevelopment, buildQueryString, buildHashRoute }

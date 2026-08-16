@@ -11,7 +11,8 @@ import type { BrowserWindowConstructorOptions, Rectangle } from 'electron'
  */
 export type WindowType =
   | 'main' // 主窗口
-  | 'widget' // 小组件窗口
+  | 'widget' // 小组件窗口（window.open 子窗口，共享宿主渲染进程）
+  | 'widgetHost' // 小组件隐藏宿主窗口（所有小组件子窗口的 opener，永不上屏）
   | 'assistant' // 助手窗口
   | 'chatBox' // 聊天框窗口
   | 'tips' // 提示窗口

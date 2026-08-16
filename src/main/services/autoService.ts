@@ -1,18 +1,11 @@
 import { getConfig } from '../config/configManager'
-import {
-  createWindow,
-  assistantWindowConfig,
-  chatBoxWindowConfig,
-  createMultiInstanceWindow,
-  widgetWindowConfig,
-  createWidgetOptions
-} from '../windows'
+import { createWindow, assistantWindowConfig, chatBoxWindowConfig } from '../windows'
+import { widgetWindowService } from './widgetWindowService'
 import log from '../utils/logger'
 import { AssistantService } from '@/services/assistant/assistantService'
 import { KernelManager, KernelServiceManager } from '../services/kernelManager'
 import { OnboardingStoreService } from '../services/onboardingStore'
 import { WidgetService } from '../services/widgetService'
-import { boundsStore } from '../services/boundsStore'
 import { globalShortcut } from 'electron'
 
 const assistantService = AssistantService.getInstance()
@@ -62,34 +55,9 @@ async function autoCreateWidget(): Promise<void> {
     log.info(`[autoService] 发现 ${enabledInstances.length} 个已启用的小组件`)
 
     for (const instance of enabledInstances) {
-      // 创建小组件选项，不传入位置，让 createWindow 从 boundsStore 恢复
-      const options = createWidgetOptions(
-        instance.id,
-        instance.widgetId,
-        undefined, // 不传入位置，让 boundsStore 恢复
-        instance.size
-      )
-
-      // 构建 overrides，只包含有值的属性
-      const overrides: Partial<Electron.BrowserWindowConstructorOptions> = {
-        width: options.overrides?.width,
-        height: options.overrides?.height
-      }
-
-      // 如果 boundsStore 中没有保存的位置，使用配置中的默认位置
-      const boundsKey = `widgetWindowBounds:${instance.id}`
-      const hasSavedBounds = boundsStore.get(boundsKey)
-      if (!hasSavedBounds) {
-        overrides.x = instance.position.x
-        overrides.y = instance.position.y
-      }
-
-      await createMultiInstanceWindow(
-        widgetWindowConfig,
-        instance.id,
-        options.query as Record<string, string>,
-        overrides
-      )
+      // 通过宿主窗口 window.open 创建，多个小组件共享同一渲染进程；
+      // 位置/尺寸解析由 widgetWindowService 内部完成（优先 boundsStore 恢复）
+      await widgetWindowService.createWidgetWindow(instance)
       log.info(`[autoService] 已创建小组件窗口: ${instance.widgetId} (${instance.id})`)
     }
   } catch (error) {

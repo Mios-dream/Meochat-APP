@@ -26,19 +26,10 @@
                   <stop offset="0%" :stop-color="heartColorPrimary" />
                   <stop offset="100%" :stop-color="heartColorSecondary" />
                 </linearGradient>
-                <filter id="heartGlow">
-                  <feGaussianBlur stdDeviation="3" result="blur" />
-                  <feMerge>
-                    <feMergeNode in="blur" />
-                    <feMergeNode in="blur" />
-                    <feMergeNode in="SourceGraphic" />
-                  </feMerge>
-                </filter>
               </defs>
               <path
                 d="M50 85 C50 85, 10 55, 10 35 C10 20, 22 10, 35 10 C42 10, 47 15, 50 22 C53 15, 58 10, 65 10 C78 10, 90 20, 90 35 C90 55, 50 85, 50 85Z"
                 fill="url(#heartGrad)"
-                filter="url(#heartGlow)"
                 class="heart-path"
               />
             </svg>
@@ -1846,8 +1837,8 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   background: rgba(255, 255, 255, 0.42);
-  backdrop-filter: blur(40px) saturate(1.2);
-  -webkit-backdrop-filter: blur(40px) saturate(1.2);
+  backdrop-filter: blur(16px) saturate(1.2);
+  -webkit-backdrop-filter: blur(16px) saturate(1.2);
   border: 1px solid rgba(255, 255, 255, 0.5);
   border-radius: 16px;
   box-shadow:

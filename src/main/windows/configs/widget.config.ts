@@ -2,10 +2,15 @@
  * 小组件窗口配置
  */
 
-import type { WindowConfig, CreateWindowOptions } from '../types'
+import type { WindowConfig } from '../types'
 
 /**
  * 小组件窗口基础配置
+ *
+ * 说明：
+ * 自共享渲染进程改造后，小组件实例窗口改由 widgetWindowService 通过
+ * 宿主 window.open 创建（参见 src/main/services/widgetWindowService.ts），
+ * 本配置仅作为注册元数据与 IPC 类型定位使用。
  */
 export const widgetWindowConfig: WindowConfig = {
   type: 'widget',
@@ -22,41 +27,5 @@ export const widgetWindowConfig: WindowConfig = {
     skipTaskbar: true,
     autoHideMenuBar: true,
     hasShadow: false
-  }
-}
-
-/**
- * 创建小组件窗口的选项工厂
- * @param instanceId 实例 ID
- * @param widgetId 小组件 ID
- * @param position 位置（可选，如果不传则由 boundsStore 恢复）
- * @param size 尺寸
- * @returns 创建选项
- */
-export function createWidgetOptions(
-  instanceId: string,
-  widgetId: string,
-  position?: { x: number; y: number },
-  size?: { width: number; height: number }
-): CreateWindowOptions {
-  const overrides: Partial<Electron.BrowserWindowConstructorOptions> = {
-    width: size?.width ?? 300,
-    height: size?.height ?? 300
-  }
-
-  // 只有明确传入位置时才设置，否则让 boundsStore 恢复
-  if (position) {
-    overrides.x = position.x
-    overrides.y = position.y
-  }
-
-  return {
-    instanceId,
-    query: {
-      widgetId,
-      instanceId
-    } as Record<string, string>,
-    overrides,
-    showImmediately: false // 小组件需要等待 dom-ready 后再显示
   }
 }
