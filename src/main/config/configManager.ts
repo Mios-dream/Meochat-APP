@@ -1,10 +1,11 @@
 ﻿import Store, { Schema } from 'electron-store'
-import { BrowserWindow, app } from 'electron'
+import { app } from 'electron'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
 import { CHANNELS } from '@shared/ipc/channels'
 import { registerHandle } from '../utils/registerIpcHandler'
+import { windowRegistry } from '../windows'
 
 import { AppConfig, AppSettings, AssistantConfigSettings } from '@shared/types/appConfig'
 import { resolveAppDataDir } from '../utils/pathResolve'
@@ -114,12 +115,10 @@ function setLinuxAutoStart(enabled: boolean): void {
 }
 
 function setupConfigIPC(): void {
-  // 监听配置更新并广播给所有渲染进程
+  // 监听配置更新并广播给所有可接收 IPC 的渲染进程
   store.onDidAnyChange(() => {
     setBaseUrl(getConfig('baseUrl'))
-    BrowserWindow.getAllWindows().forEach((win) => {
-      win.webContents.send(CHANNELS.CONFIG_CHANGED_EVENT, store.store)
-    })
+    windowRegistry.broadcast(CHANNELS.CONFIG_CHANGED_EVENT, store.store)
   })
   // 提供 IPC 接口
   registerHandle(CHANNELS.CONFIG_GET, (_, key) => {

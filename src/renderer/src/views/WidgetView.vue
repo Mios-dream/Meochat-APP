@@ -41,26 +41,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, markRaw } from 'vue'
-import { WidgetManager } from '../services/widgetManager'
-
-// 导入内置小组件
-import ClockWidget from '../components/widgets/builtin/ClockWidget.vue'
-import DailyQuoteWidget from '../components/widgets/builtin/DailyQuoteWidget.vue'
-import WeatherWidget from '../components/widgets/builtin/WeatherWidget.vue'
-import TodoWidget from '../components/widgets/builtin/TodoWidget.vue'
-import NoteWidget from '../components/widgets/builtin/NoteWidget.vue'
-
-const widgetManager = WidgetManager.getInstance()
-
-// 小组件映射
-const widgetComponents: Record<string, unknown> = {
-  clock: markRaw(ClockWidget),
-  'daily-quote': markRaw(DailyQuoteWidget),
-  weather: markRaw(WeatherWidget),
-  todo: markRaw(TodoWidget),
-  note: markRaw(NoteWidget)
-}
+import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { widgetRegistry } from '../services/widgetRegistry'
 
 // 状态
 const instanceId = ref('')
@@ -72,15 +54,9 @@ const showControlsFlag = ref(false)
 
 let hideControlsTimer: ReturnType<typeof setTimeout> | null = null
 
-// 计算属性
+// 计算属性：按 widgetId 从注册表解析组件（注册表为单一数据源，支持动态扩展）
 const currentWidget = computed(() => {
-  const widget = widgetComponents[widgetId.value] || null
-  console.log('Current widget:', {
-    widgetId: widgetId.value,
-    found: !!widget,
-    components: Object.keys(widgetComponents)
-  })
-  return widget
+  return widgetRegistry.get(widgetId.value)?.component ?? null
 })
 
 // 显示控制按钮
@@ -125,56 +101,7 @@ onMounted(() => {
   // 不注册小组件、不监听任何实例数据，保持零业务开销
   if (!widgetId.value || !instanceId.value) return
 
-  // 注册小组件
-  widgetManager.registerWidgets([
-    {
-      id: 'clock',
-      name: '时钟/日历',
-      icon: 'fa-solid fa-clock',
-      description: '显示当前时间和日期',
-      version: '1.0.0',
-      component: ClockWidget,
-      defaultSize: { width: 300, height: 200 }
-    },
-    {
-      id: 'daily-quote',
-      name: '每日一句',
-      icon: 'fa-solid fa-quote-left',
-      description: '每日名言诗句',
-      version: '1.0.0',
-      component: DailyQuoteWidget,
-      defaultSize: { width: 350, height: 250 }
-    },
-    {
-      id: 'weather',
-      name: '天气',
-      icon: 'fa-solid fa-cloud-sun',
-      description: '显示天气信息',
-      version: '1.0.0',
-      component: WeatherWidget,
-      defaultSize: { width: 320, height: 250 }
-    },
-    {
-      id: 'todo',
-      name: '澪的任务板',
-      icon: 'fa-solid fa-list-check',
-      description: '澪为你精心设计的任务清单',
-      version: '1.0.0',
-      component: TodoWidget,
-      defaultSize: { width: 300, height: 400 }
-    },
-    {
-      id: 'note',
-      name: '便签',
-      icon: 'fa-solid fa-sticky-note',
-      description: '快速记录便签',
-      version: '1.0.0',
-      component: NoteWidget,
-      defaultSize: { width: 300, height: 350 }
-    }
-  ])
-
-  // 监听实例数据
+  // 监听实例数据（子窗口模式下由 widgetBridge 垫片对接宿主网关提供）
   removeInstanceDataListener = window.api.widgetApi.onInstanceData((data) => {
     instanceConfig.value = data.config || {}
     isPinned.value = data.pinned || false

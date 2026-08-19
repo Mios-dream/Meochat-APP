@@ -21,13 +21,13 @@ import AdmZip from 'adm-zip'
 import StreamZip from 'node-stream-zip'
 import { Worker } from 'worker_threads'
 import workerPath from '@/workers/extractWorker?modulePath'
-import { BrowserWindow } from 'electron'
 import log from '@/utils/logger'
 import { request } from '@shared/api/request'
 import { AssistantAssets, AssistantInfo, AssetTypeTimestamps } from '@shared/types/assistantTypes'
 import type { UpdateCheckResult } from '@shared/types/assistantUpdate'
 import { resolveAppDataDir } from '@/utils/pathResolve'
 import { detectZipNameEncoding, extractZipEntries } from '@/utils/zipUtils'
+import { windowRegistry } from '@main/windows'
 import { CHANNELS } from '@shared/ipc/channels'
 
 /** 切换当前助手的结果类型 */
@@ -321,17 +321,13 @@ export class AssistantAssetService {
     assistantName?: string,
     progress?: number
   ): void {
-    const windows = BrowserWindow.getAllWindows()
     log.info(
-      `[AssetSync] 发送下载状态: status=${status}, assistantName=${assistantName}, progress=${progress}, windowCount=${windows.length}`
+      `[AssetSync] 发送下载状态: status=${status}, assistantName=${assistantName}, progress=${progress}`
     )
-
-    windows.forEach((win) => {
-      win.webContents.send(CHANNELS.ASSISTANT_DOWNLOAD_PROGRESS_EVENT, {
-        status,
-        assistantName,
-        progress
-      })
+    windowRegistry.broadcast(CHANNELS.ASSISTANT_DOWNLOAD_PROGRESS_EVENT, {
+      status,
+      assistantName,
+      progress
     })
   }
 

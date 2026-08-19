@@ -14,6 +14,16 @@ import type { WindowType, WindowMeta, WindowState } from './types'
 import log from '../utils/logger'
 
 /**
+ * 不可接收主进程 IPC 广播的窗口类型。
+ *
+ * 小组件子窗口（widget）由宿主 window.open 打开、共享宿主渲染进程，未执行 preload，
+ * 其隔离世界缺少 ipcNative 绑定，主进程直接 webContents.send 会触发
+ * Electron「ipcNative object was missing」报错；widgetHost 为小组件内部宿主网关，
+ * 非 UI 窗口，事件统一由网关转发，同样无需接收面向 UI 的广播。
+ */
+const WINDOW_BROADCAST_EXCLUDED_TYPES = new Set<WindowType>(['widget', 'widgetHost'])
+
+/**
  * 窗口注册表单例
  */
 class WindowRegistry {
@@ -181,6 +191,79 @@ class WindowRegistry {
    */
   getMeta(key: string): WindowMeta | null {
     return this.metas.get(key) || null
+  }
+
+  /**
+   * 获取可接收主进程广播的窗口列表。
+   *
+   * 默认排除以下两类窗口：
+   * - widget：window.open 共享渲染进程的小组件子窗口，未运行 preload，
+   *   其隔离世界缺少 ipcNative 绑定，主进程直接 webContents.send 会触发
+   *   Electron「ipcNative object was missing」报错，且子窗口本就无监听者；
+   * - widgetHost：小组件内部宿主网关，非 UI 窗口，事件统一由网关转发，
+   *   无需也不应接收面向 UI 的广播。
+   *
+   * 小组件相关事件应通过宿主网关（host.webContents.send）定向转发，
+   * 切勿直接向 widget 类型窗口广播。
+   *
+   * @param exclude 额外排除的窗口类型
+   * @returns 可安全接收 IPC 广播的窗口实例数组
+   */
+  getBroadcastableWindows(exclude: WindowType[] = []): BrowserWindow[] {
+    const excluded = new Set<WindowType>(WINDOW_BROADCAST_EXCLUDED_TYPES)
+    for (const type of exclude) excluded.add(type)
+    const windows: BrowserWindow[] = []
+    for (const [key, win] of this.windows) {
+      if (!win || win.isDestroyed()) continue
+      const meta = this.metas.get(key)
+      if (meta && excluded.has(meta.type)) continue
+      windows.push(win)
+    }
+    return windows
+  }
+
+  /**
+   * 判断单个窗口是否可安全接收主进程 IPC 广播。
+   *
+   * 与 getBroadcastableWindows 共用同一判定规则，用于对「定向发送」的窗口
+   * 做前置校验（如 DispatchCenter 按类型定向、updaterHandlers 焦点窗口等），
+   * 防止把消息发到无 preload 的小组件子窗口上触发 ipcNative 报错。
+   *
+   * 仅当窗口满足以下条件时才视为可广播：
+   * - 已注册且未销毁；
+   * - 类型不在 WINDOW_BROADCAST_EXCLUDED_TYPES 中（非 widget / widgetHost）。
+   *
+   * 未注册的窗口（如创建中尚未登记的小组件子窗口）一律返回 false，
+   * 保证任何未知窗口都不会被盲目发送。
+   *
+   * @param win 待判定的 BrowserWindow
+   * @returns 可安全接收 IPC 广播时返回 true
+   */
+  isWindowBroadcastable(win: BrowserWindow | null): boolean {
+    if (!win || win.isDestroyed()) return false
+    // 通过 webContents 反向索引定位注册信息；未注册的窗口无法定位，直接拒绝
+    const key = this.webContentsIndex.get(win.webContents.id)
+    if (!key) return false
+    const meta = this.metas.get(key)
+    if (!meta) return false
+    return !WINDOW_BROADCAST_EXCLUDED_TYPES.has(meta.type)
+  }
+
+  /**
+   * 向所有可接收 IPC 的窗口广播消息。
+   *
+   * 与 BrowserWindow.getAllWindows() 的区别在于会跳过无 preload 的小组件
+   * 子窗口与内部宿主网关，避免向无法接收 IPC 的窗口发送消息（详见
+   * getBroadcastableWindows 注释）。
+   *
+   * @param channel IPC 通道名
+   * @param data 载荷（将被结构化克隆）
+   * @param exclude 额外排除的窗口类型
+   */
+  broadcast(channel: string, data?: unknown, exclude: WindowType[] = []): void {
+    this.getBroadcastableWindows(exclude).forEach((win) => {
+      win.webContents.send(channel, data)
+    })
   }
 
   /**

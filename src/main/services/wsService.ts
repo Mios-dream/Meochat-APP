@@ -2,6 +2,7 @@
 import { BrowserWindow } from 'electron'
 import { getBaseUrl } from '@shared/api/request'
 import { CHANNELS } from '@shared/ipc/channels'
+import { windowRegistry } from '../windows'
 import type { ServerMessage, ClientMessage } from '@shared/types/ws'
 
 /**
@@ -176,7 +177,9 @@ export class WsService {
    * @param window - 目标 BrowserWindow 实例
    */
   public syncStatusToWindow(window: BrowserWindow): void {
-    if (!window.isDestroyed()) {
+    // 小组件子窗口无 preload 无法接收 IPC，跳过；其状态由宿主网关负责。
+    // 仅对已注册且非 widget / widgetHost 类型的窗口同步连接状态
+    if (windowRegistry.isWindowBroadcastable(window)) {
       window.webContents.send(CHANNELS.WS_STATUS_CHANGE_EVENT, this.connected)
     }
   }
@@ -206,10 +209,6 @@ export class WsService {
    * @param data - 要广播的数据（会被结构化克隆）
    */
   private broadcastToAll(channel: string, data: unknown): void {
-    BrowserWindow.getAllWindows().forEach((win) => {
-      if (!win.isDestroyed()) {
-        win.webContents.send(channel, data)
-      }
-    })
+    windowRegistry.broadcast(channel, data)
   }
 }

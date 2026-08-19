@@ -1,11 +1,11 @@
 ﻿import fs from 'fs'
 import path from 'path'
-import { globalShortcut, BrowserWindow, screen } from 'electron'
+import { globalShortcut, screen } from 'electron'
 import { getConfig, setConfig } from '@main/config/configManager'
 import log from '@main/utils/logger'
 import { request } from '@shared/api/request'
 import { AssistantAssets, AssistantBaseInfo, AssistantInfo } from '@shared/types/assistantTypes'
-import { createWindow, chatBoxWindowConfig } from '@main/windows'
+import { createWindow, chatBoxWindowConfig, windowRegistry } from '@main/windows'
 import { resolveAppDataDir } from '@/utils/pathResolve'
 import { CHANNELS } from '@shared/ipc/channels'
 import { AssistantAssetService } from './assistantAssetService'
@@ -304,13 +304,9 @@ class AssistantService {
    * 'assistant:data-updated' 事件同步最新数据。
    */
   private broadcastDataUpdated(): void {
-    BrowserWindow.getAllWindows().forEach((win) => {
-      if (!win.isDestroyed()) {
-        win.webContents.send(CHANNELS.ASSISTANT_DATA_UPDATED_EVENT, {
-          assistants: [...this.assistants],
-          currentAssistant: this.currentAssistant
-        })
-      }
+    windowRegistry.broadcast(CHANNELS.ASSISTANT_DATA_UPDATED_EVENT, {
+      assistants: [...this.assistants],
+      currentAssistant: this.currentAssistant
     })
   }
 
@@ -382,9 +378,7 @@ class AssistantService {
       // 保存到配置中
       setConfig('currentAssistant', name)
 
-      BrowserWindow.getAllWindows().forEach((win) => {
-        win.webContents.send(CHANNELS.ASSISTANT_SWITCHED_EVENT, assistant)
-      })
+      windowRegistry.broadcast(CHANNELS.ASSISTANT_SWITCHED_EVENT, assistant)
 
       // 通知所有窗口助手列表数据已更新
       this.broadcastDataUpdated()

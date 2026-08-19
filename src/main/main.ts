@@ -1,5 +1,5 @@
-﻿import { app, globalShortcut, BrowserWindow } from 'electron'
-import { createWindow, mainWindowConfig } from './windows'
+﻿import { app, globalShortcut } from 'electron'
+import { createWindow, mainWindowConfig, windowRegistry } from './windows'
 import {
   setupMainIPC,
   setupUpdaterIPC,
@@ -94,12 +94,10 @@ app.whenReady().then(() => {
     // 初始化时自动检测内核是否存在，推送初始状态给渲染进程
     const kernelMgr = KernelManager.getInstance()
     const initialState = kernelMgr.getState()
-    BrowserWindow.getAllWindows().forEach((win) => {
-      if (!win.isDestroyed()) {
-        win.webContents.once('dom-ready', () => {
-          win.webContents.send(CHANNELS.KERNEL_STATE_UPDATE_EVENT, { ...initialState })
-        })
-      }
+    windowRegistry.getBroadcastableWindows().forEach((win) => {
+      win.webContents.once('dom-ready', () => {
+        win.webContents.send(CHANNELS.KERNEL_STATE_UPDATE_EVENT, { ...initialState })
+      })
     })
   } catch (error) {
     log.error('应用初始化失败:', error)

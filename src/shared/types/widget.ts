@@ -69,6 +69,8 @@ export interface WidgetDataMessage {
 
 /** 实例数据更新事件负载 */
 export interface InstanceDataUpdate {
+  /** 目标实例 ID（主进程推送时携带，宿主网关据此路由） */
+  instanceId?: string
   config?: Record<string, unknown>
   pinned?: boolean
 }
@@ -99,50 +101,6 @@ export interface PluginManifest {
   component?: Component
 }
 
-/** 小组件窗口 API（通过 contextBridge 暴露给 widget 窗口） */
-export interface WidgetApi {
-  /** 获取所有小组件配置 */
-  getAllConfigs: () => Promise<IpcResponse<WidgetConfigFile>>
-  /** 保存所有小组件配置 */
-  saveConfig: (config: WidgetConfigFile) => Promise<IpcResponse>
-
-  /** 获取当前小组件实例数据 */
-  getInstanceData: () => Promise<IpcResponse<WidgetInstance>>
-  /** 更新小组件实例 */
-  updateInstance: (instanceId: string, updates: Partial<WidgetInstance>) => Promise<IpcResponse>
-  /** 删除小组件实例 */
-  deleteInstance: (instanceId: string) => Promise<IpcResponse>
-
-  /** 关闭小组件窗口 */
-  closeWindow: (instanceId: string) => Promise<IpcResponse>
-  /** 切换窗口置顶 */
-  togglePin: (instanceId: string, pinned: boolean) => Promise<IpcResponse>
-
-  /** 发送数据到指定小组件 */
-  sendData: (data: WidgetDataMessage) => Promise<IpcResponse>
-  /** 广播数据到所有小组件 */
-  broadcastData: (data: Omit<WidgetDataMessage, 'toId'>) => Promise<IpcResponse>
-
-  /** 根据城市名获取天气 */
-  fetchWeather: (location: string) => Promise<IpcResponse<WeatherData>>
-  /** 获取地理位置 */
-  getLocation: () => Promise<IpcResponse<LocationData>>
-  /** 清除天气缓存 */
-  clearWeatherCache: () => Promise<IpcResponse>
-
-  /** 监听其他小组件发来的数据 */
-  onData: (callback: (data: WidgetDataMessage) => void) => () => void
-  /** 监听小组件配置变更 */
-  onConfigChanged: (callback: (config: WidgetConfigFile) => void) => () => void
-  /** 监听当前实例数据更新 */
-  onInstanceData: (callback: (data: InstanceDataUpdate) => void) => () => void
-
-  /** 监听来自 LLM 工具调用的动作指令。返回取消监听函数。 */
-  onAction: (callback: (request: WidgetActionRequest) => void) => () => void
-  /** 向主进程回传小组件动作的执行结果。 */
-  sendActionResult: (result: WidgetActionResult) => void
-}
-
 // ═══════════════════════════════════════════════════════════════════════════
 // 小组件动作协议 · 用于 LLM 工具调用时遥控小组件
 // ═══════════════════════════════════════════════════════════════════════════
@@ -171,6 +129,39 @@ export interface WidgetActionResult {
   error?: string
   /** 目标实例 ID，用于主进程路由回传。 */
   instance_id?: string
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 宿主开窗桥接协议 · 主进程 ↔ 宿主窗口 preload（window.open 桥接）
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * 宿主开窗请求载荷（main → 宿主 renderer）。
+ *
+ * 主进程通过 WIDGET_HOST_OPEN_REQUEST 事件下发到宿主 preload，
+ * 由宿主 preload 直接调用 window.open 打开子窗口（共享渲染进程），
+ * 从而避免 executeJavaScript 字符串注入与 Window 序列化问题。
+ */
+export interface WidgetHostOpenRequest {
+  /** 请求唯一标识，用于关联请求与结果回传 */
+  requestId: string
+  /** 待打开的子窗口完整 URL（widget.html + widgetId/instanceId 查询参数） */
+  url: string
+  /** window.open 的窗口名（widget-<instanceId>），用于 did-create-window 身份匹配 */
+  frameName: string
+}
+
+/**
+ * 宿主开窗结果载荷（宿主 renderer → main）。
+ *
+ * window.open 返回 Window | null，无法跨进程序列化，
+ * 故宿主 preload 将其归一化为布尔值回传主进程。
+ */
+export interface WidgetHostOpenResult {
+  /** 与请求一致的 requestId */
+  requestId: string
+  /** window.open 是否返回非空 Window（false 表示被 setWindowOpenHandler 拒绝或打开失败） */
+  opened: boolean
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

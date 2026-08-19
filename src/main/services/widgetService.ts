@@ -3,7 +3,6 @@
  * 负责小组件配置的持久化存储和管理
  */
 
-import { BrowserWindow } from 'electron'
 import fs from 'fs'
 import path from 'path'
 import { resolveAppDataDir } from '../utils/pathResolve'
@@ -86,24 +85,29 @@ export class WidgetService {
   }
 
   /**
-   * 广播配置变更到所有窗口
+   * 广播配置变更。
+   *
+   * 分两部分发送：
+   * - 可接收 IPC 的 UI 窗口（主窗口等）：通过 windowRegistry.broadcast，
+   *   自动跳过无 preload 的小组件子窗口与宿主网关；
+   * - 宿主网关：显式定向发送，网关订阅该事件后转发给各小组件子窗口。
    */
   private broadcastConfigChange(): void {
-    BrowserWindow.getAllWindows().forEach((win) => {
-      if (!win.isDestroyed()) {
-        win.webContents.send(CHANNELS.WIDGET_CONFIG_CHANGED_EVENT, this.config)
-      }
-    })
+    windowRegistry.broadcast(CHANNELS.WIDGET_CONFIG_CHANGED_EVENT, this.config)
+    const host = windowRegistry.getWindow('widgetHost')
+    if (host) {
+      host.webContents.send(CHANNELS.WIDGET_CONFIG_CHANGED_EVENT, this.config)
+    }
   }
 
   /**
-   * 广播实例数据更新到对应 widget 窗口
+   * 广播实例数据更新到对应 widget 实例。
    * @param instance 更新后的小组件实例
    */
   private broadcastInstanceData(instance: WidgetInstance): void {
-    const win = windowRegistry.getWindow(`widget:${instance.id}`)
-    if (win && !win.isDestroyed()) {
-      win.webContents.send(CHANNELS.WIDGET_INSTANCE_DATA_EVENT, {
+    const host = windowRegistry.getWindow('widgetHost')
+    if (host) {
+      host.webContents.send(CHANNELS.WIDGET_INSTANCE_DATA_EVENT, {
         instanceId: instance.id,
         config: instance.config,
         pinned: instance.pinned

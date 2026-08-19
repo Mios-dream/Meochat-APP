@@ -2,10 +2,28 @@
 import { CHANNELS } from '@shared/ipc/channels'
 import { registerHandle } from '../utils/registerIpcHandler'
 import { getAutoUpdater } from '../utils/appUpdater'
+import { windowRegistry } from '../windows'
 import log from '../utils/logger'
 import { request } from '@shared/api/request'
 
 const autoUpdater = getAutoUpdater()
+
+/**
+ * 获取可安全接收 IPC 的焦点窗口。
+ *
+ * BrowserWindow.getFocusedWindow 可能返回无 preload 的小组件子窗口，
+ * 直接向其中 webContents.send 会触发 Electron「ipcNative object was missing」报错。
+ * 因此仅返回可广播的焦点窗口；焦点窗口不可用时回退到主窗口，仍不可用则返回 null。
+ *
+ * @returns 可安全发送更新状态的窗口，不存在时返回 null
+ */
+function getBroadcastableFocusedWindow(): BrowserWindow | null {
+  const focused = BrowserWindow.getFocusedWindow()
+  if (focused && windowRegistry.isWindowBroadcastable(focused)) {
+    return focused
+  }
+  return windowRegistry.getWindowByType('main')
+}
 
 /**
  * 设置更新器IPC
@@ -18,7 +36,7 @@ function setupUpdaterIPC(): void {
 
   // 检测更新
   registerHandle(CHANNELS.UPDATER_CHECK_FOR_UPDATE, async () => {
-    const win = BrowserWindow.getFocusedWindow()
+    const win = getBroadcastableFocusedWindow()
 
     if (!win) return
 
@@ -46,7 +64,10 @@ function setupUpdaterIPC(): void {
       }
 
       // 有新版本，显示提示
-      win.webContents.send(CHANNELS.UPDATER_UPDATE_STATUS_EVENT, `发现新版本 v${latestVersion}，是否更新？`)
+      win.webContents.send(
+        CHANNELS.UPDATER_UPDATE_STATUS_EVENT,
+        `发现新版本 v${latestVersion}，是否更新？`
+      )
       return {
         updateAvailable: true,
         version: latestVersion,
@@ -65,7 +86,7 @@ function setupUpdaterIPC(): void {
 
   // 确认更新
   registerHandle(CHANNELS.UPDATER_CONFIRM_UPDATE, async () => {
-    const win = BrowserWindow.getFocusedWindow()
+    const win = getBroadcastableFocusedWindow()
 
     if (!win) return
 

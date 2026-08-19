@@ -1,4 +1,4 @@
-﻿import { screen, BrowserWindow, app } from 'electron'
+﻿import { screen, app } from 'electron'
 import { randomUUID } from 'crypto'
 import { CHANNELS } from '@shared/ipc/channels'
 import { registerHandle, registerOn } from '../utils/registerIpcHandler'
@@ -27,13 +27,9 @@ import { uIOhook } from 'uiohook-napi'
 import log from '@main/utils/logger'
 import { AssistantService } from '@main/services/assistant/assistantService'
 
-/** 广播聊天历史变更通知到所有窗口 */
+/** 广播聊天历史变更通知到所有可接收 IPC 的窗口 */
 function broadcastHistoryChanged(): void {
-  BrowserWindow.getAllWindows().forEach((win) => {
-    if (!win.isDestroyed()) {
-      win.webContents.send(CHANNELS.CHAT_HISTORY_CHANGED_EVENT)
-    }
-  })
+  windowRegistry.broadcast(CHANNELS.CHAT_HISTORY_CHANGED_EVENT)
 }
 
 let mouseTrackingInterval: NodeJS.Timeout | null = null
@@ -239,15 +235,11 @@ function setupChatBoxIPC(): void {
   })
 
   registerOn(CHANNELS.CANCEL_MESSAGE, () => {
-    BrowserWindow.getAllWindows().forEach((win) => {
-      win.webContents.send(CHANNELS.CHATBOX_CANCEL_MESSAGE_EVENT)
-    })
+    windowRegistry.broadcast(CHANNELS.CHATBOX_CANCEL_MESSAGE_EVENT)
   })
 
   registerOn(CHANNELS.WAKEWORD_DETECTED, (_event, data) => {
-    BrowserWindow.getAllWindows().forEach((win) => {
-      win.webContents.send(CHANNELS.CHATBOX_WAKEWORD_DETECTED_EVENT, data)
-    })
+    windowRegistry.broadcast(CHANNELS.CHATBOX_WAKEWORD_DETECTED_EVENT, data)
   })
 
   // 获取聊天历史：直接从主进程存储返回
@@ -294,11 +286,7 @@ function setupChatBoxIPC(): void {
     const result = await chatHistoryStore.clear()
     if (!result.success) throw new Error(result.error)
     broadcastHistoryChanged()
-    BrowserWindow.getAllWindows().forEach((win) => {
-      if (!win.isDestroyed()) {
-        win.webContents.send(CHANNELS.CHAT_HISTORY_CLEARED_EVENT)
-      }
-    })
+    windowRegistry.broadcast(CHANNELS.CHAT_HISTORY_CLEARED_EVENT)
     return []
   })
 }
@@ -395,11 +383,9 @@ function setupAssistantIPC(): void {
         if (moved) {
           const idleDurationMs = now - lastMouseMoveAt
           if (idleDurationMs >= idleThresholdMs) {
-            BrowserWindow.getAllWindows().forEach((win) => {
-              win.webContents.send(CHANNELS.ASSISTANT_EVENT_MOUSE_RESUMED, {
-                idleDurationMs,
-                timestamp: now
-              })
+            windowRegistry.broadcast(CHANNELS.ASSISTANT_EVENT_MOUSE_RESUMED, {
+              idleDurationMs,
+              timestamp: now
             })
           }
 
@@ -416,9 +402,7 @@ function setupAssistantIPC(): void {
             timestamp: now
           }
 
-          BrowserWindow.getAllWindows().forEach((win) => {
-            win.webContents.send(CHANNELS.ASSISTANT_EVENT_MOUSE_ACTIVITY, payload)
-          })
+          windowRegistry.broadcast(CHANNELS.ASSISTANT_EVENT_MOUSE_ACTIVITY, payload)
 
           lastMouseActivityEmitAt = now
         }

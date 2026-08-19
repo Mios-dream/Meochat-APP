@@ -1,6 +1,7 @@
-import { BrowserWindow, powerMonitor, app } from 'electron'
+import { powerMonitor, app } from 'electron'
 import { CHANNELS } from '@shared/ipc/channels'
 import { registerHandle } from '../utils/registerIpcHandler'
+import { windowRegistry } from '../windows'
 import { ForegroundAppMonitor, ForegroundAppUsagePayload } from '../services/foregroundAppMonitor'
 import fs from 'fs'
 import path from 'path'
@@ -69,11 +70,9 @@ function queryBatteryStatusLinux(): BatteryStatus | null {
   }
 }
 
-// 向所有渲染进程广播事件
+// 向所有可接收 IPC 的渲染进程广播事件（跳过无 preload 的小组件子窗口与宿主网关）
 function broadcast(channel: string, payload?: unknown): void {
-  BrowserWindow.getAllWindows().forEach((win) => {
-    win.webContents.send(channel, payload)
-  })
+  windowRegistry.broadcast(channel, payload)
 }
 
 // 查询电池状态，返回剩余电量百分比和是否正在充电

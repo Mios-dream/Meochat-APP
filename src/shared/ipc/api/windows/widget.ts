@@ -21,7 +21,7 @@ export interface WidgetWindowApi extends CommonApi {
   widgetApi: {
     getAllConfigs: () => Promise<IpcResponse<WidgetConfigFile>>
     saveConfig: (config: WidgetConfigFile) => Promise<IpcResponse>
-    getInstanceData: () => Promise<IpcResponse<WidgetInstance>>
+    getInstanceData: (instanceId?: string) => Promise<IpcResponse<WidgetInstance>>
     updateInstance: (instanceId: string, updates: Partial<WidgetInstance>) => Promise<IpcResponse>
     deleteInstance: (instanceId: string) => Promise<IpcResponse>
     closeWindow: (instanceId: string) => Promise<IpcResponse>

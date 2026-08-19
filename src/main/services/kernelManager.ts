@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from 'electron'
+import { app } from 'electron'
 import { exec } from 'child_process'
 import { promisify } from 'util'
 import pty from 'node-pty'
@@ -16,6 +16,7 @@ import type {
 } from '@shared/types/kernel'
 import { decodeBuffer } from '../utils/buffer'
 import { detectZipNameEncoding } from '../utils/zipUtils'
+import { windowRegistry } from '../windows'
 import { CHANNELS } from '@shared/ipc/channels'
 
 const execAsync = promisify(exec)
@@ -59,13 +60,9 @@ interface KernelAssetsDeclaration {
   }
 }
 
-/** 向所有窗口广播原始数据流 */
+/** 向所有可接收 IPC 的窗口广播原始数据流 */
 function broadcastToAllWindows(channel: string, payload: Buffer): void {
-  BrowserWindow.getAllWindows().forEach((win) => {
-    if (!win.isDestroyed()) {
-      win.webContents.send(channel, payload)
-    }
-  })
+  windowRegistry.broadcast(channel, payload)
 }
 
 class KernelManager {
@@ -144,13 +141,9 @@ class KernelManager {
     }
   }
 
-  /** 向所有窗口广播内核更新状态 */
+  /** 向所有可接收 IPC 的窗口广播内核更新状态 */
   private notifyState(): void {
-    BrowserWindow.getAllWindows().forEach((win) => {
-      if (!win.isDestroyed()) {
-        win.webContents.send(CHANNELS.KERNEL_STATE_UPDATE_EVENT, { ...this.state })
-      }
-    })
+    windowRegistry.broadcast(CHANNELS.KERNEL_STATE_UPDATE_EVENT, { ...this.state })
   }
 
   /** 更新操作状态与文本（同时清空 error 字段） */
@@ -1039,14 +1032,10 @@ class KernelServiceManager {
    * 广播后端服务状态到所有渲染进程
    */
   private notifyServiceState(): void {
-    BrowserWindow.getAllWindows().forEach((win) => {
-      if (!win.isDestroyed()) {
-        win.webContents.send(CHANNELS.KERNEL_SERVICE_STATE_EVENT, {
-          running: this.backendRunning,
-          pid: this.backendPid,
-          logs: [...this.backendLogs]
-        })
-      }
+    windowRegistry.broadcast(CHANNELS.KERNEL_SERVICE_STATE_EVENT, {
+      running: this.backendRunning,
+      pid: this.backendPid,
+      logs: [...this.backendLogs]
     })
   }
 

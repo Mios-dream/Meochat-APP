@@ -327,19 +327,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount, markRaw, reactive } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, reactive } from 'vue'
 import { useWidgetStore } from '../stores/useWidgetStore'
 import { WidgetManager } from '../services/widgetManager'
+import { widgetRegistry } from '../services/widgetRegistry'
 import WidgetPreview from '../components/widgets/WidgetPreview.vue'
 import type { WidgetManifest } from '@shared/types/widget'
 import type { ComponentPublicInstance } from 'vue'
-
-// 内置小组件
-import ClockWidget from '../components/widgets/builtin/ClockWidget.vue'
-import DailyQuoteWidget from '../components/widgets/builtin/DailyQuoteWidget.vue'
-import WeatherWidget from '../components/widgets/builtin/WeatherWidget.vue'
-import TodoWidget from '../components/widgets/builtin/TodoWidget.vue'
-import NoteWidget from '../components/widgets/builtin/NoteWidget.vue'
 
 // 当前选中的 tab
 const activeTab = ref<'widgets' | 'plugins'>('widgets')
@@ -356,54 +350,8 @@ const widgetPreviewFrameSetters = new Map<
 const widgetPreviewGap = 14
 let widgetPreviewResizeObserver: ResizeObserver | null = null
 
-// 注册内置小组件清单
-const registeredWidgets = ref<WidgetManifest[]>([
-  {
-    id: 'clock',
-    name: '时钟/日历',
-    icon: 'fa-solid fa-clock',
-    description: '显示当前时间和日期，支持12/24小时制切换',
-    version: '1.0.0',
-    component: markRaw(ClockWidget),
-    defaultSize: { width: 300, height: 200 }
-  },
-  {
-    id: 'daily-quote',
-    name: '每日一句',
-    icon: 'fa-solid fa-quote-left',
-    description: '每日名言诗句，激励每一天',
-    version: '1.0.0',
-    component: markRaw(DailyQuoteWidget),
-    defaultSize: { width: 300, height: 250 }
-  },
-  {
-    id: 'weather',
-    name: '天气',
-    icon: 'fa-solid fa-cloud-sun',
-    description: '显示当前天气和温度信息',
-    version: '1.0.0',
-    component: markRaw(WeatherWidget),
-    defaultSize: { width: 300, height: 100 }
-  },
-  {
-    id: 'todo',
-    name: '澪的任务板',
-    icon: 'fa-solid fa-list-check',
-    description: '澪为你精心设计的任务清单',
-    version: '1.0.0',
-    component: markRaw(TodoWidget),
-    defaultSize: { width: 300, height: 400 }
-  },
-  {
-    id: 'note',
-    name: '便签',
-    icon: 'fa-solid fa-sticky-note',
-    description: '快速记录文字便签',
-    version: '1.0.0',
-    component: markRaw(NoteWidget),
-    defaultSize: { width: 300, height: 350 }
-  }
-])
+// 已注册的小组件清单（单一数据源：widgetRegistry，内置清单模块加载时已注册）
+const registeredWidgets = computed(() => widgetRegistry.getAll())
 
 // 已启用的实例列表
 const enabledInstances = computed(() => widgetStore.enabledInstances)

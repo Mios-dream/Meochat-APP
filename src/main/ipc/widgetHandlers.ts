@@ -3,7 +3,7 @@
  * 处理小组件相关的所有 IPC 通信
  */
 
-import { ipcMain, BrowserWindow } from 'electron'
+import { ipcMain } from 'electron'
 import { CHANNELS } from '@shared/ipc/channels'
 import { registerHandle } from '../utils/registerIpcHandler'
 import { WidgetService } from '../services/widgetService'
@@ -17,6 +17,16 @@ import type {
   WidgetActionRequest,
   WidgetActionResult
 } from '@shared/types/widget'
+
+/**
+ * 获取宿主窗口的 webContents。
+ *
+ * @returns 宿主 webContents，宿主未创建或已销毁时返回 null
+ */
+function getWidgetHostWebContents(): Electron.WebContents | null {
+  const host = windowRegistry.getWindow('widgetHost')
+  return host ? host.webContents : null
+}
 
 /**
  * 设置小组件相关 IPC 处理器
@@ -86,17 +96,17 @@ export function setupWidgetIPC(): void {
     }
   })
 
-  // 获取当前窗口所属的小组件实例（由 widget 窗口调用）
-  registerHandle(CHANNELS.WIDGET_INSTANCE_GET_CURRENT, (event) => {
+  // 获取指定实例数据
+  registerHandle(CHANNELS.WIDGET_INSTANCE_GET_CURRENT, (_, payload?: { instanceId?: string }) => {
     try {
-      const instanceId = windowRegistry.getInstanceIdByWebContentsId(event.sender.id)
+      const instanceId = payload?.instanceId
       if (!instanceId) {
-        return { success: false, error: '无法确定当前窗口所属实例' }
+        return { success: false, error: '缺少 instanceId 参数' }
       }
       const instance = widgetService.getInstance(instanceId)
       return { success: true, data: instance }
     } catch (error) {
-      log.error('获取当前小组件实例失败:', error)
+      log.error('获取小组件实例失败:', error)
       return { success: false, error: String(error) }
     }
   })
@@ -155,11 +165,11 @@ export function setupWidgetIPC(): void {
   // 发送数据到指定小组件
   registerHandle(CHANNELS.WIDGET_DATA_SEND, (_, data: WidgetDataMessage) => {
     try {
-      // 如果指定了目标，发送到目标窗口
+      // 子窗口无 preload，事件统一发到宿主，由宿主网关按 toId 转发
       if (data.toId) {
-        const win = windowRegistry.getWindow(`widget:${data.toId}`)
-        if (win && !win.isDestroyed()) {
-          win.webContents.send(CHANNELS.WIDGET_DATA_RECEIVED_EVENT, data)
+        const host = getWidgetHostWebContents()
+        if (host) {
+          host.send(CHANNELS.WIDGET_DATA_RECEIVED_EVENT, data)
         }
       }
       return { success: true }
@@ -172,12 +182,11 @@ export function setupWidgetIPC(): void {
   // 广播数据到所有小组件
   registerHandle(CHANNELS.WIDGET_DATA_BROADCAST, (_, data: Omit<WidgetDataMessage, 'toId'>) => {
     try {
-      // 广播到所有小组件窗口
-      BrowserWindow.getAllWindows().forEach((win) => {
-        if (!win.isDestroyed()) {
-          win.webContents.send(CHANNELS.WIDGET_DATA_RECEIVED_EVENT, data)
-        }
-      })
+      // 子窗口无 preload，事件统一发到宿主，由宿主网关广播到所有子窗口
+      const host = getWidgetHostWebContents()
+      if (host) {
+        host.send(CHANNELS.WIDGET_DATA_RECEIVED_EVENT, data)
+      }
       return { success: true }
     } catch (error) {
       log.error('广播小组件数据失败:', error)
@@ -261,9 +270,9 @@ export function setupWidgetIPC(): void {
         }, timeout_ms)
 
         const resultHandler = (_event: Electron.IpcMainEvent, result: WidgetActionResult): void => {
-          // 权限校验：只有 widget 窗口可以上报动作结果
+          // 权限校验：只有 widget / widgetHost（宿主网关代发）窗口可以上报动作结果
           const senderType = windowRegistry.getWindowTypeByWebContentsId(_event.sender.id)
-          if (senderType !== 'widget') {
+          if (senderType !== 'widget' && senderType !== 'widgetHost') {
             log.warn(`[IPC] 非 widget 窗口尝试上报动作结果: ${String(senderType)}`)
             return
           }
@@ -285,12 +294,10 @@ export function setupWidgetIPC(): void {
 
         const request: WidgetActionRequest = { action_id: actionId, widget_type, action, params }
 
-        for (const { win } of openWindows) {
-          try {
-            win.webContents.send(CHANNELS.WIDGET_ACTION_RECEIVED_EVENT, request)
-          } catch (err) {
-            log.error(`向小组件窗口发送动作失败:`, err)
-          }
+        // 子窗口无 preload，动作指令统一发到宿主，由宿主网关按 widget_type 广播给对应子窗口
+        const host = getWidgetHostWebContents()
+        if (host) {
+          host.send(CHANNELS.WIDGET_ACTION_RECEIVED_EVENT, request)
         }
       })
     }

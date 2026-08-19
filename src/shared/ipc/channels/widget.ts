@@ -45,5 +45,12 @@ export const widgetChannels = {
   /** 实例数据更新 */
   WIDGET_INSTANCE_DATA_EVENT: defineEvent('widget:instance:data'),
   /** 配置变更 */
-  WIDGET_CONFIG_CHANGED_EVENT: defineEvent('widget:config:changed')
+  WIDGET_CONFIG_CHANGED_EVENT: defineEvent('widget:config:changed'),
+
+  /** 宿主开窗请求（main → 宿主 renderer，携带 url / frameName） */
+  WIDGET_HOST_OPEN_REQUEST: defineEvent('widget:host:open-request'),
+  /** 宿主开窗结果（宿主 renderer → main，回传 window.open 布尔结果） */
+  WIDGET_HOST_OPEN_RESULT: defineSend('widget:host:open-result'),
+  /** 子窗口关闭通知（main → 宿主 renderer，用于清理网关中的子窗口引用） */
+  WIDGET_HOST_CHILD_CLOSED: defineEvent('widget:host:child-closed')
 } as const

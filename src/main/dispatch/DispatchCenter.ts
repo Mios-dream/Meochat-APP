@@ -19,7 +19,7 @@
  *   DispatchCenter.getInstance().sendTo('assistantSettings', 'config:updated', { ... })
  */
 
-import { ipcMain, BrowserWindow } from 'electron'
+import { ipcMain } from 'electron'
 import { CHANNELS } from '@shared/ipc/channels'
 import { registerHandle, registerOn } from '../utils/registerIpcHandler'
 import type { WindowType } from '../windows/types'
@@ -106,19 +106,15 @@ class DispatchCenter {
     const message = { action, payload }
 
     if (target === 'all') {
-      BrowserWindow.getAllWindows().forEach((win) => {
-        if (!win.isDestroyed()) {
-          win.webContents.send(CHANNELS.DISPATCH_ACTION_EVENT, message)
-        }
-      })
+      windowRegistry.broadcast(CHANNELS.DISPATCH_ACTION_EVENT, message)
       return
     }
 
-    const windows = windowRegistry.getWindowsByType(target)
+    const windows = windowRegistry
+      .getWindowsByType(target)
+      .filter((win) => windowRegistry.isWindowBroadcastable(win))
     windows.forEach((win) => {
-      if (!win.isDestroyed()) {
-        win.webContents.send(CHANNELS.DISPATCH_ACTION_EVENT, message)
-      }
+      win.webContents.send(CHANNELS.DISPATCH_ACTION_EVENT, message)
     })
   }
 
@@ -129,11 +125,7 @@ class DispatchCenter {
    * @param payload 附带数据
    */
   broadcast(action: string, payload?: unknown): void {
-    BrowserWindow.getAllWindows().forEach((win) => {
-      if (!win.isDestroyed()) {
-        win.webContents.send(CHANNELS.DISPATCH_ACTION_EVENT, { action, payload })
-      }
-    })
+    windowRegistry.broadcast(CHANNELS.DISPATCH_ACTION_EVENT, { action, payload })
   }
 
   /**
@@ -228,17 +220,14 @@ class DispatchCenter {
         }
 
         if (target === 'all') {
-          BrowserWindow.getAllWindows().forEach((win) => {
-            if (!win.isDestroyed()) {
-              win.webContents.send(CHANNELS.DISPATCH_INVOKE_EVENT, dispatchMessage)
-            }
-          })
+          windowRegistry.broadcast(CHANNELS.DISPATCH_INVOKE_EVENT, dispatchMessage)
         } else {
-          const windows = windowRegistry.getWindowsByType(target)
+          // 定向发送同样过滤无 preload 的小组件窗口，事件一律经宿主网关转发
+          const windows = windowRegistry
+            .getWindowsByType(target)
+            .filter((win) => windowRegistry.isWindowBroadcastable(win))
           windows.forEach((win) => {
-            if (!win.isDestroyed()) {
-              win.webContents.send(CHANNELS.DISPATCH_INVOKE_EVENT, dispatchMessage)
-            }
+            win.webContents.send(CHANNELS.DISPATCH_INVOKE_EVENT, dispatchMessage)
           })
         }
       })
