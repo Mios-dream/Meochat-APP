@@ -5,10 +5,11 @@
 
 import { ipcMain } from 'electron'
 import { CHANNELS } from '@shared/ipc/channels'
-import { registerHandle } from '../utils/registerIpcHandler'
+import { registerHandle, registerOn } from '../utils/registerIpcHandler'
 import { WidgetService } from '../services/widgetService'
 import { windowRegistry } from '../windows'
 import { widgetWindowService } from '../services/widgetWindowService'
+import { startWindowDrag, stopWindowDrag } from '../utils/windowDrag'
 import log from '../utils/logger'
 
 import type {
@@ -160,6 +161,23 @@ export function setupWidgetIPC(): void {
       log.error('切换小组件窗口置顶失败:', error)
       return { success: false, error: String(error) }
     }
+  })
+
+  // 开始拖拽小组件窗口。
+  // 子窗口共享渲染进程、无 preload，其 startDrag 请求经宿主网关代发至此，
+  // 因此不能依赖 event.sender 定位窗口（sender 是宿主），必须按 instanceId 查找真实子窗口。
+  registerOn(CHANNELS.WIDGET_WINDOW_START_DRAG, (_event, instanceId) => {
+    const win = windowRegistry.getWindow(`widget:${instanceId}`)
+    if (!win || win.isDestroyed()) {
+      log.warn(`拖拽小组件窗口失败：实例 ${instanceId} 不存在或已销毁`)
+      return
+    }
+    startWindowDrag(win)
+  })
+
+  // 结束拖拽小组件窗口（Linux 手动拖拽时通知主进程停止轮询）
+  registerOn(CHANNELS.WIDGET_WINDOW_END_DRAG, () => {
+    stopWindowDrag()
   })
 
   // 发送数据到指定小组件

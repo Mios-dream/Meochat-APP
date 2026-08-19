@@ -189,6 +189,14 @@ export function createWidgetBridgeApi(instanceId: string): WidgetWindowApi['widg
     closeWindow: (id: string) => request('closeWindow', id),
     togglePin: (id: string, pinned: boolean) => request('togglePin', id, pinned),
 
+    // 拖拽指令：经宿主网关代发，instanceId 由垫片隐式补齐（宿主侧按该参数定位子窗口）
+    startDrag: () => {
+      void request('startDrag', instanceId)
+    },
+    endDrag: () => {
+      void request('endDrag', instanceId)
+    },
+
     sendData: (data: WidgetDataMessage) => request('sendData', data),
     broadcastData: (data: Omit<WidgetDataMessage, 'toId'>) => request('broadcastData', data),
 

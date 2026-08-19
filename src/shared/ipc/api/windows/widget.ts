@@ -26,6 +26,10 @@ export interface WidgetWindowApi extends CommonApi {
     deleteInstance: (instanceId: string) => Promise<IpcResponse>
     closeWindow: (instanceId: string) => Promise<IpcResponse>
     togglePin: (instanceId: string, pinned: boolean) => Promise<IpcResponse>
+    /** 开始拖拽小组件窗口（经宿主网关代发，携带 instanceId 定位真实子窗口） */
+    startDrag: (instanceId: string) => void
+    /** 结束拖拽小组件窗口（Linux 手动拖拽时通知主进程停止轮询） */
+    endDrag: (instanceId: string) => void
     sendData: (data: WidgetDataMessage) => Promise<IpcResponse>
     broadcastData: (data: Omit<WidgetDataMessage, 'toId'>) => Promise<IpcResponse>
     fetchWeather: (location: string) => Promise<IpcResponse<WeatherData>>

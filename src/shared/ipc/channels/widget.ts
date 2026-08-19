@@ -52,5 +52,10 @@ export const widgetChannels = {
   /** 宿主开窗结果（宿主 renderer → main，回传 window.open 布尔结果） */
   WIDGET_HOST_OPEN_RESULT: defineSend('widget:host:open-result'),
   /** 子窗口关闭通知（main → 宿主 renderer，用于清理网关中的子窗口引用） */
-  WIDGET_HOST_CHILD_CLOSED: defineEvent('widget:host:child-closed')
+  WIDGET_HOST_CHILD_CLOSED: defineEvent('widget:host:child-closed'),
+
+  /** 开始拖拽小组件窗口（renderer → main，携带 instanceId；子窗口经宿主网关代发） */
+  WIDGET_WINDOW_START_DRAG: defineSend('widget:window:start-drag'),
+  /** 结束拖拽小组件窗口（renderer → main，Linux 手动拖拽时通知主进程停止轮询） */
+  WIDGET_WINDOW_END_DRAG: defineSend('widget:window:end-drag')
 } as const

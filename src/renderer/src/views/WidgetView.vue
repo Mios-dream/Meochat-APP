@@ -7,8 +7,13 @@
       @mouseenter="showControls"
       @mouseleave="hideControls"
     >
-      <!-- 拖拽区域 -->
-      <div class="drag-region" :class="{ 'drag-region--locked': isPinned }" />
+      <!-- 拖拽区域：不再使用 app-region: drag（避免右键触发系统菜单），
+           改为 mousedown 触发原生窗口拖拽（electron-click-drag-plugin） -->
+      <div
+        class="drag-region"
+        :class="{ 'drag-region--locked': isPinned }"
+        @mousedown="handleDragMouseDown"
+      />
 
       <!-- 小组件内容 -->
       <div class="widget-content">
@@ -86,6 +91,30 @@ async function deleteWidget(): Promise<void> {
   await window.api.widgetApi.deleteInstance(instanceId.value)
 }
 
+/**
+ * 拖拽区域鼠标按下：启动原生窗口拖拽（electron-click-drag-plugin）。
+ * 仅处理左键；固定状态由 CSS pointer-events: none 拦截，不会触发到此。
+ *
+ * 说明：统一走 widgetApi.startDrag 而非顶层 window.api.startDrag，
+ * 因为子窗口（共享渲染进程、无 preload）的 window.api 是 widgetBridge 垫片，
+ * 其顶层不存在 startDrag，需经 widgetApi 代理并在请求中携带 instanceId
+ * 供宿主网关转发到主进程定位真实子窗口。
+ * Linux 手动拖拽时，松开鼠标需通知主进程结束拖拽轮询；
+ * Windows/macOS 走原生拖拽，此通知为主进程的无操作，无副作用。
+ */
+function handleDragMouseDown(event: MouseEvent): void {
+  if (event.button !== 0) return
+  window.api.widgetApi.startDrag(instanceId.value)
+  window.addEventListener('mouseup', handleDragMouseUp, { once: true })
+}
+
+/**
+ * 松开鼠标时通知主进程结束手动拖拽（仅 Linux 有实际作用）。
+ */
+function handleDragMouseUp(): void {
+  window.api.widgetApi.endDrag(instanceId.value)
+}
+
 // 监听实例数据
 let removeInstanceDataListener: (() => void) | null = null
 
@@ -147,14 +176,10 @@ onUnmounted(() => {
   left: 0;
   right: 0;
   height: 40px;
-  -webkit-app-region: drag;
-  app-region: drag;
   z-index: 10;
 }
 
 .drag-region--locked {
-  -webkit-app-region: no-drag;
-  app-region: no-drag;
   pointer-events: none;
 }
 

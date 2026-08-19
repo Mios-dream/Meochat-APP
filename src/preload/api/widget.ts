@@ -334,6 +334,10 @@ export function buildWidgetWindowApi(): WidgetWindowApi {
     togglePin: (instanceId: string, pinned: boolean) =>
       ipcRenderer.invoke(CHANNELS.WIDGET_WINDOW_TOGGLE_PIN, { instanceId, pinned }),
 
+    // 拖拽指令：子窗口经 bridge 垫片代理到此，携带 instanceId 由主进程定位真实子窗口
+    startDrag: (instanceId: string) =>
+      ipcRenderer.send(CHANNELS.WIDGET_WINDOW_START_DRAG, instanceId),
+    endDrag: (instanceId: string) => ipcRenderer.send(CHANNELS.WIDGET_WINDOW_END_DRAG, instanceId),
     sendData: (data: unknown) => ipcRenderer.invoke(CHANNELS.WIDGET_DATA_SEND, data),
     broadcastData: (data: unknown) => ipcRenderer.invoke(CHANNELS.WIDGET_DATA_BROADCAST, data),
 
