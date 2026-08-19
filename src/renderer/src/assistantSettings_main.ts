@@ -2,6 +2,8 @@
  * 桌宠助手悬浮设置窗口入口文件
  * 独立窗口，用于显示桌宠模式的快捷设置面板
  */
+// 最先引入日志服务：重写 console 并安装全局错误监听，确保后续业务日志可被捕获
+import './services/LogService'
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import './assets/base.css'

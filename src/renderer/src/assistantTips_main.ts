@@ -3,6 +3,8 @@
  * 独立于主窗口，只加载提示窗口必要的功能
  */
 
+// 最先引入日志服务：重写 console 并安装全局错误监听，确保后续业务日志可被捕获
+import './services/LogService'
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import './assets/base.css'

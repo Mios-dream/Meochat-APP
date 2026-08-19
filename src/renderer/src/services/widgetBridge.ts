@@ -206,6 +206,11 @@ export function createWidgetBridgeApi(instanceId: string): WidgetWindowApi['widg
     sendActionResult: (result: WidgetActionResult) => {
       // 单向通知：不等待宿主响应
       void request('sendActionResult', result)
+    },
+
+    // 日志转发：经宿主网关代为发送到主进程（失败时静默丢弃，避免触发未处理拒绝）
+    log: (level: string, message: string) => {
+      void request('log', level, message).catch(() => {})
     }
   }
 }

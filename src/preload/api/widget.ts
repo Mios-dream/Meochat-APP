@@ -364,7 +364,11 @@ export function buildWidgetWindowApi(): WidgetWindowApi {
 
     onAction: (callback: (request: WidgetActionRequest) => void) =>
       ipc.on(CHANNELS.WIDGET_ACTION_RECEIVED_EVENT, callback),
-    sendActionResult: (result: unknown) => ipcRenderer.send(CHANNELS.WIDGET_ACTION_RESULT, result)
+    sendActionResult: (result: unknown) => ipcRenderer.send(CHANNELS.WIDGET_ACTION_RESULT, result),
+
+    // 日志转发：子窗口无完整 preload，经宿主网关转发到主进程 electron-log
+    log: (level: string, message: string) =>
+      ipcRenderer.send(CHANNELS.LOGGER_LOG, { level, message })
   }
 
   // 宿主网关：子窗口请求转发 + 事件扇出（依赖 widgetApi 方法集本身）

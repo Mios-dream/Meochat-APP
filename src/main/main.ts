@@ -1,4 +1,7 @@
 ﻿import { app, globalShortcut } from 'electron'
+// 必须最先引入日志模块：其模块求值阶段即注册 uncaughtException / unhandledRejection
+// 兜底处理器并配置日志，先于任何其他业务模块，保证后续 import 链崩溃也有日志可查
+import log from './utils/logger'
 import { createWindow, mainWindowConfig, windowRegistry } from './windows'
 import {
   setupMainIPC,
@@ -25,7 +28,6 @@ import { WidgetService } from './services/widgetService'
 import { setupAssistantSettingsIPC } from './ipc/assistantSettingsHandlers'
 import { dispatchCenter } from './dispatch/DispatchCenter'
 import { CHANNELS } from '@shared/ipc/channels'
-import log from './utils/logger'
 
 // Linux 下强制使用 X11 (XWayland) 后端：
 // 1. 原生 Wayland 下 getNativeWindowHandle() 返回的不是 X11 Window id，
@@ -112,9 +114,4 @@ app.on('window-all-closed', () => {
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll()
-})
-
-// 捕获未处理的异常
-process.on('uncaughtException', (error) => {
-  log.error('未捕获的异常:', error)
 })

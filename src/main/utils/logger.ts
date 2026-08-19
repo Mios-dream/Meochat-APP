@@ -3,7 +3,7 @@ import log from 'electron-log'
 import { resolveLogDir } from './pathResolve'
 
 // 设置日志级别
-log.transports.file.level = 'info'
+log.transports.file.level = 'warn'
 log.transports.console.level = 'info'
 
 // 禁用主进程 → 渲染进程的日志 IPC 转发：
@@ -23,6 +23,18 @@ log.transports.file.maxSize = 1 * 1024 * 1024
 
 // 自定义日志文件存储位置
 log.transports.file.resolvePathFn = () => path.join(resolveLogDir(), 'main.log')
+
+// 注册全局进程异常兜底：
+// 本模块应在 main.ts 的第一个副作用 import 位置被求值，因此在模块求值阶段就安装
+// 这两个处理器，确保即使后续 import 链上的模块顶层求值抛错（如原生依赖加载失败），
+// 或任意异步未捕获异常 / 未处理的 Promise 拒绝，也能留下日志记录。
+process.on('uncaughtException', (error) => {
+  log.error('未捕获的异常:', error)
+})
+
+process.on('unhandledRejection', (reason) => {
+  log.error('未处理的Promise拒绝:', reason)
+})
 
 // 导出日志实例
 export default log

@@ -31,6 +31,8 @@ export interface WidgetWindowApi extends CommonApi {
     fetchWeather: (location: string) => Promise<IpcResponse<WeatherData>>
     getLocation: () => Promise<IpcResponse<LocationData>>
     clearWeatherCache: () => Promise<IpcResponse>
+    /** 日志转发（小组件子窗口无完整 preload，经宿主网关代为转发到主进程） */
+    log: (level: string, message: string) => void
     onData: (callback: (data: WidgetDataMessage) => void) => () => void
     onConfigChanged: (callback: (config: WidgetConfigFile) => void) => () => void
     onInstanceData: (callback: (data: InstanceDataUpdate) => void) => () => void

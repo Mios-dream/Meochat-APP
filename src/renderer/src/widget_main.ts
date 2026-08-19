@@ -2,6 +2,8 @@
  * 小组件窗口入口文件
  */
 
+// 最先引入日志服务：重写 console 并安装全局错误监听，确保后续业务日志可被捕获
+import './services/LogService'
 import { createApp } from 'vue'
 import './assets/base.css'
 import './assets/fonts/font.css'
@@ -20,8 +22,16 @@ const widgetId = urlParams.get('widgetId') || ''
 const instanceId = urlParams.get('instanceId') || ''
 
 if (widgetId && instanceId && !window.api) {
+  const widgetApi = createWidgetBridgeApi(instanceId)
   window.api = {
-    widgetApi: createWidgetBridgeApi(instanceId)
+    widgetApi,
+    // 日志代理：子窗口无完整 preload，日志经宿主网关转发到主进程 electron-log
+    log: {
+      debug: (message) => void widgetApi.log('debug', message),
+      info: (message) => void widgetApi.log('info', message),
+      warn: (message) => void widgetApi.log('warn', message),
+      error: (message) => void widgetApi.log('error', message)
+    }
   } as Window['api']
 }
 
