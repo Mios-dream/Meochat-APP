@@ -180,7 +180,9 @@ class WidgetWindowService {
         contextIsolation: true,
         sandbox: false,
         nodeIntegration: false,
-        backgroundThrottling: true
+        backgroundThrottling: true,
+        // 全局禁用拼写检查
+        spellcheck: false
       }
     })
     this.host = host
@@ -211,7 +213,9 @@ class WidgetWindowService {
             additionalArguments: ['--window-type=widget'],
             contextIsolation: true,
             sandbox: false,
-            nodeIntegration: false
+            nodeIntegration: false,
+            // 全局禁用拼写检查
+            spellcheck: false
           }
         }
       }

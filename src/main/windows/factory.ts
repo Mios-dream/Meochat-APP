@@ -99,7 +99,9 @@ export async function createWindow(
       additionalArguments: [`--window-type=${config.type}`],
       contextIsolation: true,
       sandbox: false,
-      nodeIntegration: false
+      nodeIntegration: false,
+      // 全局禁用拼写检查
+      spellcheck: false
     }
   }
 
