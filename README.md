@@ -47,7 +47,7 @@
 
 - **拖动定位** - 自由拖动助手窗口到屏幕任意位置
 - **点击穿透** - 空白区域支持鼠标穿透，不影响后台操作
-- **工具栏** - 快速访问常用功能的浮动工具栏
+- **桌宠模式** - 一键切换为桌宠形态，支持快捷唤起与聊天
 - **实时聊天** - 与AI助手进行自然流畅的对话
 - **Live2D 动画** - 高保真的看板娘动画表现
 
@@ -55,7 +55,16 @@
 
 - **助手空间** - 管理和配置多个AI助手的专属空间
 - **助手设置** - 自定义助手的性格、声音、动作等参数
-- **对话管理** - 查看和管理与各助手的对话历史
+- **聊天历史** - 查看、回顾与各助手的对话记录
+- **日记系统** - 助手记录每日回忆，好感度达到一定值后解锁查看
+
+### 🧩 小组件系统
+
+- **天气** - 实时查询并展示指定城市的天气状况
+- **待办事项** - 通过对话让 AI 帮你创建和管理待办清单
+- **便签** - 随时记录灵感与备忘，AI 可代写
+- **时钟与每日一句** - 实用小工具与名言警句
+- **AI 语音操控** - 通过自然语言让 AI 直接遥控各小组件
 
 ### 🧠 智能功能
 
@@ -72,15 +81,22 @@
 
 <table>
   <tr>
-    <td><img src="./doc/assets/screen_2.png" alt="预览 1"></td>
-    <td><img src="./doc/assets/screen_3.png" alt="预览 2"></td>
+    <td><img src="./doc/assets/主页.png" alt="核心空间"></td>
+    <td><img src="./doc/assets/助手空间.png" alt="助手空间"></td>
   </tr>
   <tr>
-    <td><img src="./doc/assets/screen_4.png" alt="预览 3"></td>
-    <td><img src="./doc/assets/screen_5.png" alt="预览 4"></td>
+    <td><img src="./doc/assets/助手管理.png" alt="助手管理"></td>
+    <td><img src="./doc/assets/小组件管理.png" alt="小组件管理"></td>
+  </tr>
+  <tr>
+    <td><img src="./doc/assets/日记功能.png" alt="日记功能"></td>
+    <td><img src="./doc/assets/桌宠模式.png" alt="桌宠模式"></td>
+  </tr>
+  <tr>
+    <td><img src="./doc/assets/聊天历史.png" alt="聊天历史"></td>
+    <td><img src="./doc/assets/设置页.png" alt="设置页"></td>
   </tr>
 </table>
-
 
 ### 🎞️ 演示视频
 
@@ -88,15 +104,14 @@
 
 https://github.com/user-attachments/assets/3878b0fc-fefb-49b6-b987-5f663cce9b48
 
-
 ## 🚀 快速开始
 
 ### 📦 环境要求
 
-| 软件     | 版本      | 说明                |
-| -------- | --------- | ------------------- |
-| Node.js  | ≥ 22.19.0 | JavaScript 运行环境 |
-| npm/yarn | 最新      | 包管理工具          |
+| 软件     | 版本            | 说明                                                                                                     |
+| -------- | --------------- | -------------------------------------------------------------------------------------------------------- |
+| Node.js  | ≥ 22.19.0       | JavaScript 运行环境                                                                                      |
+| npm/yarn | 最新            | 包管理工具                                                                                               |
 | 操作系统 | Windows / Linux | Windows 在本机构建；Linux 版需在 Linux 或 WSL2 环境构建（原生模块与 AppImage/deb 工具链仅在 Linux 可用） |
 
 ### 💻 安装与运行
@@ -167,7 +182,6 @@ https://github.com/user-attachments/assets/3878b0fc-fefb-49b6-b987-5f663cce9b48
    提示输入；省略全部变体开关时默认构建三个变体。
 
    三种变体说明：
-
    - **lite（精简版）**：仅含内核源码资产包，依赖与模型首次运行在线安装；Windows 为 NSIS 安装包，Linux 为 AppImage + deb，体积 < 2GB。
    - **cpu（完整版 CPU）**：CPU wheels + 数据包，离线开箱即用，zip 压缩包（含数据后体积 > 2GB，超出 NSIS/AppImage 上限）。
    - **cuda（完整版 CUDA）**：CUDA 12.13 wheels + 数据包，离线开箱即用，zip 压缩包。
