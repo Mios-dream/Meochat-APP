@@ -146,7 +146,7 @@ export default function electronBuilderConfig(): Configuration {
 
   /** 公共配置：与平台/变体无关的基础项 */
   const base: Configuration = {
-    appId: 'com.electron.app',
+    appId: 'com.moechat.app',
     productName: 'moechat',
     directories: {
       buildResources: 'build',
@@ -163,6 +163,7 @@ export default function electronBuilderConfig(): Configuration {
       // 以下目录仅作为 extraResources 分发，禁止重复打进 app.asar（避免体积翻倍）
       '!resources/kernel-assets/*',
       '!resources/python-runtime/*',
+      '!pv',
       // electron-builder 只自动排除"当前输出目录"；输出目录随变体变化(如 dist/lite)时，
       // 旧 dist 目录会退化为普通文件被打进 app.asar 造成递归膨胀，必须始终排除
       '!dist/**'
@@ -205,8 +206,8 @@ export default function electronBuilderConfig(): Configuration {
       artifactName: '${name}-${version}.${ext}'
     },
     linux: {
-      // 图标：linux 需要 png（build/icon/icon.png），不能复用 win 的 ico
-      icon: 'build/icon/icon.png',
+      // 图标：linux 需要 png（build/icon/app.png），不能复用 win 的 ico
+      icon: 'build/icon/app.png',
       target: ['AppImage', 'deb'],
       maintainer: 'electronjs.org',
       category: 'Utility',
