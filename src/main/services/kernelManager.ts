@@ -33,10 +33,6 @@ interface AssetBundleInfo {
   version: string
   /** 构建唯一标识：同一版本不同内容时不同，用于同版本内容变更检测 */
   buildId: string
-  /** 变体类型（lite / cpu / cuda） */
-  type: string
-  /** 目标平台（windows / linux） */
-  platform: string
 }
 
 /** 已安装内核的版本指纹（从 kernelDir/manifest.json 读取） */
@@ -51,12 +47,6 @@ interface KernelAssetsDeclaration {
     file: string
     version: string
     build_id: string
-    type: string
-    platform: string
-  }
-  data?: {
-    file: string
-    version: string
   }
 }
 
@@ -317,29 +307,17 @@ class KernelManager {
         )
 
         if (kernelExists) {
-          // 就地升级：保留 .venv；wheels/data 按新包是否携带决定去留
-          const dataPackage = this.resolveDataPackage()
-          await this.replaceKernelKeepingData(assetsPackage, dataPackage, (ratio) => {
+          // 就地升级：保留依赖环境、模型数据和用户配置。
+          await this.replaceKernelKeepingData(assetsPackage, (ratio) => {
             this.state.progress = Math.round(ratio * 90)
             this.notifyState()
           })
         } else {
-          // 全新安装：解压内核资产包（源码 + wheels）到 kernelDir 根目录
+          // 全新安装：将内核资产包解压到 kernelDir 根目录。
           await this.extractBundlePackage(assetsPackage, this.kernelDir, '', (ratio) => {
             this.state.progress = Math.round(ratio * 60)
             this.notifyState()
           })
-
-          // 若内置数据包存在，解压到 {kernel}/data（完整版离线模型数据）
-          const dataPackage = this.resolveDataPackage()
-          if (dataPackage) {
-            this.state.statusText = '正在解压内置数据包...'
-            this.notifyState()
-            await this.extractBundlePackage(dataPackage, this.kernelDir, 'data', (ratio) => {
-              this.state.progress = Math.round(60 + ratio * 30)
-              this.notifyState()
-            })
-          }
         }
 
         this.state.progress = 90
@@ -391,31 +369,12 @@ class KernelManager {
     return {
       file: assets.file,
       version: assets.version,
-      buildId: assets.build_id,
-      type: assets.type,
-      platform: assets.platform
+      buildId: assets.build_id
     }
   }
 
   /**
-   * 解析安装包内置数据包（moechat-data-*.zip，仅 cpu/cuda 完整版携带，内容为通用数据）。
-   * lite 变体不含数据包，模型由后端首次运行自动下载。
-   * @returns 数据包 zip 绝对路径；无数据包或声明无效时返回 null
-   */
-  private resolveDataPackage(): string | null {
-    const declaration = this.readKernelAssetsDeclaration()
-    if (!declaration?.data) return null
-    const filePath = path.join(this.portableKernelAssetsDir, declaration.data.file)
-    if (!fs.existsSync(filePath)) {
-      log.warn(`[KernelManager] 权威声明指向的数据包缺失: ${declaration.data.file}`)
-      return null
-    }
-    return filePath
-  }
-
-  /**
-   * 读取安装包内置 kernel-assets/manifest.json 权威声明（由构建脚本打包时生成，
-   * 记录实际放入的资产包与数据包，运行时以它为准）。不存在或解析失败返回 null。
+   * 读取安装包内置 kernel-assets/manifest.json 权威声明（由构建脚本打包时生成）。
    */
   private readKernelAssetsDeclaration(): KernelAssetsDeclaration | null {
     const manifestPath = path.join(this.portableKernelAssetsDir, MANIFEST_FILE_NAME)
@@ -467,21 +426,16 @@ class KernelManager {
   }
 
   /**
-   * 就地升级内核：仅删除旧源码，保留 .venv（依赖环境）、wheels（依赖缓存）、data（模型）、
-   * config.yaml（用户配置），新资产包直接解压覆盖。保留 .venv 使 uv sync 增量同步，
-   * 避免 torch 等大依赖重装；新包未携带 wheels/data（lite）时复用旧缓存，携带时由解压覆盖。
+   * 就地升级内核：仅删除旧源码，保留 .venv（依赖环境）、wheels（依赖缓存）、data（模型）
+   * 和 config.yaml（用户配置），新资产包直接解压覆盖。
    * @param assetsPackage 内置资产包绝对路径
-   * @param dataPackage 内置数据包绝对路径（lite 为 null）
    * @param onProgress 进度回调（解压阶段 0-1 比值）
    */
   private async replaceKernelKeepingData(
     assetsPackage: string,
-    dataPackage: string | null,
-
     onProgress: (ratio: number) => void
   ): Promise<void> {
-    // 保留条目集合：.venv 永远保留；lite 升级时 wheels/data 也保留（新包不携带）；
-    // config.yaml 为用户配置文件，删除旧源码时一并保留，避免覆盖安装/升级丢失个性化配置
+    // config.yaml 为用户配置文件，删除旧源码时一并保留，避免升级丢失个性化配置。
     const keepEntries = new Set<string>(['.venv', 'wheels', 'data', 'config.yaml'])
 
     // 1. 删除旧内核目录中除保留条目外的全部内容（旧源码、旧 assets、非保留的 wheels/data）
@@ -496,13 +450,8 @@ class KernelManager {
     }
 
     try {
-      // 2. 解压新资产包源码（及完整版自带 wheels）到 kernelDir
+      // 2. 解压新的内核资产包到 kernelDir。
       await this.extractBundlePackage(assetsPackage, this.kernelDir, '', onProgress)
-
-      // 3. 完整版（cpu/cuda）携带数据包时，解压 data 到 kernelDir/data
-      if (dataPackage) {
-        await this.extractBundlePackage(dataPackage, this.kernelDir, 'data', onProgress)
-      }
     } catch (error) {
       // 解压失败：保留目录未受影响，仅源码可能残留部分文件，交由下次自举重建
       log.error('[KernelManager] 就地升级解压失败:', (error as Error).message)
@@ -618,7 +567,7 @@ class KernelManager {
 
   /**
    * 安装环境依赖：uv sync 下载全部依赖并实时上报进度。
-   * CPU/CUDA 版本由打包阶段决定；不使用 `uv run`，避免其隐式 sync 吞掉进度条输出。
+   * 根据运行环境选择 CPU 或 CUDA extra；不使用 `uv run`，避免其隐式 sync 吞掉进度条输出。
    */
   private setupEnvironment(onProgress: (progress: number) => void): Promise<void> {
     const kernelDir = this.kernelDir
@@ -637,12 +586,19 @@ class KernelManager {
         return
       }
 
-      this.state.statusText = '正在安装 Python 依赖（首次约需 5GB 下载）...'
+      this.state.statusText = '正在检测 CUDA 运行环境...'
       this.notifyState()
 
-      // ── 步骤 1: uv sync ────────────────────────────
-      log.info(`[setup] uv sync (cwd: ${kernelDir})`)
-      this.runSyncWithProgress(kernelDir, uvExe, onProgress)
+      this.resolveSyncArgs()
+        .then(({ args, accelerator }) => {
+          this.state.statusText =
+            accelerator === 'cuda'
+              ? '已检测到 NVIDIA CUDA，将安装 GPU 加速依赖...'
+              : '未检测到可用 CUDA，将安装 CPU 依赖...'
+          this.notifyState()
+          log.info(`[setup] uv ${args.join(' ')} (accelerator=${accelerator}, cwd: ${kernelDir})`)
+          return this.runSyncWithProgress(kernelDir, uvExe, args, onProgress)
+        })
         .then(() => {
           log.info('依赖安装完成')
           onProgress(1)
@@ -672,6 +628,45 @@ class KernelManager {
     }
   }
 
+  /** 根据 NVIDIA 驱动可用性选择后端声明的 CPU/CUDA 依赖 extra。 */
+  private async resolveSyncArgs(): Promise<{
+    args: string[]
+    accelerator: 'cpu' | 'cuda'
+  }> {
+    const cpuArgs = ['sync', '--extra', 'cpu']
+    try {
+      const { stdout } = await execAsync(
+        'nvidia-smi --query-gpu=name,driver_version --format=csv,noheader',
+        { timeout: 5000, windowsHide: true }
+      )
+      if (!stdout.trim()) return { args: cpuArgs, accelerator: 'cpu' }
+
+      const [gpuName, driverVersion] = stdout.trim().split(/\r?\n/, 1)[0].split(',')
+      const driver = driverVersion?.trim() ?? '未知'
+      // cu130 wheel 需要 R580+ 驱动。仅存在 nvidia-smi 不代表驱动能加载 CUDA 13，
+      // 驱动过旧时走 CPU，避免下载数 GB 的 CUDA 依赖后才在模型启动阶段失败。
+      const driverMajor = Number.parseInt(driver.split('.')[0], 10)
+      if (!Number.isFinite(driverMajor) || driverMajor < 580) {
+        log.info(`[setup] NVIDIA 驱动 ${driver} 不支持 CUDA 13，使用 CPU 依赖`)
+        return { args: cpuArgs, accelerator: 'cpu' }
+      }
+
+      log.info(`[setup] 检测到 NVIDIA GPU: ${gpuName.trim()} (driver ${driver})`)
+      return {
+        args: [
+          'sync',
+          '--extra',
+          'cuda',
+          '--find-links',
+          'https://mirrors.aliyun.com/pytorch-wheels/cu130'
+        ],
+        accelerator: 'cuda'
+      }
+    } catch {
+      return { args: cpuArgs, accelerator: 'cpu' }
+    }
+  }
+
   /**
    * 通过伪终端（node-pty：Windows 用 ConPTY，macOS/Linux 用标准 PTY）执行 uv sync，
    * 使 uv 输出 ANSI 进度条动画。原始 ANSI 数据转发给前端 xterm 渲染，
@@ -680,9 +675,9 @@ class KernelManager {
   private async runSyncWithProgress(
     kernelDir: string,
     uvExe: string,
+    uvArgs: string[],
     onProgress: (p: number) => void
   ): Promise<void> {
-    const uvArgs = ['sync']
     const wheelsDir = this.resolveWheelsDir()
     if (wheelsDir) {
       uvArgs.push('--find-links', wheelsDir)
@@ -1104,42 +1099,8 @@ class KernelServiceManager {
     this.addSystemLog(`[系统] 工作目录: ${kernelPath}\r\n`)
 
     try {
-      // 使用内嵌 uv 运行（uv 自动管理 Python 版本）
-      const uvExe = this.kernelManager.portableUvExe
-
-      if (!fs.existsSync(uvExe)) {
-        return { success: false, error: `内嵌 uv 未找到: ${uvExe}` }
-      }
-
-      // 启动前执行 uv sync 确保依赖最新（使用 pty 支持终端渲染）
-      this.addSystemLog(`[系统] 正在同步依赖...\r\n`)
-      try {
-        await new Promise<void>((resolve, reject) => {
-          const syncTerm = pty.spawn(uvExe, ['sync'], {
-            cwd: kernelPath,
-            name: 'xterm-256color',
-            cols: 120,
-            rows: 30,
-            env: { ...process.env } as Record<string, string>
-          })
-          syncTerm.onData((data: string) => {
-            broadcastToAllWindows(CHANNELS.KERNEL_SERVICE_STREAM_EVENT, Buffer.from(data, 'utf-8'))
-            this.addSystemLog(data)
-          })
-          syncTerm.onExit(({ exitCode, signal }) => {
-            if (exitCode === 0) resolve()
-            else reject(new Error(`uv sync 退出码: ${exitCode}, 信号: ${signal}`))
-          })
-        })
-        this.addSystemLog(`[系统] 依赖同步完成\r\n`)
-      } catch (syncErr) {
-        const syncMsg = (syncErr as Error).message
-        log.warn(`[KernelManager] uv sync 失败，尝试继续启动: ${syncMsg}`)
-        this.addSystemLog(`[系统] 依赖同步失败: ${syncMsg}，继续启动...\r\n`)
-      }
-
-      // 直接运行 venv Python（绕开 uv run），使 backendPid 即服务进程本身，终止更可靠；
-      // 以 pty 启动以支持终端渲染与 ANSI 转义序列，依赖已在启动前同步
+      // 依赖由 bootstrapKernel/setupKernelEnvironment 统一完成，避免每次启动重复执行 uv sync。
+      // 直接运行 venv Python（绕开 uv run），使 backendPid 即服务进程本身，终止更可靠。
       const backendTerm = pty.spawn(pythonPath, [scriptPath], {
         cwd: kernelPath,
         name: 'xterm-256color',

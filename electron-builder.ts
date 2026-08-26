@@ -1,38 +1,20 @@
 /**
  * electron-builder 构建配置
  *
- * 本项目支持三种发布变体，通过环境变量 MOECHAT_VARIANT 在【构建时】选择，
- * 而不是靠手动搬移 resources/kernel-assets 目录内容来切换（避免来回挪动 2GB 数据包）：
- *
- * - lite（默认）：
- *   仅包含精简内核资产包（moechat-assets-*-lite.zip，无 wheels/数据），
- *   依赖与模型由首次运行在线安装，产物为 NSIS 安装包，体积 < 2GB，适用于 GitHub Release。
- * - cpu：
- *   包含 CPU wheels（moechat-assets-*-cpu.zip）+ 数据包（moechat-data-*.zip），
- *   离线开箱即用；但整体体积 > 2GB，超出 NSIS 的 ~2GB 硬上限。
- * - cuda：
- *   包含 CUDA 12.13 wheels（moechat-assets-*-cu130.zip）+ 数据包，同样 > 2GB。
- *   注意：electron-builder 的 portable 便携包目标同样基于 NSIS（NsisTarget，
- *   模板 portable.nsi），因此 >2GB 时同样会失败，唯一可行的产物是纯 zip 归档
- *   （由 7za 生成，支持 zip64，无 2GB 限制），用户解压后直接运行 moechat.exe。
+ * 仅构建一个应用包：内置当前平台的 moechat-assets-*-{win|linux}-lite.zip。
+ * 资产包包含内核源码、必要运行数据和助手资源；依赖与大模型由首次运行在线安装。
  *
  * 平台支持：
- * - Windows：lite → NSIS 安装包；cpu/cuda → zip 归档（含离线数据）。
- * - Linux  ：lite → AppImage / deb / snap；cpu/cuda → zip 归档（同 Windows 原因，>2GB 走 zip64）。
- *   产物按平台 + 变体区分命名，linux 产物追加 linux 标识，避免与 Windows 同名混淆。
+ * - Windows：NSIS 安装包。
+ * - Linux  ：AppImage / deb 安装包。
  *
- * 一键构建（推荐）：
- *   scripts/build-all.ps1 -KernelSource <后端dist目录>        # Windows 全部三个变体
- *   scripts/build-all-linux.ps1 -KernelSource <后端dist目录>  # Linux 全部三个变体
+ * 一键构建：
+ *   scripts/build-all.ps1 -KernelSource <后端dist目录>        # 默认仅 Windows 安装版
+ *   scripts/build-all-linux.ps1 -KernelSource <后端dist目录>  # 默认仅 Linux 安装版
  *
  * 配套 npm scripts：
- *   npm run build:win                # Windows lite，等同 build:win:lite
- *   npm run build:win:lite           # 精简版：NSIS 安装包
- *   npm run build:win:cpu            # cpu 版：zip（需先 prepare-kernel-assets.ps1 -Variant cpu -IncludeData）
- *   npm run build:win:cuda           # cuda 版：zip（需先 prepare-kernel-assets.ps1 -Variant cu130 -IncludeData）
- *   npm run build:linux              # Linux lite：AppImage/deb/snap
- *   npm run build:linux:cpu          # Linux cpu 版：zip
- *   npm run build:linux:cuda         # Linux cuda 版：zip
+ *   npm run build:win                # Windows：NSIS 安装包
+ *   npm run build:linux              # Linux：AppImage / deb
  *
  * 说明：本文件为函数式配置，electron-builder 自动探测 electron-builder.ts
  * 并通过 jiti 运行时加载；electron-builder.yml 已废弃，避免双配置源造成维护漂移。
@@ -49,83 +31,33 @@ import type { Configuration } from 'app-builder-lib'
 
 /** 当前配置文件所在目录（即项目根目录） */
 const projectRoot = dirname(fileURLToPath(import.meta.url))
-/** 支持的发布变体 */
-const VARIANTS = ['lite', 'cpu', 'cuda'] as const
-
-/** 发布变体类型 */
-type Variant = (typeof VARIANTS)[number]
-
 /**
- * 各发布变体对应的内核资产包 wheels 后缀，用于构建前校验资源包与变体是否匹配。
- * cuda 变体的后端产物后缀为 cu130（CUDA 12.13），故映射为 cu130；
- * lite 无 wheels，仅匹配精简源码包后缀 lite。
+ * 校验构建前置条件：resources/kernel-assets 中必须存在当前平台的 lite 内核资产包。
  */
-const VARIANT_ASSET_SUFFIX: Record<Variant, string> = {
-  lite: 'lite',
-  cpu: 'cpu',
-  cuda: 'cu130'
-}
-
-/**
- * 解析本次构建的发布变体。
- * 环境变量 MOECHAT_VARIANT 非法时抛出明确错误，避免静默降级导致打包出错误版本。
- * @returns 发布变体
- */
-function resolveVariant(): Variant {
-  const variant = (process.env.MOECHAT_VARIANT || 'lite').toLowerCase()
-  if (!VARIANTS.includes(variant as Variant)) {
-    throw new Error(
-      `MOECHAT_VARIANT 取值非法: "${variant}"，仅支持 ${VARIANTS.join(' / ')}。` +
-        '单变体请使用 npm run build:win:cpu / build:win:cuda，或一键构建 .\\scripts\\build-all.ps1。'
-    )
-  }
-  return variant as Variant
-}
-
-/**
- * 校验指定变体构建的前置条件：resources/kernel-assets 中必须存在与该变体匹配的
- * 内核资产包（cpu → moechat-assets-*-cpu.zip，cuda → moechat-assets-*-cu130.zip），
- * 离线变体（cpu/cuda）还必须包含数据包（moechat-data-*.zip）。
- * @param variant 本次构建的发布变体
- */
-function assertAssetsReady(variant: Variant): void {
+function assertAssetsReady(platformTag: 'win' | 'linux'): void {
   const assetsDir = join(projectRoot, 'resources', 'kernel-assets')
   if (!existsSync(assetsDir)) return
   const fileNames = readdirSync(assetsDir)
 
-  // 任意变体都必须存在内核资产包
+  // 必须存在内核源码资产包。
   const hasAssets = fileNames.some(
     (name) => name.startsWith('moechat-assets-') && name.endsWith('.zip')
   )
   if (!hasAssets) {
     throw new Error(
-      'resources/kernel-assets 缺少内核资产包(moechat-assets-*.zip)。请先执行：\n' +
+      'resources/kernel-assets 缺少内核源码资产包(moechat-assets-*.zip)。请先执行：\n' +
         '  .\\scripts\\prepare-kernel-assets.ps1 -KernelSource <后端dist目录>'
     )
   }
 
-  // 离线变体（cpu/cuda）必须匹配对应 wheels 后缀，且携带数据包
-  if (variant !== 'lite') {
-    const suffix = VARIANT_ASSET_SUFFIX[variant]
-    const hasVariantAssets = fileNames.some(
-      (name) => name.startsWith('moechat-assets-') && name.endsWith(`-${suffix}.zip`)
+  const hasPlatformAssets = fileNames.some(
+    (name) => name.startsWith('moechat-assets-') && name.endsWith(`-${platformTag}-lite.zip`)
+  )
+  if (!hasPlatformAssets) {
+    throw new Error(
+      `resources/kernel-assets 缺少 ${platformTag} lite 内核资产包(moechat-assets-*-${platformTag}-lite.zip)。请先执行：\n` +
+        '  .\\scripts\\prepare-kernel-assets.ps1 -KernelSource <后端dist目录>'
     )
-    if (!hasVariantAssets) {
-      throw new Error(
-        `构建变体 [${variant}] 需要 ${suffix} wheels 资产包(moechat-assets-*-${suffix}.zip)，` +
-          '但当前 resources/kernel-assets 中资源不符。请先执行：\n' +
-          `  .\\scripts\\prepare-kernel-assets.ps1 -KernelSource <后端dist目录> -Variant ${suffix} -IncludeData`
-      )
-    }
-    const hasData = fileNames.some(
-      (name) => name.startsWith('moechat-data-') && name.endsWith('.zip')
-    )
-    if (!hasData) {
-      throw new Error(
-        `构建变体 [${variant}] 缺少数据包(moechat-data-*.zip)。请先执行：\n` +
-          `  .\\scripts\\prepare-kernel-assets.ps1 -KernelSource <后端dist目录> -Variant ${suffix} -IncludeData`
-      )
-    }
   }
 }
 
@@ -134,24 +66,21 @@ function assertAssetsReady(variant: Variant): void {
  * @returns 完整构建配置
  */
 export default function electronBuilderConfig(): Configuration {
-  const variant = resolveVariant()
-  const isLite = variant === 'lite'
   // 当前构建所在平台：决定产物格式（win/linux 产物目标不同）。
   // 原生模块（node-pty/robotjs/uiohook/koffi）按平台编译，故跨平台打包需在目标平台执行，
   // 此处以构建机平台为准即可覆盖主流程（Windows 在 win 上构建、Linux 在 linux 上构建）。
   const isLinuxBuild = process.platform === 'linux'
 
-  // 构建前置校验：资源包须与所选变体匹配（cpu/cuda 需带数据包）
-  assertAssetsReady(variant)
+  // 构建前置校验：资源包须与目标平台匹配。
+  assertAssetsReady(isLinuxBuild ? 'linux' : 'win')
 
-  /** 公共配置：与平台/变体无关的基础项 */
+  /** 公共配置 */
   const base: Configuration = {
     appId: 'com.moechat.app',
     productName: 'moechat',
     directories: {
       buildResources: 'build',
-      // 按变体隔离产物目录，避免 lite/cpu/cuda 互相覆盖 win-unpacked 等中间产物
-      output: `dist/${variant}`
+      output: 'dist'
     },
     files: [
       '!**/.vscode/*',
@@ -164,8 +93,7 @@ export default function electronBuilderConfig(): Configuration {
       '!resources/kernel-assets/*',
       '!resources/python-runtime/*',
       '!pv',
-      // electron-builder 只自动排除"当前输出目录"；输出目录随变体变化(如 dist/lite)时，
-      // 旧 dist 目录会退化为普通文件被打进 app.asar 造成递归膨胀，必须始终排除
+      // 始终排除历史构建产物，避免被误打进 app.asar。
       '!dist/**'
     ],
     asarUnpack: ['resources/**'],
@@ -174,8 +102,7 @@ export default function electronBuilderConfig(): Configuration {
       {
         from: 'resources/kernel-assets',
         to: 'kernel-assets',
-        // lite：过滤掉数据包（模型由后端首次运行自动下载）；cpu/cuda：全量包含（离线可用）
-        filter: isLite ? ['**/*', '!**/moechat-data-*.zip'] : ['**/*']
+        filter: ['**/*']
       }
     ],
     win: {
@@ -225,39 +152,9 @@ export default function electronBuilderConfig(): Configuration {
     }
   }
 
-  // ── 变体 + 平台联合分支：────────────────────────────────────────────
-  // 产物格式规则（win/linux 各自独立）：
-  //   - lite 变体：Windows 用 NSIS 安装包；Linux 用 AppImage + deb。
-  //   - cpu/cuda 变体：体积 > 2GB，NSIS/AppImage/portable 均受 ~2GB 硬上限限制，
-  //     故 win 与 linux 都仅产出 zip 归档（zip64 无 2GB 限制），用户解压后直接运行。
-  if (!isLite) {
-    return isLinuxBuild
-      ? {
-          // Linux cpu/cuda：仅产出 zip（离线完整版 > 2GB，AppImage/deb 无法承载）
-          ...base,
-          linux: {
-            ...base.linux,
-            target: ['zip'],
-            // 产物名内嵌平台 + 变体 + 架构，避免与 Windows 同名产物混淆
-            artifactName: `\${name}-\${version}-linux-${variant}-\${arch}.zip`
-          }
-        }
-      : {
-          // Windows cpu/cuda：仅产出 zip
-          ...base,
-          win: {
-            ...base.win,
-            target: ['zip'],
-            // 产物名内嵌变体后缀（cpu/cuda），避免三个变体相互覆盖同名产物。
-            // 其中 ${name}/${version}/${arch} 为 electron-builder 宏，${variant} 由本文件模板字面量插值。
-            artifactName: `\${name}-\${version}-${variant}-\${arch}.zip`
-          }
-        }
-  }
-
   return isLinuxBuild
     ? {
-        // Linux lite：AppImage + deb 安装包
+        // Linux：AppImage + deb 安装包
         ...base,
         linux: {
           ...base.linux,
@@ -265,14 +162,14 @@ export default function electronBuilderConfig(): Configuration {
         }
       }
     : {
-        // Windows lite：NSIS 安装包
+        // Windows：NSIS 安装包
         ...base,
         win: { ...base.win, target: ['nsis'] },
         nsis: {
           oneClick: false,
           allowToChangeInstallationDirectory: true,
           // 自定义 NSIS 脚本：升级/卸载时保留 exe 同级 appData/（模型数据），
-          // 支撑"便携完整版 + Lite 安装包就地升级"的升级路径
+          // 安装和升级时保留同级 appData 目录。
           include: 'build/nsis/preserve-app-data.nsh',
           artifactName: '${name}-${version}-setup.${ext}',
           shortcutName: '${productName}',

@@ -46,7 +46,7 @@
                 <font-awesome-icon icon="fa-solid fa-microchip" />
               </span>
               <span class="mode-card-title">本地模式</span>
-              <span class="mode-card-desc">自举解压内核资源并启动本地服务</span>
+              <span class="mode-card-desc">自动同步依赖与模型，并启动本地服务</span>
             </button>
             <button class="mode-card" @click="chooseApiMode">
               <span class="mode-card-icon is-api">
@@ -83,7 +83,7 @@
             <p class="awaken-sub">{{ awakenSubtitle }}</p>
           </div>
 
-          <!-- 装配进度面板（自举解压内置资源包 + uv sync 依赖安装，单一进度） -->
+          <!-- 本地模式启动阶段：资源装配、依赖同步、模型检查均可能耗时较长。 -->
           <div class="bootstrap-panel">
             <div class="bootstrap-status">{{ logStatusTitle }}</div>
             <div class="bootstrap-sub">{{ logStatusSub }}</div>
@@ -93,6 +93,16 @@
               </div>
               <span class="bootstrap-progress-pct">{{ kernelProgress }}%</span>
             </div>
+            <ol class="startup-stages" aria-label="本地启动进度">
+              <li
+                v-for="stage in startupStages"
+                :key="stage.id"
+                :class="{ active: startupStage === stage.id, completed: isStageComplete(stage.id) }"
+              >
+                <span class="startup-stage-dot" aria-hidden="true"></span>
+                <span>{{ stage.label }}</span>
+              </li>
+            </ol>
           </div>
 
           <!-- 启动异常（出错即停） -->
@@ -152,6 +162,7 @@
         >
           <div class="status-title">PERSONALITY CORE</div>
           <div class="status-sub">{{ personalityStatus }}</div>
+          <div class="personality-detail">{{ assistantStatusDetail }}</div>
           <div class="personality-bar-wrap">
             <div class="personality-bar">
               <div class="personality-fill" :style="{ width: `${assistantProgress}%` }"></div>
@@ -343,6 +354,8 @@ type OnboardingState =
   | 'CONTRACT'
   | 'HOME'
 
+type StartupStageId = 'environment' | 'dependencies' | 'models' | 'assistants'
+
 // ─── services / singletons ──────────────────────────────────────────────────
 
 const router = useRouter()
@@ -427,6 +440,13 @@ const assistantProgress = ref(0)
 const logStatusTitle = ref('正在初始化内核...')
 const logStatusSub = ref('正在检查运行环境')
 const kernelProgress = ref(0)
+const startupStage = ref<StartupStageId>('environment')
+const startupStages: ReadonlyArray<{ id: StartupStageId; label: string }> = [
+  { id: 'environment', label: '运行环境' },
+  { id: 'dependencies', label: '同步依赖' },
+  { id: 'models', label: '检查模型' },
+  { id: 'assistants', label: '助手资源' }
+]
 let kernelStateUnlisten: (() => void) | null = null
 let serviceStateUnlisten: (() => void) | null = null
 let downloadProgressUnlisten: (() => void) | null = null
@@ -434,10 +454,30 @@ let assistantDownloadResolve: (() => void) | null = null
 
 const awakenSubtitle = computed(() => {
   if (backendError.value) return '初始化遇到问题，已停止运行'
-  if (backendRunning.value) return '核心已就绪，正在唤醒意识...'
-  if (backendStillStarting.value) return '核心正在苏醒，请稍候...'
-  return '正在装配内核环境与助手数据'
+  if (backendStillStarting.value) return '模型检查或下载仍在进行，请保持网络连接'
+  if (startupStage.value === 'models') return '后端已启动，正在检查模型完整性...'
+  if (backendRunning.value) return '核心已就绪，正在同步助手资源...'
+  return '正在装配运行环境、同步依赖并检查模型'
 })
+
+function isStageComplete(stage: StartupStageId): boolean {
+  return startupStages.findIndex((item) => item.id === stage) <
+    startupStages.findIndex((item) => item.id === startupStage.value)
+}
+
+function setStartupStage(
+  stage: StartupStageId,
+  title: string,
+  detail: string,
+  progress?: number
+): void {
+  startupStage.value = stage
+  logStatusTitle.value = title
+  logStatusSub.value = detail
+  if (progress !== undefined) {
+    kernelProgress.value = Math.max(0, Math.min(100, Math.round(progress)))
+  }
+}
 
 // ─── profile ────────────────────────────────────────────────────────────────
 
@@ -547,9 +587,8 @@ async function startSystemWake(): Promise<void> {
 // ─── kernel: bootstrap & backend start ──────────────────────────────────────
 
 /**
- * 自举初始化内核运行环境（解压内置 zip 资源包 + uv sync 安装依赖）
- * 完整版内置数据包时一并解压到 kernelDir/data（离线模型）
- * 模型完整性由后端自行检查与自动下载，前端不参与
+ * 自举初始化内核运行环境（解压运行时资产包 + uv sync 在线安装依赖）。
+ * 模型完整性由后端启动时检查并自动下载，前端仅展示启动反馈。
  * 返回 true 表示环境就绪，失败即停止运行
  */
 async function ensureKernelReady(): Promise<boolean> {
@@ -557,19 +596,16 @@ async function ensureKernelReady(): Promise<boolean> {
   backendError.value = ''
   kernelProgress.value = 0
 
-  logStatusTitle.value = '正在检查运行环境...'
-  logStatusSub.value = '扫描内核资源与依赖'
+  setStartupStage('environment', '正在检查运行环境...', '正在装配助手数据与后端源码', 2)
 
   const result = await window.api.kernel.bootstrapKernel()
   if (!result.success) {
     backendError.value = result.error || '环境初始化失败，已停止运行。'
-    logStatusTitle.value = '初始化失败'
-    logStatusSub.value = '已停止运行，请查看日志'
+    setStartupStage('environment', '初始化失败', '已停止运行，请查看日志')
     return false
   }
 
-  logStatusTitle.value = '环境就绪'
-  logStatusSub.value = '内核资源与依赖已就绪'
+  setStartupStage('models', '依赖同步完成', '即将启动后端并检查模型完整性', 65)
   return true
 }
 
@@ -581,20 +617,17 @@ async function startBackendService(): Promise<boolean> {
   backendStillStarting.value = false
   healthCheckAbort.value = false
   healthCheckElapsed.value = 0
-  logStatusTitle.value = '正在启动核心服务...'
-  logStatusSub.value = '初始化智慧核心所需的基础设施'
+  setStartupStage('models', '正在启动核心服务...', '后端将检查模型完整性并自动下载缺失模型', 68)
 
   // 刷新后端日志（可能来自上一次运行）
   const status = await window.api.kernel.getBackendStatus()
   if (status.running) {
-    logStatusTitle.value = '核心服务已在运行'
-    logStatusSub.value = '正在检查连接状态...'
+    setStartupStage('models', '核心服务已在运行', '正在检查模型服务连接状态...', 72)
 
     // 检查健康状态
     const healthResult = await window.api.kernel.checkBackendHealth()
     if (healthResult.healthy) {
-      logStatusTitle.value = '核心服务就绪'
-      logStatusSub.value = '意识核心连接成功'
+      setStartupStage('assistants', '核心服务就绪', '模型完整性检查已完成', 85)
       await wait(500)
       return true
     }
@@ -607,8 +640,7 @@ async function startBackendService(): Promise<boolean> {
     return false
   }
 
-  logStatusTitle.value = '正在唤醒澪的意识核心...'
-  logStatusSub.value = '检查神经网络连接状态'
+  setStartupStage('models', '正在检查模型完整性...', '缺失模型会从镜像站自动下载，这可能需要较长时间', 72)
 
   // 启动等待计时器
   startHealthCheckElapsedTimer()
@@ -621,8 +653,7 @@ async function startBackendService(): Promise<boolean> {
       // 健康检查通过
       stopHealthCheckElapsedTimer()
       backendStillStarting.value = false
-      logStatusTitle.value = '核心服务就绪'
-      logStatusSub.value = '意识核心连接成功'
+      setStartupStage('assistants', '核心服务就绪', '模型完整性检查已完成，正在准备助手资源', 85)
       await wait(500)
       return true
     }
@@ -639,8 +670,12 @@ async function startBackendService(): Promise<boolean> {
     // 超过阈值后显示"仍在启动中"提示
     if (healthCheckElapsed.value >= 30 && !backendStillStarting.value) {
       backendStillStarting.value = true
-      logStatusTitle.value = '后台启动时间较长'
-      logStatusSub.value = '请查看日志了解进度，如出现错误请尝试重启'
+      setStartupStage(
+        'models',
+        '模型检查或下载仍在进行',
+        '首次下载可能需要较长时间，请保持网络连接；可在日志中查看详细进度',
+        78
+      )
     }
   }
 
@@ -659,8 +694,7 @@ async function restartBackendService(): Promise<void> {
   backendError.value = ''
   backendStillStarting.value = false
   currentState.value = 'LOG_STREAM'
-  logStatusTitle.value = '正在重启后端服务...'
-  logStatusSub.value = '请稍候'
+  setStartupStage('models', '正在重启后端服务...', '请稍候', 68)
 
   // 先停止后端服务
   await window.api.kernel.stopBackend()
@@ -820,8 +854,9 @@ async function connectApiMode(): Promise<boolean> {
 
 async function loadAssistant(): Promise<void> {
   currentState.value = 'PERSONALITY_ONLINE'
+  startupStage.value = 'assistants'
   assistantLoadError.value = ''
-  assistantProgress.value = 5
+  assistantProgress.value = 8
 
   const result = await window.api.assistant.loadAssistantData()
   if (!result.success) {
@@ -829,7 +864,7 @@ async function loadAssistant(): Promise<void> {
     return
   }
 
-  assistantProgress.value = Math.max(assistantProgress.value, 30)
+  assistantProgress.value = Math.max(assistantProgress.value, 20)
 
   // 等待后台资源下载完成
   await new Promise<void>((resolve) => {
@@ -840,7 +875,7 @@ async function loadAssistant(): Promise<void> {
         assistantDownloadResolve()
         assistantDownloadResolve = null
       }
-    }, 60000)
+    }, 10 * 60 * 1000)
   })
 
   assistantProgress.value = 100
@@ -857,8 +892,15 @@ const personalityStatus = computed(() => {
   if (assistantLoadError.value) return '人格核心加载失败...'
   if (assistantProgress.value >= 100) return '人格核心已上线'
   if (assistantProgress.value >= 90) return '正在整理助手信息...'
-  if (assistantProgress.value > 5) return '正在加载人格数据...'
+  if (assistantProgress.value > 20) return '正在同步助手资源...'
   return '开始同步助手数据...'
+})
+
+const assistantStatusDetail = computed(() => {
+  if (assistantLoadError.value) return '请检查网络连接或在启动日志中查看详情'
+  if (assistantProgress.value >= 100) return '助手资料与资源已就绪'
+  if (assistantProgress.value > 20) return '正在检查图片、Live2D 和其他必要资源'
+  return '正在读取本地资料并同步最新助手信息'
 })
 
 // ─── transition: SAKURA ─────────────────────────────────────────────────────
@@ -1036,18 +1078,34 @@ function onAssistantDownloadProgress(payload: unknown): void {
       assistantDownloadResolve()
       assistantDownloadResolve = null
     }
+  } else if (progressData.status === 'checking') {
+    assistantProgress.value = Math.max(assistantProgress.value, 25)
   } else if (progressData.progress !== undefined) {
-    assistantProgress.value = Math.max(0, Math.min(100, progressData.progress))
+    const mappedProgress = 30 + progressData.progress * 0.7
+    assistantProgress.value = Math.max(assistantProgress.value, Math.min(99, mappedProgress))
   }
 }
 
 function onKernelStateUpdate(state: KernelUpdateState): void {
   kernelState.value = state
-  kernelProgress.value = state.progress
-
-  if (state.operationStatus !== 'idle' && state.operationStatus !== 'done') {
-    logStatusTitle.value = state.statusText || logStatusTitle.value
-    logStatusSub.value = state.progress > 0 ? `进度: ${state.progress}%` : '请稍候...'
+  if (state.operationStatus === 'installing') {
+    setStartupStage(
+      'environment',
+      state.statusText || '正在装配运行资源...',
+      '正在释放后端源码、助手资料和必要运行数据',
+      2 + state.progress * 0.13
+    )
+  } else if (state.operationStatus === 'settingUpEnv') {
+    setStartupStage(
+      'dependencies',
+      state.statusText || '正在同步运行依赖...',
+      '正在检测 CUDA 环境并从镜像站同步所需依赖',
+      15 + state.progress * 0.5
+    )
+  } else if (state.operationStatus === 'done') {
+    setStartupStage('models', '依赖同步完成', '即将启动后端并检查模型完整性', 65)
+  } else if (state.operationStatus === 'error') {
+    backendError.value = state.error || state.statusText || '运行环境初始化失败'
   }
 }
 
@@ -1386,6 +1444,15 @@ onUnmounted(() => {
   gap: 14px;
   width: 320px;
   max-width: 70vw;
+}
+
+.personality-detail {
+  min-height: 20px;
+  max-width: min(420px, 82vw);
+  color: rgba(160, 100, 120, 0.55);
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: center;
 }
 
 .personality-bar {
@@ -2017,6 +2084,72 @@ onUnmounted(() => {
   text-align: right;
 }
 
+.startup-stages {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  width: 100%;
+  margin: 20px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.startup-stages li {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  color: rgba(160, 100, 120, 0.42);
+  font-size: 11px;
+  text-align: center;
+  transition: color 0.25s ease;
+}
+
+.startup-stages li:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  top: 5px;
+  left: calc(50% + 9px);
+  width: calc(100% - 18px);
+  height: 1px;
+  background: rgba(251, 114, 153, 0.15);
+  transition: background 0.25s ease;
+}
+
+.startup-stages li.completed,
+.startup-stages li.active {
+  color: #b05473;
+}
+
+.startup-stages li.completed::after {
+  background: rgba(251, 114, 153, 0.52);
+}
+
+.startup-stage-dot {
+  position: relative;
+  z-index: 1;
+  width: 10px;
+  height: 10px;
+  border: 2px solid rgba(251, 114, 153, 0.3);
+  border-radius: 50%;
+  background: #fff;
+  transition:
+    border-color 0.25s ease,
+    background 0.25s ease,
+    box-shadow 0.25s ease;
+}
+
+.startup-stages li.completed .startup-stage-dot {
+  border-color: #fb7299;
+  background: #fb7299;
+}
+
+.startup-stages li.active .startup-stage-dot {
+  border-color: #fb7299;
+  box-shadow: 0 0 0 4px rgba(251, 114, 153, 0.14);
+  animation: startupStagePulse 1.5s ease-in-out infinite;
+}
+
 /* ─── 等待提示 ────────────────────────────────────────────────────────── */
 
 .awaken-notice {
@@ -2280,6 +2413,16 @@ onUnmounted(() => {
   100% {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@keyframes startupStagePulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 3px rgba(251, 114, 153, 0.12);
+  }
+  50% {
+    box-shadow: 0 0 0 7px rgba(251, 114, 153, 0.04);
   }
 }
 

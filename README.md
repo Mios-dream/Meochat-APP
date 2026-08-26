@@ -153,44 +153,28 @@ https://github.com/user-attachments/assets/3878b0fc-fefb-49b6-b987-5f663cce9b48
    npm run build
 
    # ── Windows ─────────────────────────────────────────────
-   # 一键构建全部三个变体（lite / cpu / cuda），直接运行 PowerShell 脚本
+   # 构建包含 lite 内核资产包的 Windows 安装包
    .\scripts\build-all.ps1 -KernelSource D:\python\MoeChat\dist
 
-   # 只构建指定变体（跳过其余）：可自由组合 -Lite / -Cpu / -Cuda
-   .\scripts\build-all.ps1 -KernelSource D:\python\MoeChat\dist -Cpu -Cuda
-
-   # 单独构建某个变体（需要先 prepare-kernel-assets.ps1）
-   npm run build:win         # 精简版 lite：NSIS 安装包
-   npm run build:win:cpu     # cpu 版：zip（离线可用）
-   npm run build:win:cuda    # cuda 版：zip（离线可用）
+   # 单独打包（需要先执行 prepare-kernel-assets.ps1）
+   npm run build:win
 
    # ── Linux ──────────────────────────────────────────────
    # 需在 Linux（或 WSL2）执行：原生模块（node-pty/robotjs/uiohook 等）按平台编译，
    # AppImage/deb 工具链也仅在 Linux 可用
    pwsh ./scripts/build-all-linux.ps1 -KernelSource D:\python\MoeChat\dist
 
-   # 只构建指定变体
-   pwsh ./scripts/build-all-linux.ps1 -KernelSource D:\python\MoeChat\dist -Cpu -Cuda
-
-   # 单独构建某个变体
-   npm run build:linux         # Linux lite：AppImage + deb
-   npm run build:linux:cpu     # Linux cpu 版：zip（离线可用）
-   npm run build:linux:cuda    # Linux cuda 版：zip（离线可用）
+   # 单独打包（需要先执行 prepare-kernel-assets.ps1）
+   npm run build:linux
    ```
 
-   说明：`build-all.ps1` / `build-all-linux.ps1` 省略 `-KernelSource` 时 PowerShell 会交互式
-   提示输入；省略全部变体开关时默认构建三个变体。
+   应用仅构建一个安装包：后端源码、必要运行数据、助手资源和小型 KWS 模型来自 lite 资产包；wheels 与大模型首次运行在线安装。Windows 为 NSIS 安装包，Linux 为 AppImage + deb。
 
-   三种变体说明：
-   - **lite（精简版）**：仅含内核源码资产包，依赖与模型首次运行在线安装；Windows 为 NSIS 安装包，Linux 为 AppImage + deb，体积 < 2GB。
-   - **cpu（完整版 CPU）**：CPU wheels + 数据包，离线开箱即用，zip 压缩包（含数据后体积 > 2GB，超出 NSIS/AppImage 上限）。
-   - **cuda（完整版 CUDA）**：CUDA 12.13 wheels + 数据包，离线开箱即用，zip 压缩包。
-
-   资产包与数据包命名（由后端 `build-asset-bundle.ps1` / `build-data-bundle.ps1` 产出，
-   `scripts/prepare-kernel-assets.ps1` 按平台/变体挑选拷贝到 `resources/kernel-assets`）：
-   - 资产包（区分平台 + 变体）：`moechat-assets-v{ver}-{win|linux}-{lite|cpu|cu130}.zip`
-   - 数据包（平台/变体无关的通用数据）：`moechat-data-v{ver}.zip`
-   - lite 变体仅含资产包；cpu/cuda 变体 = 对应资产包 + 数据包
+   资产包命名（由后端 `build-asset-bundle.ps1` 产出，
+   `scripts/prepare-kernel-assets.ps1` 按平台挑选拷贝到 `resources/kernel-assets`）：
+   - Windows：`moechat-assets-v{ver}-win-lite.zip`
+   - Linux：`moechat-assets-v{ver}-linux-lite.zip`
+   - 资产包同时包含必要运行数据：`data/resources`、motion 数据库、助手数据和 KWS 模型。
 
    Linux 构建前置要求：
    - 后端需产出 Linux 资产包：`build-asset-bundle.ps1 -Platform linux`（在 Windows 上亦可执行，仅下载 manylinux 轮子）
