@@ -98,6 +98,12 @@
   </tr>
 </table>
 
+### 🎞️ 宣传pv
+
+【名为智乃酱的servant——MoeChat宣传PV】
+
+https://github.com/user-attachments/assets/9218d535-c70d-45d8-a2bd-89f4f4e87be7
+
 ### 🎞️ 演示视频
 
 当前只演示了软件内聊天，展示表情和语音
