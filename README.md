@@ -288,9 +288,7 @@ MoeChat-APP/
 
 ## 🙏 致谢
 
-- [Electron](https://www.electronjs.org/) - 跨平台桌面应用框架
-- [Vue 3](https://vuejs.org/) - 渐进式 JavaScript 框架
-- [Live2D](https://www.live2d.com/) - 实时卡通角色渲染技术
+- [BA-Spark-Cursor](https://github.com/VanillaNahida/BA-Spark-Cursor) - 蔚蓝档案点击特效
 - [MoeChat](https://github.com/Mios-dream/MoeChat) - 原始后端项目
 
 ---
